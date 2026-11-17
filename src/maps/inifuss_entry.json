@@ -1,0 +1,37 @@
+{
+  "name": "darkest_inifuss_entry",
+  "folder": "act1/crypt",
+  "room": 8,
+  "comment": "Tree of Inifuss entry: one crypt room with stairs up (cryptewarpprev) and the waypoint. The stairs come out at the cave mouth next to the tree; that starts the waves. (Cave stairs crashed the game when linked to a hand-made outdoor map; crypt stairs work, as in the Burial Grounds.)",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/crypt/cryptewarpprev"
+    }
+  ],
+  "close_edges": true,
+  "extra_objects": [
+    {
+      "type": 2,
+      "id": 52,
+      "tile": [
+        6,
+        4
+      ],
+      "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
+      "hd_prefab": {
+        "prefab": "data/hd/env/model/act1/outdoors/act1_outdoors_props/pf_waypoint01.json",
+        "offset": [
+          9,
+          10
+        ],
+        "models": [
+          "data/hd/env/model/act1/outdoors/act1_outdoors_props/waypoint01.model",
+          "data/hd/objects/waypoint_portals/waypoint_outside_act_1/model/torso.model"
+        ]
+      }
+    }
+  ]
+}

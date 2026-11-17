@@ -262,7 +262,7 @@ void Close(const D2RL::PluginContext* context, D2RL::Panels::RegistrationHandle 
 }
 
 auto PoolName(const LivePanel& pool) -> std::string {
-	return FullName((std::string(pool.base) + std::to_string(std::max(pool.current, 0))).c_str());
+	return FullName((std::string(pool.base) + std::to_string(pool.current > 0 ? pool.current : 0)).c_str());
 }
 
 auto PoolHandle(const LivePanel& pool) -> D2RL::Panels::RegistrationHandle {

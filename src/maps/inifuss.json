@@ -1,0 +1,56 @@
+{
+  "name": "darkest_inifuss",
+  "folder": "act1/outdoors",
+  "room": 8,
+  "comment": "Tree of Inifuss arena (Rakanishu + Treehead): 3x3 outdoor pieces of 8x8 tiles. Middle: Blizzard's funktree (the Tree of Inifuss). West: the Den of Evil's cave mouth (denent), whose door leads down to the entry room. The rest: open ground. Treehead's preset is dropped; the plugin spawns everything.",
+  "keep_monsters": [],
+  "close_edges": true,
+  "extra_objects": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/outdoors/circle"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "piece": "act1/outdoors/4rock"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "piece": "act1/outdoors/clover"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act1/caves/denent"
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "piece": "act1/outdoors/funktree"
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "piece": "act1/outdoors/6rock"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act1/outdoors/clover"
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "piece": "act1/outdoors/circle"
+    },
+    {
+      "x": 2,
+      "y": 2,
+      "piece": "act1/outdoors/4rock"
+    }
+  ]
+}

@@ -67,7 +67,7 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 | `src/plugin/camp.h` | The rules: classes, offers, the camp file, slot switching, burying. No game code. |
 | `src/plugin/campfire.cpp` | Talks to the game: UI messages, panels, game events, console commands. |
 | `tools/camp_layouts.py` | Our three panels (save slots, traveler, roster), written into the mod by the build. |
-| `src/patches/030_campfire.py` | Bonfire, stash button, hero screen title. |
+| `src/patches/040_campfire.py` | Bonfire, stash button, hero screen title. |
 | `d2rloader/camp_data.txt` (built) | Where each class stands at the fire and how each item looks; made by `tools/build.py`. |
 | `src/d2rloader/` | The mod's D2RLoader settings: `add_shared_tabs = 7`. |
 

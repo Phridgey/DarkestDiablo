@@ -23,12 +23,21 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
 - `tools/build-plugin.cmd` — builds the plugin and places it in the mod (Windows, needs Visual Studio).
 - `tools/build.py` — builds `build/darkestdiablo/darkestdiablo.mpq/`.
 - `tools/link.cmd` — run once on Windows: links the build into the frozen game's `Mods` folder.
+- `launcher/` — the players' launcher (finds D2R, makes the game folder, Update / Play).
+- `tools/release.py` — publishes the build as a GitHub release the launcher can update from.
+  Read `docs/updates.md` before changing what the build outputs, where files go, or the release format.
 
 ## Workflow
 1. Change patches, data or the plugin. 2. `python tools/build.py` (data) or
    `tools\build-plugin.cmd` (plugin + data). 3. With the Battle.net app open, run `D2RLoader.exe`
    in the frozen copy; its default mod is `darkestdiablo`. Its log is `d2rloader/logs/d2rloader.log`.
 4. One branch per feature, merged by pull request.
+5. To ship to players: `python tools/release.py <version> --publish` from an up-to-date `main`
+   build. Updates are deltas of whole changed files; never edit or delete a published release.
+
+## Paths
+- Never hardcode drive letters or game folders. Everyone's game folder is wherever they chose
+  in the launcher; tools take it as an argument.
 
 ## Writing style
 Plain, jargon-free language in docs and commit messages.
@@ -44,10 +53,20 @@ Plain, jargon-free language in docs and commit messages.
   `cheat mspawn <id>,<n> @ x,y` before putting it in the plugin.
 - Spawning right on arrival fails while the map loads; wait about 1 s.
 - Stairs must use Blizzard's pairing: the graveyard's crypt door pairs with crypt stairs
-  (lvlwarp 6 and 8). Cave stairs there crashed the game.
+  (lvlwarp 6 and 8). Cave stairs there crashed the game. A cave mouth (lvlwarp 2) on the arena
+  side with crypt stairs (8) on the entry side works too.
+- A hand-made map with exits needs `Scan = 1` in its lvlprest row, or the game never registers
+  its warp tiles (BC_VERIFY ptWarp in the console, and the stairs do nothing). Templates copied
+  from maps without exits (the Tree of Inifuss) have 0.
 - Plugin panel buttons: use the ModalButton style (pressed/hovered/disabled frames, `textString`).
   The game drops button messages with targets it doesn't know, so send a real command
   (`PanelManager:OpenPanel:darkestdiablo/travel-<level>`) and catch it in the UI-message listener.
+- Crowded arenas sometimes refuse a spawn ("Monster not created") and the plugin can't see it, so
+  an arena clears with up to `MissingSpawnSlack` monsters unaccounted for.
+- `createItem` refuses quest items (Book of Skill: `Unsupported`). Give those through a monster's
+  treasure class instead.
+- Console typing through computer use: the clipboard paste drops newlines; press Return after
+  each line. `cheat killmonster` kills one monster next to the player (handy to test clears).
 - `ExecuteConsoleCommand` returns true when the command was accepted, not when it worked; check
   the in-game console for errors.
 - A plugin can show, hide and find widgets (WidgetService) but not change their text. For text
