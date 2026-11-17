@@ -94,6 +94,7 @@ struct Spot { int x = 0, y = 0, w = 0, h = 0; std::string px, py, pz, yaw, look;
 bool g_atFire    = false;  // the Campfire screen is up
 bool g_slotsOpen = false;
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
+bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
 D2RL::Panels::RegistrationHandle g_curtainPanel = D2RL::Panels::InvalidHandle;
 fs::path g_dataDir;         // the mod's d2rloader folder: camp_data.txt, SaveSlots.layout.json
@@ -563,8 +564,21 @@ void __cdecl ShowFireState(const D2RL::PluginContext* context, void*) noexcept {
 
 void __cdecl OpenCurtain(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
-	if (!g_inGame && !g_atFire && (g_wantFire || !g_pendingPlay.empty())) {
+	if (!g_inGame && !g_atFire && (g_wantFire || g_exiting || !g_pendingPlay.empty())) {
 		Open(context, g_curtainPanel, "curtain");
+	}
+}
+
+// If the game did not close after all (it asked first, or the exit was called off), the menu
+// must not stay covered.
+void __cdecl ExitTimedOut(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_exiting) {
+		g_exiting = false;
+		Close(context, g_curtainPanel);
+		if (!g_inGame && !g_atFire && g_fireOn && g_fireReady) {
+			GoToFire(context, nullptr);
+		}
 	}
 }
 
@@ -1076,6 +1090,14 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				g_atFire = false;
 				Close(context, g_firePanel);
 			}
+			if (std::strcmp(command, "ToExit") == 0 && g_atFire && g_threads != nullptr) {
+				g_exiting = true;  // cover the game's menu, which shows for a moment on the way out
+				g_atFire = false;
+				Close(context, g_firePanel);
+				g_threads->runOnUiThread(context, OpenCurtain, nullptr);
+				Later(context, 4000, ExitTimedOut);
+				return false;
+			}
 			if (std::strcmp(command, "ToGame") == 0) {
 				Close(context, g_curtainPanel);
 			}
@@ -1083,7 +1105,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 		}
 		if (panelManager && std::strcmp(text, "MainMenuPanel") == 0 && std::strcmp(command, "OpenExclusivePanel") == 0) {
 			g_awaitingMenu = false;  // the menu is loading (again): it reads the live folder now
-			if (g_threads != nullptr && (g_wantFire || !g_pendingPlay.empty())) {
+			if (g_threads != nullptr && (g_wantFire || g_exiting || !g_pendingPlay.empty())) {
 				g_threads->runOnUiThread(context, OpenCurtain, nullptr);  // the menu is only passed through
 			}
 			return false;
