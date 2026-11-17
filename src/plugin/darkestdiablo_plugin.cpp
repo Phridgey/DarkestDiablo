@@ -336,8 +336,9 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 // ---- Route map (the waypoint "map") ------------------------------------------------------
 // A plugin panel listing the act's stops as in the design sketch. A node button sends a UI
 // message (see OnUiMessage); the plugin closes the panel and sends the player there with the
-// console's goto. The layout also ships as a mod file (src/data/.../RouteMaphd.json), which
-// overrides this built-in copy, so layout changes only need a game restart. Clicking a town
+// console's goto. The same layout also ships as a mod file (src/data/.../RouteMaphd.json), but
+// the game uses this built-in copy: change both (tests/test_route_map.py checks they match).
+// The Den once went to the real Den (level 8) for weeks because only the file was changed. Clicking a town
 // waypoint opens this map instead of Blizzard's list (see OnUiMessage); waypoints outside town
 // keep Blizzard's list, so the player can always get home.
 static const D2RL::PanelService*     g_panels = nullptr;
@@ -435,7 +436,7 @@ static constexpr char RouteMapLayout[] = R"json({
     "textString": "Den of Evil",
     "pointSize": "$MediumFontSize",
     "textColor": "$FontColorWhite",
-    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-8"
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-13"
    }
   },
   {

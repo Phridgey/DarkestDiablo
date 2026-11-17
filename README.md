@@ -78,9 +78,10 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 - **Route map**: clicking a waypoint in town opens it instead of Blizzard's list (waypoints
   outside town still show Blizzard's list, so you can always get home); `dd-map` opens it
   anywhere. It lists the Act I stops. Den, Burial Grounds and Inifuss are
-  clickable and send you there; the rest are greyed out. The layout is a mod file
-  (`src/data/data/global/ui/layouts/darkestdiablo/RouteMaphd.json`), so changing it needs only a
-  game restart, not a plugin rebuild.
+  clickable and send you there; the rest are greyed out. The layout exists twice: built into
+  the plugin, which is the copy the game uses, and as a mod file
+  (`src/data/data/global/ui/layouts/darkestdiablo/RouteMaphd.json`). Change both and rebuild the
+  plugin; `tests/test_route_map.py` fails when they differ.
 - **The Campfire** (`docs/campfire.md`; built, not yet tried in the game): three save slots, the
   character list staged at the campfire, recruiting on the hero screen (a new save offers every
   class, after that only classes a traveler brought), travelers in town, permanent death, and a
