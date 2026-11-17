@@ -136,13 +136,16 @@ static constexpr Wave DenWaves[] = {
 	{ { { "monster", "super:40", 6, { 12, 20 } } }, 1, ZombieClass },
 };
 
-// Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py): waypoint at tile 5,1 (north). Waves come from the open south strip.
+// Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py): waypoint at
+// tile 5,1 (north-west). The game only spawns near the player (about 15 tiles), and the middle is
+// full of tombstones, so the spots are open 3x3 ground within 12 tiles: east strip (17,1),
+// west (1,11), south-west (3,8). Blood Raven comes from the east strip.
 static constexpr Wave BurialWaves[] = {
-	{ { { "mspawn", "zombie1", 6, { 12, 31 } } }, 1, AnyClass },
-	{ { { "mspawn", "zombie1", 4, { 4, 30 } }, { "mspawn", "skeleton1", 3, { 20, 30 } } }, 2, AnyClass },
-	{ { { "mspawn", "zombie1", 3, { 20, 30 } }, { "mspawn", "skeleton1", 5, { 4, 30 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 6, { 17, 1 } } }, 1, AnyClass },
+	{ { { "mspawn", "zombie1", 4, { 17, 1 } }, { "mspawn", "skeleton1", 3, { 1, 11 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 3, { 3, 8 } }, { "mspawn", "skeleton1", 5, { 17, 1 } } }, 2, AnyClass },
 	// Blood Raven and 4 zombies; the wave ends when she dies.
-	{ { { "mspawn", "bloodraven", 1, { 12, 31 } }, { "mspawn", "zombie1", 4, { 12, 29 } } }, 2, BloodRavenClass },
+	{ { { "mspawn", "bloodraven", 1, { 16, 2 } }, { "mspawn", "zombie1", 4, { 1, 11 } } }, 2, BloodRavenClass },
 };
 
 static constexpr Arena Arenas[] = {
