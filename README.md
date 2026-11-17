@@ -34,6 +34,16 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
    open the D2RLoader settings (gear button under Play), set **Default mod** to
    `mephistorghast`, Apply, and let it restart.
 
+## Waypoints (for now)
+Players reach every location by waypoint, and those waypoints have to be active already
+("scouted ahead"). Until the D2RLoader SDK can do this in game (D2RLoader/PluginSDK issue #9),
+turn them on in the save with the game closed:
+
+    python tools\set_waypoints.py 1            (all Mephistorghast characters: slot 1, the Den)
+    python tools\set_waypoints.py 1,2 Tester   (one character)
+
+Slots are the waypoint numbers from levels.txt (Act 1: 0-8). Saves are backed up first.
+
 ## Every change
 - Data or patches changed: `python tools\build.py`
 - Plugin changed: `tools\build-plugin.cmd` (also rebuilds the data)
