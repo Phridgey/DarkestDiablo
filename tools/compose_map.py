@@ -131,12 +131,14 @@ def compose(spec):
         if not f.exists():
             sys.exit(f"{f} is missing. Extract data/global/tiles and data/hd/env/preset for '{spec['folder']}' into vanilla/.")
         d = ds1_parse(f.read_bytes())
-        if d["width"] != room + 1 or d["height"] != room + 1:
+        if len(spec["pieces"]) > 1 and (d["width"] != room + 1 or d["height"] != room + 1):
             sys.exit(f"{p['piece']} is {d['width']}x{d['height']}, expected {room + 1}x{room + 1}")
         placed.append((p, d))
     gw = max(p["x"] for p, _ in placed) + 1
     gh = max(p["y"] for p, _ in placed) + 1
     W, H = gw * room + 1, gh * room + 1
+    if len(placed) == 1:  # one whole map (e.g. an outdoor preset), any size
+        W, H = placed[0][1]["width"], placed[0][1]["height"]
     cells = W * H
     files = []
     for _, d in placed:

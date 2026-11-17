@@ -72,3 +72,8 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - Example, Den of Evil: 5 waves of about 10 monsters, then a final wave with Corpsefire.
 - The last kill drops a Town Portal scroll. That is the way home.
 - The player can bail out of a stop early (too spooky); the goal is never being stranded.
+
+## Tuning notes (later)
+- Den arena: the room's open edge shows black nothingness; cap it with walls or a closing room.
+- Den arena: the wave feel is right, but too dense for the first quest, when the player has no
+  area damage yet. Lighter early waves, heavier later in the run.
