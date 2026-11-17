@@ -28,7 +28,7 @@ static constexpr D2RL::PluginInfo DarkestDiabloInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "darkestdiablo",
 	.name        = "Darkest Diablo",
-	.version     = "0.6.0",
+	.version     = "0.6.1",
 	.author      = "Darkest Diablo team",
 	.description = "Roguelite rules for the Darkest Diablo mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -140,14 +140,14 @@ static constexpr Wave DenWaves[] = {
 
 // Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py). The
 // waypoint is in the entry room (level 10); its stairs come out at the graveyard's crypt door
-// (tile 12,27). The game only spawns near the player, so the spots are open 3x3 ground within
-// 10 tiles of the door: west (6,27), east (19,27), south-west (4,31), south-east (21,30).
+// (tile 12,27). Spots tested in game with the console (many nearby tiles refuse: "Monster not
+// created"): east (19,27), west (2,28), south-west (4,31), south-east (21,30).
 static constexpr Wave BurialWaves[] = {
-	{ { { "mspawn", "zombie1", 6, { 6, 27 } } }, 1, AnyClass },
-	{ { { "mspawn", "zombie1", 4, { 19, 27 } }, { "mspawn", "skeleton1", 3, { 4, 31 } } }, 2, AnyClass },
-	{ { { "mspawn", "zombie1", 3, { 4, 31 } }, { "mspawn", "skeleton1", 5, { 21, 30 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 3, { 19, 27 } }, { "mspawn", "zombie1", 3, { 2, 28 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 4, { 4, 31 } }, { "mspawn", "skeleton1", 3, { 21, 30 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 3, { 19, 27 } }, { "mspawn", "skeleton1", 5, { 2, 28 } } }, 2, AnyClass },
 	// Blood Raven and 4 zombies; the wave ends when she dies.
-	{ { { "mspawn", "bloodraven", 1, { 20, 30 } }, { "mspawn", "zombie1", 4, { 6, 27 } } }, 2, BloodRavenClass },
+	{ { { "mspawn", "bloodraven", 1, { 19, 27 } }, { "mspawn", "zombie1", 4, { 4, 31 } } }, 2, BloodRavenClass },
 };
 
 static constexpr Arena Arenas[] = {
@@ -291,7 +291,7 @@ static auto InfoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* c
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.6.0 is running.");
+	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.6.1 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -362,7 +362,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		return false;
 	}
 
-	context->LogInfo("Darkest Diablo plugin 0.6.0 loaded.");
+	context->LogInfo("Darkest Diablo plugin 0.6.1 loaded.");
 	return context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).");
