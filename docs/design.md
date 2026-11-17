@@ -1,4 +1,4 @@
-# Mephistorghast — design
+# Darkest Diablo — design
 
 A Hades-style roguelite built in Diablo II: Resurrected. Decisions so far (16 Nov 2026).
 The shared whiteboard has the same plan as a picture; this file is the reference.
@@ -59,7 +59,7 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
   magic find effects on sockets/superior/ethereal and runes, death and retirement rules,
   class limit, challenges, Atlas.
 - The plugin keeps its own camp file in the mod's save folder
-  (`Saved Games\Diablo II Resurrected\mods\mephistorghast`). Back it up with the saves.
+  (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`). Back it up with the saves.
 
 ## Open questions
 - Is Andariel (and each act boss) a forced final stop?

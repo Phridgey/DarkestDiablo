@@ -3,11 +3,11 @@
 Usage (with the game CLOSED):
     python tools/set_waypoints.py <slot>[,<slot>...] [character ...] [--difficulty normal|nightmare|hell|all]
 
-    python tools/set_waypoints.py 1            # every Mephistorghast character: slot 1 (the Den)
+    python tools/set_waypoints.py 1            # every Darkest Diablo character: slot 1 (the Den)
     python tools/set_waypoints.py 1,2 Tester   # only the character named Tester
 
 Slots are the waypoint numbers from levels.txt (Act 1: 0-8, Act 2: 9-17, ...). Saves are read
-from Saved Games\\Diablo II Resurrected\\mods\\mephistorghast. Each changed save is backed up
+from Saved Games\\Diablo II Resurrected\\mods\\darkestdiablo. Each changed save is backed up
 first to the "waypoint backups" folder beside it.
 
 Stopgap until the D2RLoader SDK offers a waypoint service (D2RLoader/PluginSDK issue #9).
@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-SAVES = Path(os.environ.get("USERPROFILE", "~")).expanduser() / "Saved Games" / "Diablo II Resurrected" / "mods" / "mephistorghast"
+SAVES = Path(os.environ.get("USERPROFILE", "~")).expanduser() / "Saved Games" / "Diablo II Resurrected" / "mods" / "darkestdiablo"
 DIFFS = {"normal": 0, "nightmare": 1, "hell": 2}
 
 

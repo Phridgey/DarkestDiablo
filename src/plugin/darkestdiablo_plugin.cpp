@@ -1,4 +1,4 @@
-// Mephistorghast — the D2RLoader plugin (the mod's code layer).
+// Darkest Diablo — the D2RLoader plugin (the mod's code layer).
 //
 // Current features:
 // - Den of Evil: when the Den quest completes (the last monster dies) while the player is in
@@ -8,8 +8,8 @@
 //   pack. Each wave starts when the last one is dead. When Corpsefire's wave is dead, a Town
 //   Portal scroll drops. Spawning uses the "cheat mspawn" / "cheat monster" console commands.
 // - Console commands (Ctrl + ` with enable_console on in d2rloader/config/d2rloader.toml):
-//     mephisto     show that the plugin is running
-//     mephisto-tp  drop a Town Portal scroll now (for testing)
+//     dd           show that the plugin is running
+//     dd-tp        drop a Town Portal scroll now (for testing)
 // - Waypoints: when the player is ready in a game, the plugin runs D2RLoader's "cheat waypoints"
 //   command, so a new character can reach the Den by waypoint on first load.
 //   For now this unlocks every waypoint. Per-stop unlocks wait for a waypoint service
@@ -22,14 +22,14 @@
 #include <atomic>
 #include <cstdio>
 
-static constexpr D2RL::PluginInfo MephistorghastInfo {
+static constexpr D2RL::PluginInfo DarkestDiabloInfo {
 	.infoSize    = D2RL::PluginInfoSize,
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
-	.id          = "mephistorghast",
-	.name        = "Mephistorghast",
-	.version     = "0.4.0",
-	.author      = "Mephistorghast team",
-	.description = "Roguelite rules for the Mephistorghast mod.",
+	.id          = "darkestdiablo",
+	.name        = "Darkest Diablo",
+	.version     = "0.4.1",
+	.author      = "Darkest Diablo team",
+	.description = "Roguelite rules for the Darkest Diablo mod.",
 	.flags       = D2RL::PluginFlags::Shared,
 };
 
@@ -170,6 +170,12 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
 	if (event->kind == Kind::LevelChanged) {
 		g_levelId = event->currentValue;
+		char message[96] {};
+		std::snprintf(message, sizeof(message), "Level changed: %d -> %d.", event->previousValue, event->currentValue);
+		context->LogInfo(message);
+		if (g_levelId == DenOfEvilLevelId && g_wave.load() == 0) {
+			StartNextWave(context, nullptr);  // gameplay events already run on the UI thread
+		}
 		return;
 	}
 	if (event->kind == Kind::LocalPlayerReady) {
@@ -178,6 +184,9 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	}
 	if (event->kind == Kind::GameLeft) {
 		g_levelId = -1;
+		g_wave = 0;
+		g_remaining = 0;
+		g_portalDropped = false;
 		return;
 	}
 	if (event->kind == Kind::QuestCompleted) {
@@ -191,11 +200,11 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	}
 }
 
-static auto MephistoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+static auto InfoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Mephistorghast plugin 0.4.0 is running.");
+	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.4.1 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -210,8 +219,19 @@ static auto TownPortalCommand(D2R::Game::Client*, const D2RL::ConsoleCommandCont
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
+static auto WavesCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	g_wave = 0;
+	g_remaining = 0;
+	g_portalDropped = false;
+	StartNextWave(command->plugin, nullptr);
+	return D2RL::ConsoleCommandResult::Handled;
+}
+
 D2RL_PLUGIN_EXPORT auto D2RLoaderGetPluginInfo() noexcept -> const D2RL::PluginInfo* {
-	return &MephistorghastInfo;
+	return &DarkestDiabloInfo;
 }
 
 D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) noexcept -> bool {
@@ -223,7 +243,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		context->QueryService(&g_inventory) != D2RL::ServiceQueryResult::Success || !D2RL::HasInventoryServiceField(g_inventory, D2RL::InventoryServiceRequiredSize) ||
 		context->QueryService(&g_items) != D2RL::ServiceQueryResult::Success || !D2RL::HasItemServiceField(g_items, D2RL::ItemServiceRequiredSize) ||
 		context->QueryService(&g_threads) != D2RL::ServiceQueryResult::Success || !D2RL::HasThreadServiceField(g_threads, D2RL::ThreadServiceRequiredSize)) {
-		context->LogError("Mephistorghast: a required D2RLoader service is missing.");
+		context->LogError("Darkest Diablo: a required D2RLoader service is missing.");
 		return false;
 	}
 
@@ -236,7 +256,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		};
 		D2RL::Lifecycle::ListenerHandle handle = D2RL::Lifecycle::InvalidHandle;
 		if (lifecycle->registerGameplayEventListener(context, &listener, &handle) != D2RL::Lifecycle::Result::Success) {
-			context->LogError("Mephistorghast: could not listen for game events.");
+			context->LogError("Darkest Diablo: could not listen for game events.");
 			return false;
 		}
 	}
@@ -247,13 +267,14 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	};
 	D2RL::Lifecycle::ListenerHandle deathHandle = D2RL::Lifecycle::InvalidHandle;
 	if (lifecycle->registerMonsterDeathListener(context, &deathListener, &deathHandle) != D2RL::Lifecycle::Result::Success) {
-		context->LogError("Mephistorghast: could not listen for monster deaths.");
+		context->LogError("Darkest Diablo: could not listen for monster deaths.");
 		return false;
 	}
 
-	context->LogInfo("Mephistorghast plugin 0.4.0 loaded.");
-	return context->RegisterConsoleCommand("mephisto", MephistoCommand, "Show that the Mephistorghast plugin is running.") &&
-		context->RegisterConsoleCommand("mephisto-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).");
+	context->LogInfo("Darkest Diablo plugin 0.4.1 loaded.");
+	return context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
+		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
+		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Start the Den arena waves from wave 1 (test).");
 }
 
 D2RL_PLUGIN_EXPORT void D2RLoaderUnloadPlugin() noexcept {}

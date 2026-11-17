@@ -1,4 +1,4 @@
-# Mephistorghast — rules for Claude sessions
+# Darkest Diablo — rules for Claude sessions
 
 A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/design.md` before design work.
 
@@ -20,13 +20,13 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
   (fork menu via waypoints, run and camp state, item rolls). Use SDK services; do not patch
   game memory by hand, and never try to get around Blizzard's protection (`D2R_loader.dll`).
 - `tools/build-plugin.cmd` — builds the plugin and places it in the mod (Windows, needs Visual Studio).
-- `tools/build.py` — builds `build/mephistorghast/mephistorghast.mpq/`.
+- `tools/build.py` — builds `build/darkestdiablo/darkestdiablo.mpq/`.
 - `tools/link.cmd` — run once on Windows: links the build into the frozen game's `Mods` folder.
 
 ## Workflow
 1. Change patches, data or the plugin. 2. `python tools/build.py` (data) or
    `tools\build-plugin.cmd` (plugin + data). 3. With the Battle.net app open, run `D2RLoader.exe`
-   in the frozen copy; its default mod is `mephistorghast`. Its log is `d2rloader/logs/d2rloader.log`.
+   in the frozen copy; its default mod is `darkestdiablo`. Its log is `d2rloader/logs/d2rloader.log`.
 4. One branch per feature, merged by pull request.
 
 ## Writing style

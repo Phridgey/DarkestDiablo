@@ -1,4 +1,4 @@
-"""Build the mod into build/mephistorghast/ (data in mephistorghast.mpq/, plugin in d2rloader/plugins/).
+"""Build the mod into build/darkestdiablo/ (data in darkestdiablo.mpq/, plugin in d2rloader/plugins/).
 
 Usage: python tools/build.py
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VANILLA = ROOT / "vanilla" / "data"
-OUT = ROOT / "build" / "mephistorghast" / "mephistorghast.mpq"
+OUT = ROOT / "build" / "darkestdiablo" / "darkestdiablo.mpq"
 EXCEL = Path("global") / "excel"
 
 
@@ -114,17 +114,17 @@ def main():
         print(f"wrote: data/global/excel/{name}.txt")
 
     # The D2RLoader plugin (built by tools/build-plugin.cmd) goes in the mod's own plugin folder.
-    plugin = ROOT / "build" / "plugin" / "mephistorghast.dll"
+    plugin = ROOT / "build" / "plugin" / "darkestdiablo.dll"
     plugin_dir = OUT.parent / "d2rloader" / "plugins"
     if plugin.exists():
         plugin_dir.mkdir(parents=True, exist_ok=True)
         target = plugin_dir / plugin.name
         if target.exists() and target.read_bytes() == plugin.read_bytes():
-            print("plugin unchanged: d2rloader/plugins/mephistorghast.dll")
+            print("plugin unchanged: d2rloader/plugins/darkestdiablo.dll")
         else:
             try:
                 shutil.copy(plugin, target)
-                print("placed: d2rloader/plugins/mephistorghast.dll")
+                print("placed: d2rloader/plugins/darkestdiablo.dll")
             except PermissionError:
                 print("WARNING: could not replace the plugin; close the game and build again.")
     else:

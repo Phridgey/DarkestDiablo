@@ -6,7 +6,7 @@ This patch turns the Den (levels.txt Id 8) into a preset level that loads that m
 """
 
 DEN_LEVEL_ID = "8"
-MAP_FILE = "Act1/Caves/mephisto_den.ds1"
+MAP_FILE = "Act1/Caves/darkest_den.ds1"
 SIZE_X, SIZE_Y = "24", "24"  # map width - 1, height - 1 (one 24-tile room)
 
 
@@ -43,7 +43,7 @@ def patch(t):
     prest = t.table("lvlprest")
     template = prest.first("Name", "Act 1 - Cave Den Of Evil N")
     row = dict(template)
-    row["Name"] = "Act 1 - Mephistorghast Den"
+    row["Name"] = "Act 1 - Darkest Diablo Den"
     row["Def"] = str(max(int(r["Def"]) for r in prest.rows if r["Def"].isdigit()) + 1)
     row["LevelId"] = DEN_LEVEL_ID
     row["SizeX"], row["SizeY"] = SIZE_X, SIZE_Y

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.29)
-project(mephistorghast_plugin LANGUAGES CXX RC)
+project(darkestdiablo_plugin LANGUAGES CXX RC)
 
 # D2RLoader Plugin SDK (MIT license). Pinned to 0.3.0, the release that matches D2RLoader 1.3.1.
 include(FetchContent)
@@ -13,9 +13,9 @@ FetchContent_MakeAvailable(D2RLPluginSDK)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")  # no extra runtime DLLs
 
-add_library(mephistorghast SHARED mephistorghast_plugin.cpp mephistorghast_plugin.rc)
-target_link_libraries(mephistorghast PRIVATE D2RLPlugin::D2RLPlugin)
-set_target_properties(mephistorghast PROPERTIES
+add_library(darkestdiablo SHARED darkestdiablo_plugin.cpp darkestdiablo_plugin.rc)
+target_link_libraries(darkestdiablo PRIVATE D2RLPlugin::D2RLPlugin)
+set_target_properties(darkestdiablo PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/../../build/plugin
   RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/../../build/plugin
   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../../build/plugin)

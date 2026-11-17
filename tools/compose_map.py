@@ -5,7 +5,7 @@ Usage: python tools/compose_map.py src/maps/<name>.json
 The layout file names the rooms to stitch on a grid, for example:
 
     {
-      "name": "mephisto_den",
+      "name": "darkest_den",
       "folder": "act1/caves",
       "room": 24,
       "keep_monsters": ["act1/caves/cavenspec"],

@@ -1,5 +1,5 @@
 @echo off
-rem Builds the Mephistorghast D2RLoader plugin, then rebuilds the mod so the plugin is placed inside it.
+rem Builds the Darkest Diablo D2RLoader plugin, then rebuilds the mod so the plugin is placed inside it.
 rem Usage (from the repo folder): tools\build-plugin.cmd
 setlocal
 set ROOT=%~dp0..
@@ -12,4 +12,4 @@ cmake -S "%ROOT%\src\plugin" -B "%ROOT%\build\plugin-obj" -A x64 || exit /b 1
 cmake --build "%ROOT%\build\plugin-obj" --config Release || exit /b 1
 python "%ROOT%\tools\build.py" || exit /b 1
 echo.
-echo Built the plugin and placed it in build\mephistorghast\d2rloader\plugins
+echo Built the plugin and placed it in build\darkestdiablo\d2rloader\plugins

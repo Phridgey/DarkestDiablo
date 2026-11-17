@@ -1,5 +1,5 @@
 {
-  "name": "mephisto_den",
+  "name": "darkest_den",
   "folder": "act1/caves",
   "room": 24,
   "comment": "Den of Evil arena: one room, Blizzard's round Den chamber (cavenspec). The player arrives by waypoint; the plugin spawns the waves and Corpsefire. Rooms are 24x24 tiles.",
