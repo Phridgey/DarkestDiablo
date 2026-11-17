@@ -136,7 +136,7 @@ static constexpr Wave DenWaves[] = {
 	{ { { "monster", "super:40", 6, { 12, 20 } } }, 1, ZombieClass },
 };
 
-// Burial Grounds (level 17): waypoint at tile 5,1 (north). Waves come from the open south strip.
+// Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py): waypoint at tile 5,1 (north). Waves come from the open south strip.
 static constexpr Wave BurialWaves[] = {
 	{ { { "mspawn", "zombie1", 6, { 12, 30 } } }, 1, AnyClass },
 	{ { { "mspawn", "zombie1", 4, { 4, 30 } }, { "mspawn", "skeleton1", 3, { 20, 30 } } }, 2, AnyClass },
@@ -147,7 +147,7 @@ static constexpr Wave BurialWaves[] = {
 
 static constexpr Arena Arenas[] = {
 	{ "Den of Evil",    DenOfEvilLevelId, 1500, 1000, DenWaves,    static_cast<int>(sizeof(DenWaves) / sizeof(DenWaves[0])) },
-	{ "Burial Grounds", 17,               1550, 1000, BurialWaves, static_cast<int>(sizeof(BurialWaves) / sizeof(BurialWaves[0])) },
+	{ "Burial Grounds", 9,                1500, 1300, BurialWaves, static_cast<int>(sizeof(BurialWaves) / sizeof(BurialWaves[0])) },
 };
 
 static std::atomic<int>  g_arena { -1 };      // index into Arenas, -1 = none running
