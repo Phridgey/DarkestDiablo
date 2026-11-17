@@ -43,6 +43,27 @@ def add_object_near(ds1, near_id, new_id, dx, dy):
     return ds1[:count_at] + struct.pack("<i", count + 1) + ds1[count_at + 4:end] + new + ds1[end:]
 
 
+def swap_fire_and_chest(ds1, fire_id, chest_id, dx, dy):
+    """A town map (.ds1) where a stash chest stands exactly where the bonfire was, and the
+    bonfire object stands (dx, dy) sub-tiles away. Only the object list changes."""
+    moved = add_object_near(ds1, fire_id, fire_id, dx, dy)   # the fire again, a few steps away
+    start = _objects_start(moved)
+    count = struct.unpack_from("<i", moved, start)[0]
+    at = next(start + 4 + n * 20 for n in range(count)
+              if struct.unpack_from("<2i", moved, start + 4 + n * 20) == (2, fire_id))
+    return moved[:at] + struct.pack("<2i", 2, chest_id) + moved[at + 8:]
+
+
+def _objects_start(ds1):
+    """Where the object list of a version 18 town map begins (its count)."""
+    i32 = lambda at: struct.unpack_from("<i", ds1, at)[0]
+    width, height, tag_type, at = i32(4) + 1, i32(8) + 1, i32(16), 24
+    for _ in range(i32(20)):
+        at = ds1.index(b"\0", at) + 1
+    layers = i32(at) * 2 + i32(at + 4) + 1 + (1 if tag_type in (1, 2) else 0)
+    return at + 8 + layers * width * height * 4
+
+
 def strip_physics(node):
     """Removes every collision shape from a scenery file (parsed JSON). Returns how many."""
     removed = 0
@@ -64,7 +85,9 @@ def patch(t):
     chest_row = objects.first("Class", "Bank")
     fire_row = objects.first("Class", "RogueBonfire")
     for column in objects.columns:
-        if column not in ("Class", "Name", "*Description", "*ID", "AutoMap"):  # no stash mark on the map
+        # TEST: AutoMap is copied too, so the fire shows the stash mark on the map. If the mark
+        # shows, the game is using this changed row.
+        if column not in ("Class", "Name", "*Description", "*ID"):
             fire_row[column] = chest_row.get(column, "")
     fire_row["__width__"] = max(fire_row["__width__"], chest_row["__width__"])
     # TEST LOOK: the fire's model file is replaced by the stash chest's model standing in the
@@ -84,11 +107,12 @@ def patch(t):
     t.add_data("hd/objects/env_wood/rogue_bonfire.json", look)
     del t.files["hd/objects/chests/bank.json"]  # read only, not shipped
 
-    # TEST: a second, ordinary stash chest a few steps from the fire, added to the four town
-    # maps. If this one can be clicked and the chest in the fire can't, the spot is the problem.
+    # TEST: in the four town maps a real stash chest stands exactly on the fire's spot, and the
+    # fire object (which looks like a chest for now) stands a few steps away. If the chest on the
+    # fire's spot can be clicked, the spot is fine and the fire object itself is the problem.
     for town in ("townn1", "towne1", "towns1", "townw1"):
         path = f"global/tiles/act1/town/{town}.ds1"
-        t.add_raw(path, add_object_near(t.raw(path), near_id=FIRE_PRESET, new_id=CHEST_PRESET, dx=9, dy=4))
+        t.add_raw(path, swap_fire_and_chest(t.raw(path), FIRE_PRESET, CHEST_PRESET, dx=9, dy=4))
     # TEST: the fire ring's scenery carries a collision shape. If that shape is what swallows the
     # mouse, the chest in the fire becomes clickable once the shape is gone.
     prefab_path = "hd/env/model/global/prop/act1/town/prefab/pf_town_campfire01.json"
