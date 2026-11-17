@@ -73,10 +73,11 @@ def menu_button(name, x, y, text, message, large=False):
 
 
 def save_slots():
-    """The first screen: the game's logo look. A dark screen, a gold title, and three of the main
+    """The first screen, and it fills the whole screen: nothing of the game's own menu may show
+    behind it. A black screen, a gold title, and three of the main
     menu's large buttons, each with a line saying who is by that save's fire."""
     kids = [{"type": "RectangleWidget", "name": "Backdrop",
-             "fields": {"anchor": {"x": -0.5}, "fitToScreen": True, "color": [0.0, 0.0, 0.0, 0.93]},
+             "fields": {"anchor": {"x": -0.5}, "fitToScreen": True, "color": [0.0, 0.0, 0.0, 1.0]},
              "children": [{"type": "ClickCatcherWidget", "name": "catcher", "fields": {"fitToParent": True}}]},
             {"type": "TextBoxWidget", "name": "Heading",
              "fields": {"rect": {"x": -900, "y": 430, "width": 1800, "height": 90}, "fontType": "30pt",

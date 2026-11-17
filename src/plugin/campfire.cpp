@@ -269,7 +269,7 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool;
 
 void __cdecl ShowSlots(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
-	if (g_inGame) {
+	if (g_inGame || g_slotsOpen) {
 		return;
 	}
 	RegisterSlotsLayout(context);
@@ -670,6 +670,12 @@ void __cdecl PressPlay(const D2RL::PluginContext* context, void*) noexcept {
 // What the hero screen's own Back button sends; "ToFrontEnd" does nothing from that screen.
 void __cdecl BackToMenu(const D2RL::PluginContext* context, void*) noexcept {
 	Dispatch(context, "FrontEndNavigation", "ToCharacterSelect");
+}
+
+// Exit was pressed at the Campfire and the main menu has loaded behind the curtain: only the
+// main menu can close the game, so press its Exit.
+void __cdecl PressExit(const D2RL::PluginContext* context, void*) noexcept {
+	Dispatch(context, "FrontEndNavigation", "ToExit");
 }
 
 // A hero at the fire was clicked: load it.
@@ -1113,17 +1119,22 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				}
 				return true;
 			}
+			if (std::strcmp(command, "ToExit") == 0 && g_atFire && g_threads != nullptr) {
+				// The hero screen can't close the game; the main menu can. Go there behind a black
+				// screen and press its Exit (see CharacterSelectPanel below).
+				g_exiting = true;
+				g_atFire = false;
+				g_slotsOpen = false;
+				Close(context, g_slotsPanel);
+				Close(context, g_firePanel);
+				g_threads->runOnUiThread(context, OpenCurtain, nullptr);
+				Later(context, 50, BackToMenu);
+				Later(context, 8000, ExitTimedOut);
+				return true;
+			}
 			if (std::strcmp(command, "ToCharacterCreate") != 0) {
 				g_atFire = false;
 				Close(context, g_firePanel);
-			}
-			if (std::strcmp(command, "ToExit") == 0 && g_atFire && g_threads != nullptr) {
-				g_exiting = true;  // cover the game's menu, which shows for a moment on the way out
-				g_atFire = false;
-				Close(context, g_firePanel);
-				g_threads->runOnUiThread(context, OpenCurtain, nullptr);
-				Later(context, 4000, ExitTimedOut);
-				return false;
 			}
 			if (std::strcmp(command, "ToGame") == 0) {
 				Close(context, g_curtainPanel);
@@ -1134,11 +1145,15 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			g_awaitingMenu = false;  // the menu is loading (again): it reads the live folder now
 			if (g_threads != nullptr && (g_wantFire || g_exiting || !g_pendingPlay.empty())) {
 				g_threads->runOnUiThread(context, OpenCurtain, nullptr);  // the menu is only passed through
+			} else if (!g_slotChosen && g_slotPicker && g_threads != nullptr) {
+				g_threads->runOnUiThread(context, ShowSlots, nullptr);  // before the menu can be seen
 			}
 			return false;
 		}
 		if (panelManager && std::strcmp(text, "CharacterSelectPanel") == 0 && std::strcmp(command, "OpenPanel") == 0) {
-			if (!g_pendingPlay.empty()) {  // a hero was clicked at the Campfire: the list holds it alone
+			if (g_exiting) {
+				Later(context, 300, PressExit);
+			} else if (!g_pendingPlay.empty()) {  // a hero was clicked at the Campfire: the list holds it alone
 				Later(context, 400, PressPlay);
 			} else if (!g_slotChosen && g_slotPicker && g_threads != nullptr) {
 				g_threads->runOnUiThread(context, ShowSlots, nullptr);

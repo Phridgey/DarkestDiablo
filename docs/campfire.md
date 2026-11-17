@@ -113,6 +113,11 @@ Did not work, and what was changed:
 - The game's character list showed for a moment on the way through; a black panel now covers it.
 - Asking the main menu to load again while it is already up does nothing. Slots are now
   switched from the Campfire, which reads the camp itself.
+- The save slot screen was see-through, so the game's character list showed behind it at
+  launch. It is now solid black, fills the screen, and opens as the menu starts loading.
+- Exit Game at the Campfire did nothing: the hero screen can't close the game. The plugin now
+  goes to the main menu behind a black screen and presses its Exit (not yet tried).
+
 ## Not yet tried in the game
 
 Each point fails soft and writes to `darkestdiablo.log`. "campfire_screen 0" in
