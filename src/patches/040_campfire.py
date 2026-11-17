@@ -1,11 +1,12 @@
 """The Campfire outside the plugin: the town bonfire, the camp screen, the stash button.
 
-- Bonfire: the Rogue Encampment's fire is swapped for a new object, CampBonfire. It is the
-  stash chest in every way the game cares about (a copy of the chest's row), so it can be
-  clicked and opens the stash. For now it also looks like the chest, with the bonfire's flames
-  (a test, see below). The plugin can't see a click
-  on a world object, only UI messages, so the bonfire borrows the one town object whose window
-  we can put a button on. Changing the old fire's own row never made it clickable.
+- Bonfire: the fire's own table row (RogueBonfire) becomes the stash chest in every way the
+  game cares about: every value is copied from the chest's row, only its name stays. So it
+  should be clickable and open the stash. The plugin can't see a click on a world object,
+  only UI messages, so the bonfire borrows the one town object whose window we can put a
+  button on. The fire of Harrogath is the same object and changes with it.
+  What did not work: setting only the "clickable" values on the fire's row, and a new object
+  added as a new last row (the game never showed it; see docs/campfire.md).
 - Stash window: a Campfire button that opens the plugin's roster panel.
 - Hero screen: new title. It is the Campfire: the game's own figures are moved out of sight and
   the plugin draws the camp's figures (src/plugin/campfire.cpp).
@@ -14,34 +15,29 @@ import copy
 
 
 def patch(t):
-    # The new object: the stash chest's row under a new name. No stash mark on the map.
-    t.table("objects").add_copy("Class", "Bank", **{
-        "Class": "CampBonfire", "Name": "fire", "*Description": "Camp bonfire (opens the stash)",
-        "*ID": str(len(t.table("objects").rows) - 1), "AutoMap": "0"})
-    # Its look in the game's new graphics: the list of looks follows the table's row order, so
-    # the new one goes last.
-    looks = t.data("hd/objects/objects.json")
-    looks["camp_bonfire"] = {"asset_path": "chests"}
-    # TEST LOOK: the stash chest's own model, standing in the bonfire's flames. The game seems to
-    # test the mouse against the model, and the bonfire's model can't be pointed at (the copy of
-    # the chest's row wearing it could not be clicked either). If the chest can be clicked here,
-    # the next step is a model that suits the fire.
+    objects = t.table("objects")
+    chest_row = objects.first("Class", "Bank")
+    fire_row = objects.first("Class", "RogueBonfire")
+    for column in objects.columns:
+        if column not in ("Class", "Name", "*Description", "*ID", "AutoMap"):  # no stash mark on the map
+            fire_row[column] = chest_row.get(column, "")
+    fire_row["__width__"] = max(fire_row["__width__"], chest_row["__width__"])
+    # TEST LOOK: the fire's model file is replaced by the stash chest's model standing in the
+    # bonfire's flames. The game seems to test the mouse against the model, and the bonfire's
+    # own model could not be pointed at. If the chest can be clicked here, the next step is a
+    # model that suits the fire. The file keeps its name and place, so the game finds it the
+    # way it always did.
     chest = t.data("hd/objects/chests/bank.json")
     fire = t.data("hd/objects/env_wood/rogue_bonfire.json")
     look = copy.deepcopy(chest)
-    look["name"] = "camp_bonfire"
+    look["name"] = fire["name"]
     look["entities"] += [copy.deepcopy(e) for e in fire["entities"] if e["name"] == "entity_vfx"]
     for kind, paths in fire["dependencies"].items():
         if kind not in ("skeletons", "json"):
             have = look["dependencies"].setdefault(kind, [])
             have += [p for p in paths if p not in have]
-    t.add_data("hd/objects/chests/camp_bonfire.json", look)
-    for unchanged in ("hd/objects/chests/bank.json", "hd/objects/env_wood/rogue_bonfire.json"):
-        del t.files[unchanged]  # read only, not shipped
-    # The town's maps place "object 2 of Act 1" at the fire. That is now the new object.
-    for row in t.table("objpreset").rows:
-        if row.get("Act") == "1" and row.get("ObjectClass") == "RogueBonfire":
-            row["ObjectClass"] = "CampBonfire"
+    t.add_data("hd/objects/env_wood/rogue_bonfire.json", look)
+    del t.files["hd/objects/chests/bank.json"]  # read only, not shipped
 
     bank = t.layout("bankexpansionlayouthd")
     bank["children"].append({
