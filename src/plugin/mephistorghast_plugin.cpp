@@ -3,7 +3,8 @@
 // Current features:
 // - Den of Evil: when the Den quest completes (the last monster dies) while the player is in
 //   the Den, a Town Portal scroll drops at the player's feet so they can go back to town.
-// - Den of Evil arena: entering the Den starts 5 waves of 10 zombies, then Corpsefire and his
+// - Den of Evil arena: entering the Den starts 5 waves of 10 (fallen, zombies,
+//   fallen shamans), then Corpsefire and his
 //   pack. Each wave starts when the last one is dead. When Corpsefire's wave is dead, a Town
 //   Portal scroll drops. Spawning uses the "cheat mspawn" / "cheat monster" console commands.
 // - Console commands (Ctrl + ` with enable_console on in d2rloader/config/d2rloader.toml):
@@ -98,7 +99,15 @@ static bool RunConsole(const D2RL::PluginContext* context, const char* command) 
 
 // ---- Den of Evil arena -------------------------------------------------------------------
 static constexpr int      ZombieWaves      = 5;
-static constexpr int      ZombiesPerWave   = 10;
+// Each wave's mix: fallen, zombies, fallen shamans (10 per wave). Corpsefire's wave is all zombies.
+struct WaveMix { int fallen, zombies, shamans; };
+static constexpr WaveMix Waves[ZombieWaves] = {
+	{ 7, 3, 0 },
+	{ 5, 4, 1 },
+	{ 4, 4, 2 },
+	{ 4, 3, 3 },
+	{ 3, 4, 3 },
+};
 static constexpr int      CorpsefireWave   = ZombieWaves + 1;
 static constexpr int      CorpsefireCount  = 6;   // Corpsefire + 5 minions (superuniques.txt)
 
@@ -110,10 +119,18 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void*) noe
 	const int wave = g_wave.load() + 1;
 	char message[96] {};
 	if (wave <= ZombieWaves) {
-		g_remaining = ZombiesPerWave;
+		const WaveMix& mix = Waves[wave - 1];
+		g_remaining = mix.fallen + mix.zombies + mix.shamans;
 		g_wave = wave;
-		std::snprintf(message, sizeof(message), "cheat mspawn zombie1,%d", ZombiesPerWave);
-		RunConsole(context, message);
+		const struct { const char* id; int count; } groups[] = {
+			{ "fallen1", mix.fallen }, { "zombie1", mix.zombies }, { "fallenshaman1", mix.shamans },
+		};
+		for (const auto& group : groups) {
+			if (group.count > 0) {
+				std::snprintf(message, sizeof(message), "cheat mspawn %s,%d", group.id, group.count);
+				RunConsole(context, message);
+			}
+		}
 	} else if (wave == CorpsefireWave) {
 		g_remaining = CorpsefireCount;
 		g_wave = wave;
