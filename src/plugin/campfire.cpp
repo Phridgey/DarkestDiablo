@@ -89,6 +89,7 @@ bool g_inGame        = false;
 int  g_levelId       = -1;
 int  g_selectedClass = -1;      // on the hero screen
 int  g_pendingClass  = -1;      // Create was pressed for this class; its save has not been seen yet
+int  g_pickedClass   = -1;      // the class last clicked on the hero screen: pressing Enter in the name box makes a hero without a Create message
 bool g_died          = false;   // the hero in the current game died
 int  g_reachedLevel  = 0;       // character level reported during the current game
 fs::file_time_type g_joinTime {};
@@ -163,7 +164,7 @@ auto PlayedHero() -> std::string {
 // levels reported during it are applied to the hero that was played.
 void Reconcile(const D2RL::PluginContext* context, bool afterGame) {
 	Camp::Hints hints;
-	hints.newClass = g_pendingClass;
+	hints.newClass = g_pendingClass >= 0 ? g_pendingClass : g_pickedClass;
 	if (afterGame) {
 		const std::string played = PlayedHero();
 		if (g_died) {
@@ -184,6 +185,7 @@ void Reconcile(const D2RL::PluginContext* context, bool afterGame) {
 	}
 	if (g_camp.heroes.size() > heroesBefore || !g_inGame) {
 		g_pendingClass = -1;
+		g_pickedClass = -1;
 	}
 	if (afterGame) {
 		g_died = false;
@@ -445,6 +447,7 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 		g_slot = slot;
 		g_camp = Camp::LoadState(g_live, g_slot);
 		g_pendingClass = -1;
+		g_pickedClass = -1;
 		Reconcile(context, false);
 		Log(context, "Camp: switched to save %d. %s", slot, Describe().c_str());
 		said = "Switched to save " + std::to_string(slot) + ".";
@@ -1059,6 +1062,7 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 	if (slot == g_slot) {
 		g_camp = Camp::LoadState(g_live, g_slot);
 		g_pendingClass = -1;
+		g_pickedClass = -1;
 		g_chosenHero = -1;
 		g_slotChosen = false;
 	}
@@ -1347,6 +1351,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				}
 				if (std::strcmp(command, "Select") == 0) {
 					g_selectedClass = cls;
+					g_pickedClass = cls;
 					g_chosenHero = -1;
 					ShowDeleteMode(context);
 					Later(context, 100, ShowFireState);

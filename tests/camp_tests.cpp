@@ -259,7 +259,22 @@ static void ReconcileFollowsTheSaveFiles() {
 	CHECK(Parse(Serialize(two)).HeroNamed("Kara")->gear == "4:ktr 3:lea");
 }
 
+// The start of a real save of this game build (version 105): an Assassin of level 4.
+static void ReadsThisGameBuildsSaves() {
+	const fs::path dir = fs::temp_directory_path() / "camp_tests_v105";
+	fs::remove_all(dir);
+	fs::create_directories(dir);
+	unsigned char head[48] = { 0x55, 0xAA, 0x55, 0xAA, 0x69, 0, 0, 0, 0x5D, 0x05, 0, 0, 0xB6, 0x82, 0x63, 0x94,
+		0, 0, 0, 0, 0, 0, 0, 0, 0x06, 0x10, 0x1E, 0x04, 0, 0, 0, 0,
+		0xD5, 0xD3, 0xFC, 0x6A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0xFF, 0xFF, 0, 0 };
+	std::ofstream(dir / "Stabbu.d2s", std::ios::binary).write(reinterpret_cast<const char*>(head), sizeof(head));
+	const SaveInfo info = ReadSave(dir / "Stabbu.d2s");
+	CHECK(info.ok && info.cls == 6 && info.level == 4 && !info.hardcore && !info.dead);
+	fs::remove_all(dir);
+}
+
 int main() {
+	ReadsThisGameBuildsSaves();
 	NewCampOffersEveryClassThenLocksTheRest();
 	TravelerOffersThreeLockedClasses();
 	OfferShrinksWhenFewClassesAreLocked();
