@@ -21,7 +21,9 @@ import ddcore  # noqa: E402
 BUILD = ROOT / "build" / ddcore.MOD_NAME
 OUT = ROOT / "build" / "release"
 # Only these parts of the build are shipped. Logs and settings the game writes there stay local.
-SHIP = ["modinfo.json", f"{ddcore.MOD_NAME}.mpq", "d2rloader/plugins"]
+SHIP = ["modinfo.json", f"{ddcore.MOD_NAME}.mpq", "d2rloader/plugins",
+        # The Campfire: the mod's loader settings (more stash pages) and what the plugin reads.
+        "d2rloader/metadata.json", "d2rloader/config", "d2rloader/camp_data.txt", "d2rloader/SaveSlots.layout.json"]
 DELTAS_FOR = 5  # make deltas from this many earlier releases; older installs get the full package
 
 
