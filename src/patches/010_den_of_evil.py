@@ -7,7 +7,7 @@ This patch turns the Den (levels.txt Id 8) into a preset level that loads that m
 
 DEN_LEVEL_ID = "8"
 MAP_FILE = "Act1/Caves/mephisto_den.ds1"
-SIZE_X, SIZE_Y = "24", "96"  # map width - 1, height - 1 (1 x 4 rooms of 24 tiles)
+SIZE_X, SIZE_Y = "24", "24"  # map width - 1, height - 1 (one 24-tile room)
 
 
 def patch(t):
@@ -21,6 +21,9 @@ def patch(t):
 
     # Players reach every location by waypoint. The Den's waypoint (in the map, by the entrance)
     # takes Act 1 waypoint slot 1, which vanilla gives to the Cold Plains.
+    # Arena: no random monsters. The plugin spawns the waves and Corpsefire.
+    for col in ("MonDen", "MonDen(N)", "MonDen(H)", "MonUMin", "MonUMax", "MonUMin(N)", "MonUMax(N)", "MonUMin(H)", "MonUMax(H)"):
+        den[col] = "0"
     den["Waypoint"] = "1"
     levels.first("Id", "3")["Waypoint"] = "255"  # Cold Plains: no waypoint
 

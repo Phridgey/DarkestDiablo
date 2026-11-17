@@ -3,6 +3,9 @@
 // Current features:
 // - Den of Evil: when the Den quest completes (the last monster dies) while the player is in
 //   the Den, a Town Portal scroll drops at the player's feet so they can go back to town.
+// - Den of Evil arena: entering the Den starts 5 waves of 10 zombies, then Corpsefire and his
+//   pack. Each wave starts when the last one is dead. When Corpsefire's wave is dead, a Town
+//   Portal scroll drops. Spawning uses the "cheat mspawn" / "cheat monster" console commands.
 // - Console commands (Ctrl + ` with enable_console on in d2rloader/config/d2rloader.toml):
 //     mephisto     show that the plugin is running
 //     mephisto-tp  drop a Town Portal scroll now (for testing)
@@ -15,6 +18,7 @@
 #include <D2RLPlugin/core_exports.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <atomic>
 #include <cstdio>
 
 static constexpr D2RL::PluginInfo MephistorghastInfo {
@@ -22,7 +26,7 @@ static constexpr D2RL::PluginInfo MephistorghastInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "mephistorghast",
 	.name        = "Mephistorghast",
-	.version     = "0.3.1",
+	.version     = "0.4.0",
 	.author      = "Mephistorghast team",
 	.description = "Roguelite rules for the Mephistorghast mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -72,19 +76,74 @@ static void __cdecl DropTownPortal(const D2RL::PluginContext* context, void*) no
 	context->LogWarn(message);
 }
 
-// Runs the "cheat waypoints" console command through D2RCore's ExecuteConsoleCommand export.
-// Gameplay listeners already run on the UI thread, which is where this call must happen.
-static void UnlockWaypoints(const D2RL::PluginContext* context) noexcept {
+// Runs a console command through D2RCore's ExecuteConsoleCommand export (UI thread only).
+static bool RunConsole(const D2RL::PluginContext* context, const char* command) noexcept {
 	namespace CE = D2RL::CoreExports;
-	const HMODULE core = GetModuleHandleA(CE::CoreDllName);
-	const auto execute = core == nullptr ? nullptr :
-		reinterpret_cast<CE::ExecuteConsoleCommandFn>(GetProcAddress(core, CE::ExecuteConsoleCommandInfo.name));
+	static CE::ExecuteConsoleCommandFn execute = nullptr;
 	if (execute == nullptr) {
-		context->LogWarn("Waypoints: ExecuteConsoleCommand not found in D2RCore.");
+		const HMODULE core = GetModuleHandleA(CE::CoreDllName);
+		execute = core == nullptr ? nullptr :
+			reinterpret_cast<CE::ExecuteConsoleCommandFn>(GetProcAddress(core, CE::ExecuteConsoleCommandInfo.name));
+	}
+	if (execute == nullptr) {
+		context->LogWarn("ExecuteConsoleCommand not found in D2RCore.");
+		return false;
+	}
+	const bool ok = execute(command);
+	char message[160] {};
+	std::snprintf(message, sizeof(message), "Console: %s -> %s", command, ok ? "sent" : "refused");
+	context->LogInfo(message);
+	return ok;
+}
+
+// ---- Den of Evil arena -------------------------------------------------------------------
+static constexpr int      ZombieWaves      = 5;
+static constexpr int      ZombiesPerWave   = 10;
+static constexpr int      CorpsefireWave   = ZombieWaves + 1;
+static constexpr int      CorpsefireCount  = 6;   // Corpsefire + 5 minions (superuniques.txt)
+
+static std::atomic<int>  g_wave { 0 };        // 0 = not started, 1..5 zombies, 6 = Corpsefire, 7 = done
+static std::atomic<int>  g_remaining { 0 };   // monsters left in the current wave
+static std::atomic<bool> g_portalDropped { false };
+
+static void __cdecl StartNextWave(const D2RL::PluginContext* context, void*) noexcept {
+	const int wave = g_wave.load() + 1;
+	char message[96] {};
+	if (wave <= ZombieWaves) {
+		g_remaining = ZombiesPerWave;
+		g_wave = wave;
+		std::snprintf(message, sizeof(message), "cheat mspawn zombie1,%d", ZombiesPerWave);
+		RunConsole(context, message);
+	} else if (wave == CorpsefireWave) {
+		g_remaining = CorpsefireCount;
+		g_wave = wave;
+		RunConsole(context, "cheat monster super:40");
+	} else {
+		g_wave = CorpsefireWave + 1;
+		if (!g_portalDropped.exchange(true) && g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
+			context->LogWarn("Town Portal: could not queue the drop.");
+		}
 		return;
 	}
-	const bool ok = execute("cheat waypoints");
-	context->LogInfo(ok ? "Waypoints: unlocked." : "Waypoints: the command did not run.");
+	std::snprintf(message, sizeof(message), "Den arena: wave %d of %d.", wave, CorpsefireWave);
+	context->LogInfo(message);
+}
+
+// Server thread. Count deaths of wave monsters in the Den; start the next wave on the UI thread.
+static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2RL::Lifecycle::MonsterDeathEvent* event, void*) noexcept {
+	if (context == nullptr || event == nullptr || event->levelId != DenOfEvilLevelId) {
+		return;
+	}
+	const int wave = g_wave.load();
+	if (wave < 1 || wave > CorpsefireWave) {
+		return;
+	}
+	char message[96] {};
+	std::snprintf(message, sizeof(message), "Den arena: kill (class %u), %d left in wave %d.", event->monster.classId, g_remaining.load() - 1, wave);
+	context->LogInfo(message);
+	if (g_remaining.fetch_sub(1) == 1) {
+		g_threads->runOnUiThread(context, StartNextWave, nullptr);
+	}
 }
 
 static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::GameplayEvent* event, void*) noexcept {
@@ -97,7 +156,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		return;
 	}
 	if (event->kind == Kind::LocalPlayerReady) {
-		UnlockWaypoints(context);
+		RunConsole(context, "cheat waypoints");
 		return;
 	}
 	if (event->kind == Kind::GameLeft) {
@@ -108,7 +167,8 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		char message[128] {};
 		std::snprintf(message, sizeof(message), "Quest completed: quest row %u, level %d.", event->questRecordId, g_levelId);
 		context->LogInfo(message);
-		if (g_levelId == DenOfEvilLevelId && g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
+		// Backup: the native Den quest finishing also drops the scroll, once.
+		if (g_levelId == DenOfEvilLevelId && !g_portalDropped.exchange(true) && g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
 			context->LogWarn("Town Portal: could not queue the drop.");
 		}
 	}
@@ -118,7 +178,7 @@ static auto MephistoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContex
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Mephistorghast plugin 0.3.1 is running.");
+	command->plugin->WriteConsoleMessage("Mephistorghast plugin 0.4.0 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -164,7 +224,17 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		}
 	}
 
-	context->LogInfo("Mephistorghast plugin 0.3.1 loaded.");
+	const D2RL::Lifecycle::MonsterDeathListener deathListener {
+		.structSize = D2RL::Lifecycle::MonsterDeathListenerSize,
+		.callback   = OnMonsterDeath,
+	};
+	D2RL::Lifecycle::ListenerHandle deathHandle = D2RL::Lifecycle::InvalidHandle;
+	if (lifecycle->registerMonsterDeathListener(context, &deathListener, &deathHandle) != D2RL::Lifecycle::Result::Success) {
+		context->LogError("Mephistorghast: could not listen for monster deaths.");
+		return false;
+	}
+
+	context->LogInfo("Mephistorghast plugin 0.4.0 loaded.");
 	return context->RegisterConsoleCommand("mephisto", MephistoCommand, "Show that the Mephistorghast plugin is running.") &&
 		context->RegisterConsoleCommand("mephisto-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).");
 }
