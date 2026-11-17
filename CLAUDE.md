@@ -52,7 +52,11 @@ Plain, jargon-free language in docs and commit messages.
   `cheat mspawn <id>,<n> @ x,y` before putting it in the plugin.
 - Spawning right on arrival fails while the map loads; wait about 1 s.
 - Stairs must use Blizzard's pairing: the graveyard's crypt door pairs with crypt stairs
-  (lvlwarp 6 and 8). Cave stairs there crashed the game.
+  (lvlwarp 6 and 8). Cave stairs there crashed the game. A cave mouth (lvlwarp 2) on the arena
+  side with crypt stairs (8) on the entry side works too.
+- A hand-made map with exits needs `Scan = 1` in its lvlprest row, or the game never registers
+  its warp tiles (BC_VERIFY ptWarp in the console, and the stairs do nothing). Templates copied
+  from maps without exits (the Tree of Inifuss) have 0.
 - Plugin panel buttons: use the ModalButton style (pressed/hovered/disabled frames, `textString`).
   The game drops button messages with targets it doesn't know, so send a real command
   (`PanelManager:OpenPanel:darkestdiablo/travel-<level>`) and catch it in the UI-message listener.

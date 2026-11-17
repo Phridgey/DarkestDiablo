@@ -114,7 +114,7 @@
   },
   {
    "type": "ButtonWidget",
-   "name": "Fork2",
+   "name": "NodeInifuss",
    "fields": {
     "rect": {
      "x": 290,
@@ -125,10 +125,10 @@
     "pressedFrame": 1,
     "disabledFrame": 2,
     "hoveredFrame": 3,
-    "textString": "Pit / Countess / Malus",
+    "textString": "Rakanishu & Treehead",
     "pointSize": "$MediumFontSize",
-    "textColor": "$FontColorLightGray",
-    "disabled": true
+    "textColor": "$FontColorWhite",
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-12"
    }
   },
   {

@@ -1,7 +1,7 @@
 // Darkest Diablo — the D2RLoader plugin (the mod's code layer).
 //
 // Current features:
-// - Arenas (Den of Evil, Burial Grounds): entering one starts its waves, one every 10 s; the
+// - Arenas (Den of Evil, Burial Grounds, Tree of Inifuss): entering one starts its waves, one every 10 s; the
 //   last wave has the boss (Corpsefire, Blood Raven). When everything is dead, a Town Portal
 //   scroll goes into the inventory. Spawning uses the "cheat mspawn" / "cheat monster" commands.
 // - Console commands (Ctrl + ` with enable_console on in d2rloader/config/d2rloader.toml):
@@ -30,7 +30,7 @@ static constexpr D2RL::PluginInfo DarkestDiabloInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "darkestdiablo",
 	.name        = "Darkest Diablo",
-	.version     = "0.7.1",
+	.version     = "0.8.0",
 	.author      = "Darkest Diablo team",
 	.description = "Roguelite rules for the Darkest Diablo mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -155,9 +155,25 @@ static constexpr Wave BurialWaves[] = {
 	{ { { "mspawn", "bloodraven", 1, { 15, 14 } }, { "mspawn", "zombie1", 6, { 11, 21 } } }, 2, AnyClass, BloodRavenClass },
 };
 
+// Tree of Inifuss (level 11, a reused cave level; see src/patches/030_inifuss.py). The waypoint
+// is in the entry room (level 12); its stairs come out at the cave mouth west of the tree (about
+// tile 3,12). First-guess spots around the tree, to be tested in game: east (20,12), north
+// (12,4), south (12,20), south-east (18,18).
+static constexpr Wave InifussWaves[] = {
+	{ { { "mspawn", "fallen1", 5, { 20, 12 } }, { "mspawn", "fallenshaman1", 2, { 12, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "fallen1", 5, { 12, 4 } }, { "mspawn", "fallenshaman1", 2, { 18, 18 } } }, 2, AnyClass },
+	{ { { "monster", "super:3", 9, { 20, 12 } } }, 1, AnyClass },   // Rakanishu + 8 Carvers
+	{ { { "mspawn", "cr_lancer1", 4, { 12, 4 } }, { "mspawn", "cr_lancer1", 4, { 12, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "cr_lancer1", 5, { 20, 12 } }, { "mspawn", "cr_lancer1", 3, { 18, 18 } } }, 2, AnyClass },
+	{ { { "mspawn", "brute2", 2, { 12, 4 } }, { "mspawn", "quillrat1", 6, { 12, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "brute2", 2, { 20, 12 } }, { "mspawn", "quillrat1", 6, { 18, 18 } } }, 2, AnyClass },
+	{ { { "monster", "super:4", 3, { 12, 4 } } }, 1, AnyClass },    // Treehead Woodfist + 2 Brutes
+};
+
 static constexpr Arena Arenas[] = {
 	{ "Den of Evil",    DenOfEvilLevelId, 1500, 1000, DenWaves,    static_cast<int>(sizeof(DenWaves) / sizeof(DenWaves[0])) },
 	{ "Burial Grounds", 9,                1500, 1300, BurialWaves, static_cast<int>(sizeof(BurialWaves) / sizeof(BurialWaves[0])) },
+	{ "Tree of Inifuss", 11,              1500, 1900, InifussWaves, static_cast<int>(sizeof(InifussWaves) / sizeof(InifussWaves[0])) },
 };
 
 static constexpr int     ArrivalDelayMs = 1000;   // wave 1: right on arrival the map isn't loaded yet
@@ -168,6 +184,8 @@ static std::atomic<int>      g_remaining { 0 };   // spawned monsters not yet de
 static std::atomic<uint32_t> g_boss { AnyClass }; // the boss to wait for, if a spawned wave had one
 static std::atomic<bool>     g_bossDead { true };
 static std::atomic<bool>     g_portalDropped { false };
+static std::atomic<int>      g_finalKills { 0 };  // deaths since the last wave spawned
+static std::atomic<int>      g_finalSize { 0 };   // monsters in the last wave
 static std::atomic<uintptr_t> g_run { 1 };        // changes on every reset, so old timers do nothing
 
 static auto FindArena(int32_t levelId) noexcept -> int {
@@ -187,6 +205,8 @@ static void ResetArena() noexcept {
 	g_boss = AnyClass;
 	g_bossDead = true;
 	g_portalDropped = false;
+	g_finalKills = 0;
+	g_finalSize = 0;
 }
 
 static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run) noexcept;
@@ -237,6 +257,10 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run)
 		g_bossDead = false;
 	}
 	g_remaining += total;
+	if (wave == arena.waveCount) {
+		g_finalKills = 0;
+		g_finalSize = total;
+	}
 	g_wave = wave;
 	char message[128] {};
 	for (int g = 0; g < w.groupCount; ++g) {
@@ -273,10 +297,13 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 		g_bossDead = true;
 	}
 	const int left = g_remaining.fetch_sub(1) - 1;
+	// Revived or raised monsters add extra kills, which could run the count down early. So the
+	// last wave must also have lost as many as it spawned since it appeared.
+	const int finalKills = g_wave.load() >= arena.waveCount ? g_finalKills.fetch_add(1) + 1 : 0;
 	char message[96] {};
 	std::snprintf(message, sizeof(message), "%s: kill (class %u), %d alive.", arena.name, event->monster.classId, left);
 	context->LogInfo(message);
-	if (g_wave.load() >= arena.waveCount && left <= 0 && g_bossDead.load()) {
+	if (g_wave.load() >= arena.waveCount && left <= 0 && finalKills >= g_finalSize.load() && g_bossDead.load()) {
 		g_threads->runOnUiThread(context, ClearArena, reinterpret_cast<void*>(g_run.load()));
 	}
 }
@@ -406,7 +433,7 @@ static constexpr char RouteMapLayout[] = R"json({
   },
   {
    "type": "ButtonWidget",
-   "name": "Fork2",
+   "name": "NodeInifuss",
    "fields": {
     "rect": {
      "x": 290,
@@ -417,10 +444,10 @@ static constexpr char RouteMapLayout[] = R"json({
     "pressedFrame": 1,
     "disabledFrame": 2,
     "hoveredFrame": 3,
-    "textString": "Pit / Countess / Malus",
+    "textString": "Rakanishu & Treehead",
     "pointSize": "$MediumFontSize",
-    "textColor": "$FontColorLightGray",
-    "disabled": true
+    "textColor": "$FontColorWhite",
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-12"
    }
   },
   {
@@ -535,7 +562,7 @@ static auto InfoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* c
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.7.1 is running.");
+	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.8.0 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -659,7 +686,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		context->LogWarn("Route map: UI-message service missing.");
 	}
 
-	context->LogInfo("Darkest Diablo plugin 0.7.1 loaded.");
+	context->LogInfo("Darkest Diablo plugin 0.8.0 loaded.");
 	return context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&

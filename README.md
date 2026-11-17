@@ -53,7 +53,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 - **Waypoints:** the plugin unlocks every waypoint when a character enters a game, so the next
   stop is always reachable ("scouted ahead"). Per-stop unlocks wait for a waypoint service in the
   SDK (D2RLoader/PluginSDK issue #9). Act I slots: 1 = Den of Evil (was Cold Plains),
-  2 = Burial Grounds entry (was Stony Field). The waypoint menu comes from `actinfo.txt` in 3.x.
+  2 = Burial Grounds entry (was Stony Field), 3 = Tree of Inifuss entry (was Dark Wood). The waypoint menu comes from `actinfo.txt` in 3.x.
 - **Arenas** (plugin, `Arenas` table): arriving starts the waves, wave 1 after 1 s, then one every
   10 s whatever is still alive. When the last wave has spawned and everything is dead (the boss
   included, any kill order), a Town Portal scroll goes into the inventory.
@@ -64,7 +64,11 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
     tree: zombies and skeletons, then Blood Raven with zombies. Built on two unused cave levels
     (9 = arena, 10 = entry room), because outdoor levels are placed somewhere new every game.
     See `src/patches/020_burial_grounds.py`.
-- **Route map** (`dd-map`): a panel listing the Act I stops. Den and Burial Grounds are
+  - **Tree of Inifuss** (fork 2 MF run): same setup (11 = arena, 12 = entry room). The stairs
+    come out of a cave mouth beside the tree. Eight waves: Fallen and shamans, then Rakanishu,
+    then lancers, then brutes and quill rats, then Treehead Woodfist.
+    See `src/patches/030_inifuss.py`.
+- **Route map** (`dd-map`): a panel listing the Act I stops. Den, Burial Grounds and Inifuss are
   clickable and send you there; the rest are greyed out. The layout is a mod file
   (`src/data/data/global/ui/layouts/darkestdiablo/RouteMaphd.json`), so changing it needs only a
   game restart, not a plugin rebuild.
@@ -82,8 +86,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 - Draw the map as the tree from the design sketch (forks side by side, lines between nodes).
 - Blood Raven's fork (Blood Raven MF / Mausoleum / Crypt), then Tristram.
 - Tuning: lighter Den waves; black edges around single-room arenas (see `docs/design.md`).
-- Rename the repo folder on Fabrizio's PC from `E:\Dev\mephistorghast` to `darkestdiablo`
-  (blocked while a Claude session has it open), then rerun `tools\link.cmd`.
+- Tree of Inifuss: play a full run to the TP scroll (waves and stairs tested; clearing not yet).
 
 ## Every change
 - Data or patches changed: `python tools\build.py`
