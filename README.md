@@ -70,7 +70,9 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
     come out of a cave mouth beside the tree. Eight waves: Fallen and shamans, then Rakanishu,
     then lancers, then brutes and quill rats, then Treehead Woodfist.
     See `src/patches/030_inifuss.py`.
-- **Route map** (`dd-map`): a panel listing the Act I stops. Den, Burial Grounds and Inifuss are
+- **Route map**: clicking a waypoint in town opens it instead of Blizzard's list (waypoints
+  outside town still show Blizzard's list, so you can always get home); `dd-map` opens it
+  anywhere. It lists the Act I stops. Den, Burial Grounds and Inifuss are
   clickable and send you there; the rest are greyed out. The layout is a mod file
   (`src/data/data/global/ui/layouts/darkestdiablo/RouteMaphd.json`), so changing it needs only a
   game restart, not a plugin rebuild.
@@ -89,9 +91,6 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 `tools\set_waypoints.py` still exists for editing a closed save's waypoints by hand.
 
 ## Next up
-- Town waypoint opens the route map instead of Blizzard's list: the click sends
-  `PanelManager:OpenPanel:WaypointsPanelExpansion`; the plugin's UI-message listener can
-  consume it and open the map.
 - Draw the map as the tree from the design sketch (forks side by side, lines between nodes).
 - Blood Raven's fork (Blood Raven MF / Mausoleum / Crypt), then Tristram.
 - Tuning: lighter Den waves; black edges around single-room arenas (see `docs/design.md`).

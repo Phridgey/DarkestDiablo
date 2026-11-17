@@ -35,6 +35,18 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
 5. To ship to players: `python tools/release.py <version> --publish` from an up-to-date `main`
    build. Updates are deltas of whole changed files; never edit or delete a published release.
 
+## Working together (both people's Claude sessions)
+Players and both of us get the mod built from `main`, so content only counts once it is there.
+- Start every branch from the newest `main`, and merge `main` into it again before the pull request.
+- Open the pull request as soon as the branch works in your game. A branch that is only pushed
+  is in nobody else's game and drifts from `main` (the town waypoint route map sat on its own
+  branch while `main` got the Campfire, so our two games differed under the same version).
+- The mod version is `Version` in `src/plugin/campfire.h`, the only place it lives. Raise it in
+  every pull request that changes the game, so one version number always means one game. Never
+  set it lower than what is on `main`.
+- To check two games match, compare the plugin log line "Darkest Diablo plugin <version> loaded"
+  and, for releases, the `build` section of `manifest.json` (commit, tools, checksums).
+
 ## Paths
 - Never hardcode drive letters or game folders. Everyone's game folder is wherever they chose
   in the launcher; tools take it as an argument.
