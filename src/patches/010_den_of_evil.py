@@ -32,6 +32,11 @@ def patch(t):
         if blood_moor[f"Vis{k}"] == DEN_LEVEL_ID:
             blood_moor[f"Vis{k}"], blood_moor[f"Warp{k}"] = "0", "-1"
 
+    # D2R 3.x builds each act's waypoint menu from actinfo.txt (waypoint1-9, by level name).
+    # Slot 2 was Cold Plains; point it at the Den so the Den shows in the menu.
+    act1 = t.table("actinfo").first("act", "1")
+    act1["waypoint2"] = den["Name"]
+
     prest = t.table("lvlprest")
     template = prest.first("Name", "Act 1 - Cave Den Of Evil N")
     row = dict(template)

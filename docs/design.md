@@ -66,3 +66,9 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - Examples of kiss and curse bonuses.
 - When can a character attempt a blaze of glory?
 - Does a recruit start at level 1? Do the 3 offers leave out classes already in the circle?
+
+## Arena stops (decided 2026-11-17)
+- The player arrives by waypoint into one room, and the fight stays in that room.
+- Example, Den of Evil: 5 waves of about 10 monsters, then a final wave with Corpsefire.
+- The last kill drops a Town Portal scroll. That is the way home.
+- The player can bail out of a stop early (too spooky); the goal is never being stranded.
