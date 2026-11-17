@@ -8,18 +8,32 @@ The mod has two parts:
 - **Code** (run rules, camp, forks): a [D2RLoader](https://d2rloader.net) plugin in `src/plugin`,
   built with the official [D2RLoader Plugin SDK](https://github.com/D2RLoader/PluginSDK) (MIT).
 
-## One-time setup (each of us)
+## Playing (no repo needed)
+Download **DarkestDiabloLauncher.exe** from the newest release and run it. It finds your D2R,
+asks where to put the Darkest Diablo game folder (any folder, any drive), copies the game there
+(your normal install is never changed), helps you add D2RLoader, and downloads the mod. After
+that it shows **Update** when there is one, otherwise **Play**. You still need the Battle.net app
+open to play.
+
+**Contributors:** players get our work through GitHub releases, as small updates that hold only
+the files that changed. How releases work and how to publish one: `docs/updates.md`.
+
+## One-time setup (each of us, to develop)
 You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop development with C++".
 
-1. **Frozen game copy.** Check your D2R build: the last field on line 2 of `.build.info` in
-   your D2R folder must match `D2R_VERSION`. Then copy the game, leaving out mod leftovers:
+1. **Frozen game copy and D2RLoader.** Easiest: run the launcher (`python launcher\darkestdiablo_launcher.py`
+   or the .exe) and let it make the game folder wherever you like and add D2RLoader. By hand
+   instead: check that the last field on line 2 of `.build.info` in your D2R folder matches
+   `D2R_VERSION`, then copy the game, leaving out mod leftovers:
 
-       robocopy "<your D2R folder>" "D:\Games\D2R-darkestdiablo" /E /XD Mods /XF D2RHUD.dll D2RHUD_Config.txt
+       robocopy "<your D2R folder>" "<your game folder>" /E /XD Mods /XF D2RHUD.dll D2RHUD_Config.txt
 
+   and extract D2RLoader 1.3.1 or later (https://www.nexusmods.com/diablo2resurrected/mods/1119)
+   next to `D2R.exe`. It warns that 3.4 is not fully tested; that is expected.
    Only ever mod this copy. Leave your normal Battle.net install alone.
-2. **D2RLoader.** Download D2RLoader 1.3.1 or later from
-   https://www.nexusmods.com/diablo2resurrected/mods/1119 and extract it into the frozen copy
-   (next to `D2R.exe`). It warns that 3.4 is not fully tested; that is expected.
+2. **Your build instead of a release.** If the launcher installed a release into
+   `<your game folder>\Mods\darkestdiablo`, delete that folder before step 4 so the link can
+   take its place. The launcher sees the link and leaves it alone ("Developer build").
 3. **Vanilla files.** Extract these from the frozen copy into `vanilla/` (CascView, or
    `tools/extract.cpp`), keeping their folders: `data/global/excel`, `data/local/lng/strings`,
    `data/global/dataversionbuild.txt`, and for the hand-made maps the room pieces
@@ -28,7 +42,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 4. **Build and link.**
 
        tools\build-plugin.cmd
-       tools\link.cmd "D:\Games\D2R-darkestdiablo"
+       tools\link.cmd "<your game folder>"
 
 5. **Play.** Open the Battle.net app, then run `D2RLoader.exe` in the frozen copy. The first time,
    open the D2RLoader settings (gear button under Play), set **Default mod** to
@@ -73,6 +87,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 ## Every change
 - Data or patches changed: `python tools\build.py`
 - Plugin changed: `tools\build-plugin.cmd` (also rebuilds the data)
+- Ready for players: `python tools/release.py <version> --publish` (see `docs/updates.md`)
 
 Then start `D2RLoader.exe`. The link means the game always sees the latest build.
 To check the plugin is running: D2RLoader's log (`d2rloader\logs\d2rloader.log` in the game
