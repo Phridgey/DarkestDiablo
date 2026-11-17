@@ -152,6 +152,38 @@ static void SlotsKeepTheirOwnHeroesAndStash() {
 	CHECK(!SwitchSlot(live, 4, error));
 }
 
+static void DeletingASaveEmptiesOnlyThatSave() {
+	const fs::path live = TempDir("slots-delete");
+	WriteFile(live / "Settings.json", "{}");
+	WriteSave(live / "Burr.d2s", Paladin, 12);
+	WriteFile(live / "SharedStashHardCoreV2.d2i", "slot one stash");
+	State one;
+	Adopt(one, "Burr", Paladin, 12);
+	one.started = true;
+	SaveState(live, 1, one);
+	std::string error;
+	CHECK(SwitchSlot(live, 2, error));
+	WriteSave(live / "Xade.d2s", Sorceress, 1);
+	State two;
+	Adopt(two, "Xade", Sorceress, 1);
+	two.started = true;
+	SaveState(live, 2, two);
+	// A parked save: slot 1 goes, the live slot 2 is untouched.
+	CHECK(DeleteSlot(live, 1, "t1", error));
+	CHECK(!LoadState(live, 1).started);
+	CHECK(HeroNames(live) == std::vector<std::string> { "Xade" });
+	CHECK(fs::exists(live / "camp" / "trash" / "slot1-t1" / "camp" / "files" / "Burr.d2s"));  // kept, not erased
+	CHECK(SwitchSlot(live, 1, error));
+	CHECK(HeroNames(live).empty() && !fs::exists(live / "SharedStashHardCoreV2.d2i"));
+	// The live save: its files leave the live folder; settings stay.
+	CHECK(SwitchSlot(live, 2, error));
+	CHECK(DeleteSlot(live, 2, "t2", error));
+	CHECK(HeroNames(live).empty() && fs::exists(live / "Settings.json"));
+	CHECK(!LoadState(live, 2).started && ActiveSlot(live) == 2);
+	CHECK(fs::exists(live / "camp" / "trash" / "slot2-t2" / "live" / "Xade.d2s"));
+	CHECK(!DeleteSlot(live, 9, "t3", error));
+}
+
 static void SwitchingSlotNeverLosesFilesOnFailure() {
 	const fs::path live = TempDir("slots-clash");
 	WriteSave(live / "Burr.d2s", Paladin, 12);
@@ -235,6 +267,7 @@ int main() {
 	EmptyFireGetsATraveler();
 	CampFileRoundTrip();
 	SlotsKeepTheirOwnHeroesAndStash();
+	DeletingASaveEmptiesOnlyThatSave();
 	SwitchingSlotNeverLosesFilesOnFailure();
 	ReconcileFollowsTheSaveFiles();
 	if (failures != 0) {

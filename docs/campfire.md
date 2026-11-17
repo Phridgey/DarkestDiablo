@@ -8,18 +8,18 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 ## What the player sees
 
 1. **Save slots.** After the title screen a window asks for Save 1, 2 or 3, each with a line
-   saying who is by its fire.
+   saying who is by its fire. A save that has been started has a Delete button, which asks twice.
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
    with a name plate. Clicking a hero (or its plate) picks it and turns Enter red; Enter loads
-   it. Create brings out the name box for a new hero. Options, Delete and Exit Game are
+   it. Create brings out the name box for a new hero. Options, Retire and Exit Game are
    on the left; Change save (or Escape) lays the save slots over the fire.
 3. **New heroes** stand at the same fire in the game's standard look, and are made the usual
    way (click, name, Create). Only classes that may join right now are shown:
    - a brand new save: every class. The one picked starts the camp; the rest lock.
    - later: only classes a traveler brought (see below). They start at level 1 with nothing.
    - every hero dead and nobody waiting: a traveler turns up by himself with up to 3 classes.
-   **Delete** asks which hero to bury. A deleted hero counts as a death.
+   **Retire** asks which hero to bury. A retired hero counts as a death.
 4. **In town.** Each time a hero comes back to town from a stop there is a chance (25%) that
    "A traveler joins your camp" and offers up to 3 locked classes. The class of the last hero
    that fell is always one of them, once. The picked class waits at the Campfire as a recruit.
@@ -78,6 +78,7 @@ In the save folder (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`):
     camp\slot<N>\files\          that slot's saves and stash while another slot is loaded
     camp\graveyard\slot<N>\      fallen heroes
     camp\slot<N>\bench\        the other heroes' files while one hero is being loaded
+    camp\trash\slot<N>-<time>\  a deleted save's files, kept in case it was a mistake
     camp\options.txt             optional: "slot_picker 0", "traveler_chance 50", "campfire_screen 0"
 
 The camp follows the save files: each time the menu loads, new saves join, deleted saves leave,
@@ -90,7 +91,7 @@ menu), `dd-traveler` (in town: a traveler now).
 
 The build changes two of the game's menu layouts and reads item models, so `vanilla/` needs
 `data/global/ui/layouts`, `data/hd/items/items.json`, `data/hd/objects/objects.json` and
-`data/hd/objects/env_wood/rogue_bonfire.json`, extracted the same way as the tables. Nothing of Blizzard's is in the repo.
+`data/hd/objects/env_wood/rogue_bonfire.json` and `data/hd/objects/chests/bank.json`, extracted the same way as the tables. Nothing of Blizzard's is in the repo.
 
 ## Tried in the game so far
 
@@ -117,6 +118,15 @@ Did not work, and what was changed:
   launch. It is now solid black, fills the screen, and opens as the menu starts loading.
 - Exit Game at the Campfire did nothing: the hero screen can't close the game. The plugin now
   goes to the main menu behind a black screen and presses its Exit (not yet tried).
+
+- The chest copy wearing the bonfire's model could not be clicked either, so the game seems to
+  test the mouse against the model. As a test the copy now wears the chest's own model, in
+  the bonfire's flames (not yet tried). If that can be clicked, it gets a model that suits.
+- Changing save at the Campfire kept showing the first save's heroes: the game keeps a panel
+  it has drawn and does not read its layout again. The Campfire and the save slot screen now
+  use a fresh spare panel each time their content changes (not yet tried).
+- Delete is now called Retire. A save can be deleted from the save slot screen, after two
+  questions. Its files are not erased: they move to `camp\trash\slot<N>-<time>\` (not yet tried).
 
 ## Not yet tried in the game
 

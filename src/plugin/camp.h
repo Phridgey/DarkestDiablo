@@ -392,6 +392,38 @@ inline auto SwitchSlot(const fs::path& live, int to, std::string& error) -> bool
 	return true;
 }
 
+// Empties a slot: its heroes, stash, camp and graveyard. Nothing is erased; it all moves to
+// camp/trash/slot<N>-<stamp>/ so a save deleted by mistake can still be put back by hand.
+// Works for the live slot too (its files are in the live folder). Call it at the menu only.
+inline auto DeleteSlot(const fs::path& live, int slot, const std::string& stamp, std::string& error) -> bool {
+	if (slot < 1 || slot > SlotCount) {
+		error = "no such slot";
+		return false;
+	}
+	const fs::path trash = live / "camp" / "trash" / ("slot" + std::to_string(slot) + "-" + stamp);
+	std::error_code ec;
+	if (fs::exists(trash, ec)) {
+		error = "already there: " + trash.string();
+		return false;
+	}
+	fs::create_directories(trash, ec);
+	if (slot == ActiveSlot(live) && !MoveAll(SlotFiles(live), trash / "live", error)) {
+		return false;
+	}
+	if (fs::exists(SlotDir(live, slot), ec)) {
+		fs::rename(SlotDir(live, slot), trash / "camp", ec);
+		if (ec) {
+			error = "could not move " + SlotDir(live, slot).string() + ": " + ec.message();
+			return false;
+		}
+	}
+	const fs::path graves = live / "camp" / "graveyard" / ("slot" + std::to_string(slot));
+	if (fs::exists(graves, ec)) {
+		fs::rename(graves, trash / "graveyard", ec);  // if this fails the old graves stay: harmless
+	}
+	return true;
+}
+
 // ---- The bench ----------------------------------------------------------------------------
 // The game's Play button loads the hero that is selected in its own list. To load the hero that
 // was clicked at the campfire, every other hero's files wait in camp/slot<N>/bench/ while the

@@ -27,6 +27,7 @@
 #include <chrono>
 #include <cstdarg>
 #include <cstring>
+#include <ctime>
 #include <exception>
 #include <mutex>
 #include <thread>
@@ -39,17 +40,14 @@ namespace fs = std::filesystem;
 using Lock = std::lock_guard<std::recursive_mutex>;
 
 constexpr char PluginId[]      = "darkestdiablo";
-constexpr char SlotsPanel[]    = "SaveSlots";
 constexpr char TravelerPanel[] = "Traveler";
 constexpr char CampPanel[]     = "Campfire";
-constexpr char FirePanel[]     = "Fire";
 constexpr char CurtainPanel[]  = "Curtain";
 constexpr char CurtainLayout[] = "data/global/ui/layouts/darkestdiablo/Curtainhd.json";
 // A black screen over the game's main menu while it is only being passed through.
 constexpr char CurtainJson[] = "{\"type\":\"Panel\",\"name\":\"darkestdiablo/Curtain\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true,\"priority\":9500},"
 	"\"children\":[{\"type\":\"RectangleWidget\",\"name\":\"Black\",\"fields\":{\"anchor\":{\"x\":-0.5},\"fitToScreen\":true,\"color\":[0.0,0.0,0.0,1.0]},"
 	"\"children\":[{\"type\":\"ClickCatcherWidget\",\"name\":\"catcher\",\"fields\":{\"fitToParent\":true}}]}]}";
-constexpr char FireLayout[]    = "data/global/ui/layouts/darkestdiablo/Firehd.json";
 constexpr char ActionPrefix[]  = "darkestdiablo/";  // buttons send PanelManager:OpenPanel:darkestdiablo/<action>
 
 const D2RL::ThreadService* g_threads = nullptr;
@@ -58,9 +56,21 @@ const D2RL::WidgetService* g_widgets = nullptr;
 const D2RL::ResourceService*  g_resources = nullptr;
 const D2RL::InventoryService* g_inventory = nullptr;
 const D2RL::ItemService*      g_items     = nullptr;
-D2RL::Panels::RegistrationHandle g_firePanel = D2RL::Panels::InvalidHandle;
-D2RL::Resources::RegistrationHandle g_fireLayout = D2RL::Resources::InvalidHandle;
-D2RL::Panels::RegistrationHandle g_slotsPanel    = D2RL::Panels::InvalidHandle;
+// A panel whose content changes while the game runs (who is by the fire, what each save holds).
+// The game keeps a panel it has shown and does not read its layout again, so each new content
+// goes to the next of a row of spare panels ("Fire0", "Fire1", ...) that has not been shown yet.
+struct LivePanel {
+	const char* base;
+	int count;
+	std::vector<D2RL::Panels::RegistrationHandle> panels;
+	std::vector<D2RL::Resources::RegistrationHandle> layouts;
+	std::vector<bool> shown;
+	int current = -1;
+	std::string content;
+};
+LivePanel g_fire  { "Fire", 24 };
+LivePanel g_slots { "SaveSlots", 14 };
+constexpr char PanelNameMark[] = "@PANEL@";
 D2RL::Panels::RegistrationHandle g_travelerPanel = D2RL::Panels::InvalidHandle;
 D2RL::Panels::RegistrationHandle g_campPanel     = D2RL::Panels::InvalidHandle;
 
@@ -98,7 +108,8 @@ bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
 D2RL::Panels::RegistrationHandle g_curtainPanel = D2RL::Panels::InvalidHandle;
 fs::path g_dataDir;         // the mod's d2rloader folder: camp_data.txt, SaveSlots.layout.json
-D2RL::Resources::RegistrationHandle g_slotsLayout = D2RL::Resources::InvalidHandle;
+int g_confirmSlot = 0;      // the save the player is being asked about deleting (0: none)
+int g_confirmStep = 0;      // 1: first question, 2: second question
 Spot g_spots[Camp::ClassCount];
 struct ItemLook { char kind = 0; std::string value; };
 std::vector<std::pair<std::string, ItemLook>> g_looks;  // item code -> how it looks on a figure
@@ -250,6 +261,90 @@ void Close(const D2RL::PluginContext* context, D2RL::Panels::RegistrationHandle 
 	}
 }
 
+auto PoolName(const LivePanel& pool) -> std::string {
+	return FullName((std::string(pool.base) + std::to_string(std::max(pool.current, 0))).c_str());
+}
+
+auto PoolHandle(const LivePanel& pool) -> D2RL::Panels::RegistrationHandle {
+	return pool.current >= 0 && pool.current < static_cast<int>(pool.panels.size()) ? pool.panels[pool.current] : D2RL::Panels::InvalidHandle;
+}
+
+// Registers the row of spare panels. Only possible while the plugin loads.
+void PoolRegister(const D2RL::PluginContext* context, LivePanel& pool, D2RL::Panels::PanelFlags flags) {
+	for (int i = 0; i < pool.count; ++i) {
+		const std::string id = std::string(pool.base) + std::to_string(i);
+		const D2RL::Panels::PanelRegistration registration {
+			.structSize = D2RL::Panels::PanelRegistrationSize,
+			.flags      = flags,
+			.localId    = id.c_str(),
+		};
+		D2RL::Panels::RegistrationHandle panel = D2RL::Panels::InvalidHandle;
+		if (g_panels->registerPanel(context, &registration, &panel) != D2RL::Panels::Result::Success) {
+			Log(context, "Camp: could not register the %s panel.", id.c_str());
+			break;
+		}
+		pool.panels.push_back(panel);
+		pool.layouts.push_back(D2RL::Resources::InvalidHandle);
+		pool.shown.push_back(false);
+	}
+}
+
+// Gives the pool new content (a layout with PanelNameMark where the panel's name goes). If it
+// differs from what the current panel holds, the next spare panel takes it. Returns false if
+// no panel could take it.
+auto PoolSet(const D2RL::PluginContext* context, LivePanel& pool, std::string json) -> bool {
+	if (g_resources == nullptr || pool.panels.empty()) {
+		return false;
+	}
+	if (pool.current >= 0 && json == pool.content) {
+		return true;
+	}
+	if (pool.current >= 0 && !pool.shown[pool.current]) {
+		// never shown: the game has not read it yet, so it can simply be replaced
+	} else {
+		if (pool.current >= 0 && g_panels != nullptr) {
+			g_panels->closePanel(context, pool.panels[pool.current]);
+		}
+		pool.current = (pool.current + 1) % static_cast<int>(pool.panels.size());
+	}
+	const int i = pool.current;
+	const std::string name = PoolName(pool);
+	if (pool.shown[i]) {  // every spare has been used: ask the game to forget this one
+		Dispatch(context, "PanelManager", "UnloadPanel", name.c_str());
+		pool.shown[i] = false;
+	}
+	pool.content = json;
+	for (size_t at = json.find(PanelNameMark); at != std::string::npos; at = json.find(PanelNameMark)) {
+		json.replace(at, sizeof(PanelNameMark) - 1, name);
+	}
+	if (pool.layouts[i] != D2RL::Resources::InvalidHandle) {
+		g_resources->unregisterResource(context, pool.layouts[i]);
+		pool.layouts[i] = D2RL::Resources::InvalidHandle;
+	}
+	const std::string path = "data/global/ui/layouts/" + name + "hd.json";
+	const D2RL::Resources::ResourceRegistration resource {
+		.structSize = D2RL::Resources::ResourceRegistrationSize,
+		.path       = path.c_str(),
+		.bytes      = json.data(),
+		.byteCount  = static_cast<uint32_t>(json.size()),
+	};
+	const auto result = g_resources->registerResource(context, &resource, &pool.layouts[i]);
+	Log(context, "Camp: panel %s takes %d bytes (code %d).", name.c_str(), static_cast<int>(json.size()), static_cast<int>(result));
+	return result == D2RL::Resources::Result::Success;
+}
+
+auto PoolOpen(const D2RL::PluginContext* context, LivePanel& pool, const char* what) noexcept -> bool {
+	if (!Open(context, PoolHandle(pool), what)) {
+		return false;
+	}
+	pool.shown[pool.current] = true;
+	return true;
+}
+
+void PoolClose(const D2RL::PluginContext* context, const LivePanel& pool) noexcept {
+	Close(context, PoolHandle(pool));
+}
+
 // Runs `callback` on the UI thread after `delayMs`.
 void Later(const D2RL::PluginContext* context, int delayMs, D2RL::Threads::Callback callback) noexcept {
 	if (g_threads == nullptr) {
@@ -267,22 +362,41 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool;
 
 // ---- Save slots ---------------------------------------------------------------------------
 
+// Shows the right parts of the save slot screen: the three saves, or one of the two questions
+// asked before a save is deleted.
+void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
+	const std::string panel = PoolName(g_slots);
+	const bool asking = g_confirmSlot != 0;
+	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
+		const std::string n = std::to_string(slot);
+		const bool started = slot == g_slot ? g_camp.started : Camp::LoadState(g_live, slot).started;
+		SetVisible(context, panel.c_str(), ("Slot" + n).c_str(), !asking);
+		SetVisible(context, panel.c_str(), ("Slot" + n + "Summary").c_str(), !asking);
+		SetVisible(context, panel.c_str(), ("Slot" + n + "Last").c_str(), !asking && slot == g_slot);
+		SetVisible(context, panel.c_str(), ("Slot" + n + "Delete").c_str(), !asking && started);
+		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), g_confirmSlot == slot && g_confirmStep == 1);
+		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), g_confirmSlot == slot && g_confirmStep == 2);
+	}
+	for (const char* part : { "Heading", "Sub", "Exit" }) {
+		SetVisible(context, panel.c_str(), part, !asking);
+	}
+	SetVisible(context, panel.c_str(), "RestartNotice", false);
+}
+
 void __cdecl ShowSlots(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
 	if (g_inGame || g_slotsOpen) {
 		return;
 	}
 	RegisterSlotsLayout(context);
-	if (!Open(context, g_slotsPanel, "save slot")) {
+	if (!PoolOpen(context, g_slots, "save slot")) {
 		g_slotChosen = true;  // carry on with the slot that is live
 		return;
 	}
 	g_slotsOpen = true;
-	const std::string panel = FullName(SlotsPanel);
-	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
-		SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Last").c_str(), slot == g_slot);
-	}
-	SetVisible(context, panel.c_str(), "RestartNotice", false);
+	g_confirmSlot = 0;
+	g_confirmStep = 0;
+	ShowSlotWidgets(context);
 }
 
 // The menu did not load again after a slot change: the list on screen is the old slot's. Keep the
@@ -294,13 +408,14 @@ void __cdecl CheckMenuReloaded(const D2RL::PluginContext* context, void*) noexce
 	}
 	g_awaitingMenu = false;
 	context->LogWarn("Camp: the menu did not load again after the slot change. Restart the game to play the new slot.");
-	if (Open(context, g_slotsPanel, "save slot")) {
-		const std::string panel = FullName(SlotsPanel);
+	if (PoolOpen(context, g_slots, "save slot")) {
+		const std::string panel = PoolName(g_slots);
 		SetVisible(context, panel.c_str(), "RestartNotice", true);
 		for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
 			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot)).c_str(), false);
 			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Summary").c_str(), false);
 			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Last").c_str(), false);
+			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Delete").c_str(), false);
 		}
 	}
 }
@@ -317,7 +432,7 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 	}
 	g_slotChosen = true;
 	g_slotsOpen = false;
-	Close(context, g_slotsPanel);
+	PoolClose(context, g_slots);
 	Camp::Unbench(g_live, g_slot);
 	const bool fire = g_fireOn && g_fireReady && g_threads != nullptr;
 	std::string said = "Save " + std::to_string(slot) + " is already loaded.";
@@ -494,7 +609,7 @@ auto FireLayoutJson() -> std::string {
 			"\"style\":{\"pointSize\":\"$ExtraLargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorGoldYellow\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
 			"{\"type\":\"TextBoxWidget\",\"name\":\"Rank\",\"fields\":{\"rect\":{\"x\":0,\"y\":72,\"width\":380,\"height\":44},\"text\":\"Level " + std::to_string(hero.level) + " " + cls + "\","
 			"\"style\":{\"pointSize\":\"$MediumFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
-		kids += FireButton("Bury" + cls, plateX, 1590, "Bury " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
+		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, in the game's standard look.
 	for (const int c : Camp::Creatable(g_camp, g_rng)) {
@@ -503,7 +618,7 @@ auto FireLayoutJson() -> std::string {
 		}
 	}
 	kids += "{\"type\":\"TextBoxWidget\",\"name\":\"DeleteHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
-		"\"text\":\"Choose the hero to bury. This can't be undone. Press Delete again to keep everyone.\","
+		"\"text\":\"Choose the hero to retire. This can't be undone. Press Retire again to keep everyone.\","
 		"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
 	static constexpr char Large[] = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonLarge";
 	if (!g_camp.heroes.empty()) {
@@ -524,41 +639,22 @@ auto FireLayoutJson() -> std::string {
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
 		FireButton("Options", 100, -640, "@d2r:OptionsHD", "PanelManager:OpenPanel:SettingsPanel", Med, "$LightButtonTextColor") + "," +
-		FireButton("Delete", 100, -500, "Delete", act + "delete-mode", Med, "$LightButtonTextColor") + "," +
+		FireButton("Delete", 100, -500, "Retire", act + "delete-mode", Med, "$LightButtonTextColor") + "," +
 		FireButton("ExitGame", 100, -360, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit", Med, "$LightButtonTextColor") + "]}";
-	return "{\"type\":\"Panel\",\"name\":\"darkestdiablo/Fire\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
+	return "{\"type\":\"Panel\",\"name\":\"@PANEL@\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
 }
 
 // Hands the loader the Fire layout for the camp as it is now. The loader reads a panel's layout
 // when the panel opens, so this runs before each opening.
 auto RegisterFireLayout(const D2RL::PluginContext* context) -> bool {
-	if (g_resources == nullptr) {
-		return false;
-	}
-	const std::string json = FireLayoutJson();
-	if (g_fireLayout != D2RL::Resources::InvalidHandle) {
-		const auto gone = g_resources->unregisterResource(context, g_fireLayout);
-		if (gone != D2RL::Resources::Result::Success) {
-			Log(context, "Camp: the old Campfire layout could not be taken back (code %d); heroes may show as they were at launch.", static_cast<int>(gone));
-			return g_fireReady;
-		}
-		g_fireLayout = D2RL::Resources::InvalidHandle;
-	}
-	const D2RL::Resources::ResourceRegistration resource {
-		.structSize = D2RL::Resources::ResourceRegistrationSize,
-		.path       = FireLayout,
-		.bytes      = json.data(),
-		.byteCount  = static_cast<uint32_t>(json.size()),
-	};
-	const auto result = g_resources->registerResource(context, &resource, &g_fireLayout);
-	g_fireReady = result == D2RL::Resources::Result::Success;
-	Log(context, "Camp: Campfire layout for %d hero(es), %d bytes (code %d).", static_cast<int>(g_camp.heroes.size()), static_cast<int>(json.size()), static_cast<int>(result));
+	g_fireReady = PoolSet(context, g_fire, FireLayoutJson());
+	Log(context, "Camp: Campfire layout for %d hero(es) (%s).", static_cast<int>(g_camp.heroes.size()), g_fireReady ? "ready" : "failed");
 	return g_fireReady;
 }
 
 // Shows the right widgets for where the Campfire is: picking a hero, Delete, or making a hero.
 void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
-	const std::string panel = FullName(FirePanel);
+	const std::string panel = PoolName(g_fire);
 	SetVisible(context, panel.c_str(), "DeleteHint", g_deleteMode);
 	for (const auto& hero : g_camp.heroes) {
 		const std::string cls = Camp::ClassNames[hero.cls];
@@ -615,7 +711,7 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	if (g_inGame || !g_fireOn || !g_fireReady) {
 		return;
 	}
-	if (Open(context, g_firePanel, "Campfire")) {
+	if (PoolOpen(context, g_fire, "Campfire")) {
 		g_atFire = true;
 		g_deleteMode = false;
 		g_createMode = false;
@@ -629,7 +725,7 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 
 // The camp changed while the Campfire is up (a hero was buried, another save was picked).
 void RefreshFire(const D2RL::PluginContext* context) {
-	Close(context, g_firePanel);
+	PoolClose(context, g_fire);
 	RegisterFireLayout(context);
 	Later(context, 150, OpenFire);
 }
@@ -693,7 +789,7 @@ void PlayHero(const D2RL::PluginContext* context, int cls) {
 	g_pendingPlay = hero->name;
 	g_wantFire = true;
 	Log(context, "Camp: %s the %s steps forward.", hero->name.c_str(), Camp::ClassNames[cls]);
-	Close(context, g_firePanel);
+	PoolClose(context, g_fire);
 	if (g_threads != nullptr) {
 		g_threads->runOnUiThread(context, BackToMenu, nullptr);
 	}
@@ -711,7 +807,7 @@ void BuryHero(const D2RL::PluginContext* context, int cls) {
 		Log(context, "Camp: could not bury %s (%s).", name.c_str(), error.c_str());
 		return;
 	}
-	const std::string panel = FullName(FirePanel);
+	const std::string panel = PoolName(g_fire);
 	Camp::MarkFallen(g_camp, name);
 	Camp::SaveState(g_live, g_slot, g_camp);
 	g_deleteMode = false;
@@ -887,23 +983,11 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool {
 			json.replace(at, mark.size(), Camp::Summary(camp));
 		}
 	}
-	if (g_slotsLayout != D2RL::Resources::InvalidHandle) {
-		if (g_resources->unregisterResource(context, g_slotsLayout) != D2RL::Resources::Result::Success) {
-			return true;  // the earlier text stays
-		}
-		g_slotsLayout = D2RL::Resources::InvalidHandle;
+	const std::string rootName = "\"darkestdiablo/SaveSlots\"";
+	if (const size_t at = json.find(rootName); at != std::string::npos) {
+		json.replace(at, rootName.size(), std::string("\"") + PanelNameMark + "\"");
 	}
-	const D2RL::Resources::ResourceRegistration resource {
-		.structSize = D2RL::Resources::ResourceRegistrationSize,
-		.path       = "data/global/ui/layouts/darkestdiablo/SaveSlotshd.json",
-		.bytes      = json.data(),
-		.byteCount  = static_cast<uint32_t>(json.size()),
-	};
-	const auto result = g_resources->registerResource(context, &resource, &g_slotsLayout);
-	if (result != D2RL::Resources::Result::Success) {
-		Log(context, "Camp: could not hand over the save slot screen (code %d).", static_cast<int>(result));
-	}
-	return result == D2RL::Resources::Result::Success;
+	return PoolSet(context, g_slots, json);
 }
 
 // Registers a panel whose layout is a file of the mod (made by tools/camp_layouts.py). The file
@@ -946,8 +1030,58 @@ auto StartsWith(const char* text, const char* prefix) noexcept -> bool {
 
 // A button of ours was clicked: PanelManager:OpenPanel:darkestdiablo/<action>. Returns false for
 // actions that belong to another part of the plugin (the route map's travel buttons).
+// The player said yes twice: the save is emptied (its files go to camp/trash, see camp.h) and
+// the slot screen comes back with the slot shown as empty.
+void DeleteSave(const D2RL::PluginContext* context, int slot) {
+	if (g_inGame) {
+		return;
+	}
+	Camp::Unbench(g_live, g_slot);
+	std::string error;
+	if (Camp::DeleteSlot(g_live, slot, std::to_string(static_cast<long long>(std::time(nullptr))), error)) {
+		Log(context, "Camp: save %d was deleted (its files are kept in camp/trash).", slot);
+	} else {
+		Log(context, "Camp: could not delete save %d: %s", slot, error.c_str());
+	}
+	g_confirmSlot = 0;
+	g_confirmStep = 0;
+	if (slot == g_slot) {
+		g_camp = Camp::LoadState(g_live, g_slot);
+		g_pendingClass = -1;
+		g_chosenHero = -1;
+		g_slotChosen = false;
+	}
+	g_slotsOpen = false;
+	PoolClose(context, g_slots);
+	if (slot == g_slot && g_atFire) {
+		RefreshFire(context);
+	}
+	Later(context, 300, ShowSlots);
+}
+
 auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
-	if (StartsWith(action, "slot-")) {
+	if (std::strcmp(action, "slot-delete-cancel") == 0) {
+		g_confirmSlot = 0;
+		g_confirmStep = 0;
+		ShowSlotWidgets(context);
+	} else if (StartsWith(action, "slot-delete-yes-")) {
+		const int slot = std::atoi(action + 16);
+		if (slot == g_confirmSlot && g_confirmStep == 2) {
+			DeleteSave(context, slot);
+		}
+	} else if (StartsWith(action, "slot-delete-sure-")) {
+		if (std::atoi(action + 17) == g_confirmSlot && g_confirmStep == 1) {
+			g_confirmStep = 2;
+			ShowSlotWidgets(context);
+		}
+	} else if (StartsWith(action, "slot-delete-")) {
+		const int slot = std::atoi(action + 12);
+		if (slot >= 1 && slot <= Camp::SlotCount) {
+			g_confirmSlot = slot;
+			g_confirmStep = 1;
+			ShowSlotWidgets(context);
+		}
+	} else if (StartsWith(action, "slot-")) {
 		PickSlot(context, std::atoi(action + 5));
 	} else if (StartsWith(action, "recruit-")) {
 		const int cls = Camp::ClassFromName(action + 8);
@@ -1031,17 +1165,15 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		}
 		if (context->QueryService(&g_panels) == D2RL::ServiceQueryResult::Success && D2RL::HasPanelServiceField(g_panels, D2RL::PanelServiceRequiredSize)) {
 			g_resources = resources;
+			PoolRegister(context, g_slots, D2RL::Panels::PanelFlags::None);
 			RegisterSlotsLayout(context);
-			g_slotsPanel    = RegisterPanel(context, resources, SlotsPanel);
 			g_travelerPanel = RegisterPanel(context, resources, TravelerPanel);
 			g_campPanel     = RegisterPanel(context, resources, CampPanel);
 			g_resources = resources;
+			if (g_fireOn) {
+				PoolRegister(context, g_fire, D2RL::Panels::PanelFlags::None);
+			}
 			if (g_fireOn && RegisterFireLayout(context)) {
-				const D2RL::Panels::PanelRegistration fire {
-					.structSize = D2RL::Panels::PanelRegistrationSize,
-					.flags      = D2RL::Panels::PanelFlags::None,
-					.localId    = FirePanel,
-				};
 				const D2RL::Resources::ResourceRegistration curtainLayout {
 					.structSize = D2RL::Resources::ResourceRegistrationSize,
 					.path       = CurtainLayout,
@@ -1057,10 +1189,6 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 				if (resources->registerResource(context, &curtainLayout, &curtainHandle) != D2RL::Resources::Result::Success ||
 					g_panels->registerPanel(context, &curtain, &g_curtainPanel) != D2RL::Panels::Result::Success) {
 					g_curtainPanel = D2RL::Panels::InvalidHandle;
-				}
-				if (g_panels->registerPanel(context, &fire, &g_firePanel) != D2RL::Panels::Result::Success) {
-					context->LogWarn("Camp: could not register the Campfire panel; the game's character list is used.");
-					g_fireReady = false;
 				}
 			}
 		} else {
@@ -1087,7 +1215,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 		if (panelManager && std::strcmp(command, "OpenPanel") == 0 && StartsWith(text, ActionPrefix)) {
 			return OnAction(context, text + sizeof(ActionPrefix) - 1);
 		}
-		if (panelManager && std::strcmp(command, "ClosePanel") == 0 && std::strcmp(text, "darkestdiablo/SaveSlots") == 0) {
+		if (panelManager && std::strcmp(command, "ClosePanel") == 0 && StartsWith(text, "darkestdiablo/SaveSlots")) {
 			g_slotsOpen = false;
 			return false;
 		}
@@ -1113,7 +1241,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				// Back (or Escape) at the Campfire: the save slots, laid over it. Again closes them.
 				if (g_slotsOpen) {
 					g_slotsOpen = false;
-					Close(context, g_slotsPanel);
+					PoolClose(context, g_slots);
 				} else {
 					g_threads->runOnUiThread(context, ShowSlots, nullptr);
 				}
@@ -1125,8 +1253,8 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				g_exiting = true;
 				g_atFire = false;
 				g_slotsOpen = false;
-				Close(context, g_slotsPanel);
-				Close(context, g_firePanel);
+				PoolClose(context, g_slots);
+				PoolClose(context, g_fire);
 				g_threads->runOnUiThread(context, OpenCurtain, nullptr);
 				Later(context, 50, BackToMenu);
 				Later(context, 8000, ExitTimedOut);
@@ -1134,7 +1262,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			}
 			if (std::strcmp(command, "ToCharacterCreate") != 0) {
 				g_atFire = false;
-				Close(context, g_firePanel);
+				PoolClose(context, g_fire);
 			}
 			if (std::strcmp(command, "ToGame") == 0) {
 				Close(context, g_curtainPanel);
@@ -1254,7 +1382,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			g_wantFire = false;
 			g_gearNow.clear();
 			g_atFire = false;
-			Close(context, g_firePanel);
+			PoolClose(context, g_fire);
 			Close(context, g_curtainPanel);
 			break;
 		case Kind::LocalPlayerReady:

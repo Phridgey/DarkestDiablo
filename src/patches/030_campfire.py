@@ -2,7 +2,8 @@
 
 - Bonfire: the Rogue Encampment's fire is swapped for a new object, CampBonfire. It is the
   stash chest in every way the game cares about (a copy of the chest's row), so it can be
-  clicked and opens the stash, but it wears the bonfire's look. The plugin can't see a click
+  clicked and opens the stash. For now it also looks like the chest, with the bonfire's flames
+  (a test, see below). The plugin can't see a click
   on a world object, only UI messages, so the bonfire borrows the one town object whose window
   we can put a button on. Changing the old fire's own row never made it clickable.
 - Stash window: a Campfire button that opens the plugin's roster panel.
@@ -18,13 +19,25 @@ def patch(t):
         "Class": "CampBonfire", "Name": "fire", "*Description": "Camp bonfire (opens the stash)",
         "*ID": str(len(t.table("objects").rows) - 1), "AutoMap": "0"})
     # Its look in the game's new graphics: the list of looks follows the table's row order, so
-    # the new one goes last, and it uses the old bonfire's model, flames and sound.
+    # the new one goes last.
     looks = t.data("hd/objects/objects.json")
-    looks["camp_bonfire"] = {"asset_path": "env_wood"}
-    look = copy.deepcopy(t.data("hd/objects/env_wood/rogue_bonfire.json"))
+    looks["camp_bonfire"] = {"asset_path": "chests"}
+    # TEST LOOK: the stash chest's own model, standing in the bonfire's flames. The game seems to
+    # test the mouse against the model, and the bonfire's model can't be pointed at (the copy of
+    # the chest's row wearing it could not be clicked either). If the chest can be clicked here,
+    # the next step is a model that suits the fire.
+    chest = t.data("hd/objects/chests/bank.json")
+    fire = t.data("hd/objects/env_wood/rogue_bonfire.json")
+    look = copy.deepcopy(chest)
     look["name"] = "camp_bonfire"
-    t.add_data("hd/objects/env_wood/camp_bonfire.json", look)
-    del t.files["hd/objects/env_wood/rogue_bonfire.json"]  # unchanged, not shipped
+    look["entities"] += [copy.deepcopy(e) for e in fire["entities"] if e["name"] == "entity_vfx"]
+    for kind, paths in fire["dependencies"].items():
+        if kind not in ("skeletons", "json"):
+            have = look["dependencies"].setdefault(kind, [])
+            have += [p for p in paths if p not in have]
+    t.add_data("hd/objects/chests/camp_bonfire.json", look)
+    for unchanged in ("hd/objects/chests/bank.json", "hd/objects/env_wood/rogue_bonfire.json"):
+        del t.files[unchanged]  # read only, not shipped
     # The town's maps place "object 2 of Act 1" at the fire. That is now the new object.
     for row in t.table("objpreset").rows:
         if row.get("Act") == "1" and row.get("ObjectClass") == "RogueBonfire":
