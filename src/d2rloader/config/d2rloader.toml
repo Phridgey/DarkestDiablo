@@ -1,0 +1,6 @@
+# Darkest Diablo's own D2RLoader settings. They override the player's global ones while the mod
+# is active. tools/build.py copies this folder into the mod.
+
+[d2rcore.stash]
+# The camp's stash: extra shared pages after the game's own. Every hero of a save sees them.
+add_shared_tabs = 7

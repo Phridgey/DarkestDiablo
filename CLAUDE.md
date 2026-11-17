@@ -19,6 +19,7 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
 - `src/plugin/` — the code layer: a D2RLoader plugin built with the D2RLoader Plugin SDK 0.3.0
   (fork menu via waypoints, run and camp state, item rolls). Use SDK services; do not patch
   game memory by hand, and never try to get around Blizzard's protection (`D2R_loader.dll`).
+- `src/patches` can also change the game's menu layouts with `t.layout("<name>")` (parsed JSON).
 - `tools/build-plugin.cmd` — builds the plugin and places it in the mod (Windows, needs Visual Studio).
 - `tools/build.py` — builds `build/darkestdiablo/darkestdiablo.mpq/`.
 - `tools/link.cmd` — run once on Windows: links the build into the frozen game's `Mods` folder.
@@ -49,3 +50,7 @@ Plain, jargon-free language in docs and commit messages.
   (`PanelManager:OpenPanel:darkestdiablo/travel-<level>`) and catch it in the UI-message listener.
 - `ExecuteConsoleCommand` returns true when the command was accepted, not when it worked; check
   the in-game console for errors.
+- A plugin can show, hide and find widgets (WidgetService) but not change their text. For text
+  that varies, make one widget per case and show the right one (`tools/camp_layouts.py`).
+- The plugin hears the menus too: `FrontEndNavigation:ToFrontEnd` comes before the main menu
+  loads, `CharacterCreate:Select:<Class>` and `CharacterCreate:Create` on the hero screen.

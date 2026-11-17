@@ -7,8 +7,12 @@ Usage: python tools/build.py
 3. Runs each src/patches/*.py in name order. A patch defines patch(t), where t.table(name)
    loads a vanilla table (e.g. "levels") and returns a Table you can change in place.
    Only tables a patch touched are written to the build.
+   t.layout(name) does the same for a game menu layout (e.g. "mainmenupanelhd"): it returns the
+   parsed JSON, to change in place.
+4. Writes the Campfire's own panels (tools/camp_layouts.py) and copies src/d2rloader/ (the mod's
+   D2RLoader settings) next to the data.
 """
-import importlib.util, shutil, sys
+import importlib.util, json, shutil, sys
 sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
 from pathlib import Path
 
@@ -61,9 +65,71 @@ class Table:
         path.write_bytes(("\r\n".join(out) + "\r\n").encode("utf-8"))
 
 
+def loads_lenient(text):
+    """Parse the game's layout files: JSON with // comments and trailing commas."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':  # copy a string as it is
+            j = i + 1
+            while text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+        elif text.startswith("/*", i):
+            i = text.index("*/", i) + 2
+        elif c == ",":
+            j = i + 1
+            while True:  # look past spaces and comments for what follows the comma
+                while j < n and text[j].isspace():
+                    j += 1
+                if text.startswith("//", j):
+                    while j < n and text[j] != "\n":
+                        j += 1
+                elif text.startswith("/*", j):
+                    j = text.index("*/", j) + 2
+                else:
+                    break
+            if j >= n or text[j] not in "}]":
+                out.append(c)
+            i += 1
+        else:
+            out.append(c)
+            i += 1
+    return json.loads("".join(out))
+
+
+def find_widget(node, name):
+    """The widget called `name` in a parsed layout (searching children), or None."""
+    if node.get("name") == name:
+        return node
+    for child in node.get("children", []):
+        hit = find_widget(child, name)
+        if hit:
+            return hit
+    return None
+
+
 class Tables:
     def __init__(self):
         self.loaded = {}
+        self.layouts = {}
+
+    def layout(self, name, change=True):
+        """A vanilla menu layout as parsed JSON. With change=False it is only read, not shipped."""
+        src = VANILLA / "global" / "ui" / "layouts" / f"{name}.json"
+        if not src.exists():
+            raise FileNotFoundError(f"{src} is missing. Extract data/global/ui/layouts from the game (see README.md).")
+        if not change:
+            return self.layouts.get(name) or loads_lenient(src.read_text(encoding="utf-8-sig"))
+        if name not in self.layouts:
+            self.layouts[name] = loads_lenient(src.read_text(encoding="utf-8-sig"))
+        return self.layouts[name]
+
+    widget = staticmethod(find_widget)
 
     def table(self, name):
         if name not in self.loaded:
@@ -112,6 +178,22 @@ def main():
     for name, table in t.loaded.items():
         table.save(OUT / "data" / EXCEL / f"{name}.txt")
         print(f"wrote: data/global/excel/{name}.txt")
+
+    for name, layout in t.layouts.items():
+        target = OUT / "data" / "global" / "ui" / "layouts" / f"{name}.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(layout, indent=1), encoding="utf-8")
+        print(f"wrote: data/global/ui/layouts/{name}.json")
+
+    # The Campfire's own panels, and the mod's D2RLoader settings (more shared stash pages).
+    import camp_layouts
+    panels = OUT / "data" / "global" / "ui" / "layouts" / "darkestdiablo"
+    panels.mkdir(parents=True, exist_ok=True)
+    for name, make in camp_layouts.LAYOUTS.items():
+        (panels / f"{name}hd.json").write_text(json.dumps(make(), indent=1), encoding="utf-8")
+    loader = ROOT / "src" / "d2rloader"
+    if loader.exists():
+        shutil.copytree(loader, OUT.parent / "d2rloader", dirs_exist_ok=True)
 
     # The D2RLoader plugin (built by tools/build-plugin.cmd) goes in the mod's own plugin folder.
     plugin = ROOT / "build" / "plugin" / "darkestdiablo.dll"

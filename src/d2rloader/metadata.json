@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "name": "Darkest Diablo",
+    "modVersion": "",
+    "author": "Darkest Diablo team",
+    "description": "A roguelite built in Diablo II: Resurrected.",
+    "website": ""
+  }
+}

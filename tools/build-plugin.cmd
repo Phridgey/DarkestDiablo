@@ -10,6 +10,7 @@ if not defined VS (echo Visual Studio C++ tools not found. Install "Desktop deve
 call "%VS%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
 cmake -S "%ROOT%\src\plugin" -B "%ROOT%\build\plugin-obj" -A x64 || exit /b 1
 cmake --build "%ROOT%\build\plugin-obj" --config Release || exit /b 1
+"%ROOT%\build\plugin\camp_tests.exe" || exit /b 1
 python "%ROOT%\tools\build.py" || exit /b 1
 echo.
 echo Built the plugin and placed it in build\darkestdiablo\d2rloader\plugins
