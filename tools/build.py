@@ -230,6 +230,9 @@ def main():
     maps = sorted((ROOT / "src" / "maps").glob("*.json"))
     if maps:
         import compose_map
+        # Start from an empty folder, so maps that were renamed or removed don't ship forever.
+        if (ROOT / "build" / "maps").exists():
+            shutil.rmtree(ROOT / "build" / "maps")
         for spec in maps:
             sys.argv = ["compose_map.py", str(spec)]
             compose_map.main()
