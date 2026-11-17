@@ -108,8 +108,15 @@ def main():
     plugin_dir = OUT.parent / "d2rloader" / "plugins"
     if plugin.exists():
         plugin_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy(plugin, plugin_dir / plugin.name)
-        print("placed: d2rloader/plugins/mephistorghast.dll")
+        target = plugin_dir / plugin.name
+        if target.exists() and target.read_bytes() == plugin.read_bytes():
+            print("plugin unchanged: d2rloader/plugins/mephistorghast.dll")
+        else:
+            try:
+                shutil.copy(plugin, target)
+                print("placed: d2rloader/plugins/mephistorghast.dll")
+            except PermissionError:
+                print("WARNING: could not replace the plugin; close the game and build again.")
     else:
         print("note: no plugin built yet (run tools\\build-plugin.cmd)")
 
