@@ -53,3 +53,8 @@ Then start `D2RLoader.exe`. The link means the game always sees the latest build
 To check the plugin is running: D2RLoader's log (`d2rloader\logs\d2rloader.log` in the game
 folder) lists "Darkest Diablo ... [mod]" under plugins, and the plugin's own log
 (`build\darkestdiablo\d2rloader\logs\darkestdiablo.log`) says "Darkest Diablo plugin <version> loaded."
+
+## Later
+- Move the game copy to E:. A straight copy of the D: frozen copy crashes at startup on E:
+  (D2RLoader.exe, C++ exception in KERNELBASE, right after the string tables load). Next try:
+  a fresh install or a fresh frozen copy made directly on E:.
