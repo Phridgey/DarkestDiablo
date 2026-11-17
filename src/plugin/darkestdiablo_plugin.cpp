@@ -149,13 +149,13 @@ static constexpr uint32_t ZombieClass    = 5;    // monstats row of zombie1 (Cor
 static constexpr uint32_t BloodRavenClass = 267; // monstats row of bloodraven
 
 // Den of Evil (level 13, small chamber): waypoint at tile 11,10 (west). Fallen east, zombies south,
-// shamans north.
+// shamans north. 8-9 monsters per wave (43 before Corpsefire).
 static constexpr Wave DenWaves[] = {
-	{ { { "mspawn", "fallen1", 7, { 21, 13 } }, { "mspawn", "zombie1", 3, { 18, 19 } } }, 2, AnyClass },
-	{ { { "mspawn", "fallen1", 5, { 21, 13 } }, { "mspawn", "zombie1", 4, { 18, 19 } }, { "mspawn", "fallenshaman1", 1, { 18, 9 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 21, 13 } }, { "mspawn", "zombie1", 4, { 18, 19 } }, { "mspawn", "fallenshaman1", 2, { 18, 9 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 5, { 21, 13 } }, { "mspawn", "zombie1", 3, { 18, 19 } }, { "mspawn", "fallenshaman1", 2, { 18, 9 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 21, 13 } }, { "mspawn", "zombie1", 4, { 18, 19 } }, { "mspawn", "fallenshaman1", 2, { 18, 9 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 6, { 21, 13 } }, { "mspawn", "zombie1", 3, { 18, 19 } } }, 2, AnyClass },
+	{ { { "mspawn", "fallen1", 4, { 21, 13 } }, { "mspawn", "zombie1", 3, { 18, 19 } }, { "mspawn", "fallenshaman1", 1, { 18, 9 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 4, { 21, 13 } }, { "mspawn", "zombie1", 3, { 18, 19 } }, { "mspawn", "fallenshaman1", 2, { 18, 9 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 4, { 21, 13 } }, { "mspawn", "zombie1", 3, { 18, 19 } }, { "mspawn", "fallenshaman1", 2, { 18, 9 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 3, { 21, 13 } }, { "mspawn", "zombie1", 4, { 18, 19 } }, { "mspawn", "fallenshaman1", 1, { 18, 9 } } }, 3, AnyClass },
 	// Corpsefire + 5 minions.
 	{ { { "monster", "super:40", 6, { 19, 16 } } }, 1, AnyClass },
 };
