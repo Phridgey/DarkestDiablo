@@ -1,13 +1,14 @@
 // Darkest Diablo — the D2RLoader plugin (the mod's code layer).
 //
 // Current features:
-// - Arenas (Den of Evil, Burial Grounds): entering one starts its waves; each wave starts when
-//   the last is dead; the last wave is the boss (Corpsefire, Blood Raven). Then a Town Portal
+// - Arenas (Den of Evil, Burial Grounds): entering one starts its waves, one every 10 s; the
+//   last wave has the boss (Corpsefire, Blood Raven). When everything is dead, a Town Portal
 //   scroll goes into the inventory. Spawning uses the "cheat mspawn" / "cheat monster" commands.
 // - Console commands (Ctrl + ` with enable_console on in d2rloader/config/d2rloader.toml):
 //     dd           show that the plugin is running
 //     dd-tp        drop a Town Portal scroll now (for testing)
 //     dd-waves     restart the waves of the arena you stand in
+//     dd-map       open or close the route map
 // - Waypoints: when the player is ready in a game, the plugin runs D2RLoader's "cheat waypoints"
 //   command, so a new character can reach the Den by waypoint on first load.
 //   For now this unlocks every waypoint. Per-stop unlocks wait for a waypoint service
@@ -21,6 +22,7 @@
 #include <chrono>
 #include <thread>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 static constexpr D2RL::PluginInfo DarkestDiabloInfo {
@@ -28,7 +30,7 @@ static constexpr D2RL::PluginInfo DarkestDiabloInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "darkestdiablo",
 	.name        = "Darkest Diablo",
-	.version     = "0.6.2",
+	.version     = "0.7.1",
 	.author      = "Darkest Diablo team",
 	.description = "Roguelite rules for the Darkest Diablo mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -99,8 +101,9 @@ static bool RunConsole(const D2RL::PluginContext* context, const char* command) 
 }
 
 // ---- Arenas ------------------------------------------------------------------------------
-// Each arena stop is one room. Entering it starts its waves; each wave starts when the last is
-// dead; the last wave is the boss. When the boss wave is dead, a Town Portal scroll is given.
+// Each arena stop is one room. Entering it starts its waves: wave 1 after a second, then one
+// every 10 s. When the last wave has spawned and everything is dead (the boss included), a Town
+// Portal scroll is given.
 // Spawning uses the "cheat mspawn" / "cheat monster" console commands at world sub-tiles.
 
 struct Spot { int tx, ty; };      // tile inside the arena's map
@@ -113,7 +116,7 @@ struct Group {
 struct Wave {
 	Group    groups[3];
 	int      groupCount;
-	uint32_t onlyClass;               // count only deaths of this monstats row (0xFFFFFFFF: any)
+	uint32_t onlyClass;               // unused for now (kept so the tables stay readable)
 	uint32_t bossClass = 0xFFFFFFFFU; // if set, the wave also needs this monster dead (any kill order)
 };
 struct Arena {
@@ -135,8 +138,8 @@ static constexpr Wave DenWaves[] = {
 	{ { { "mspawn", "fallen1", 4, { 19, 13 } }, { "mspawn", "zombie1", 4, { 5, 17 } }, { "mspawn", "fallenshaman1", 2, { 16, 18 } } }, 3, AnyClass },
 	{ { { "mspawn", "fallen1", 4, { 19, 13 } }, { "mspawn", "zombie1", 3, { 5, 17 } }, { "mspawn", "fallenshaman1", 3, { 16, 18 } } }, 3, AnyClass },
 	{ { { "mspawn", "fallen1", 3, { 19, 13 } }, { "mspawn", "zombie1", 4, { 5, 17 } }, { "mspawn", "fallenshaman1", 3, { 16, 18 } } }, 3, AnyClass },
-	// Corpsefire + 5 minions, all zombie1. Shamans revive fallen, so count only zombies here.
-	{ { { "monster", "super:40", 6, { 12, 20 } } }, 1, ZombieClass },
+	// Corpsefire + 5 minions.
+	{ { { "monster", "super:40", 6, { 12, 20 } } }, 1, AnyClass },
 };
 
 // Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py). The
@@ -145,11 +148,11 @@ static constexpr Wave DenWaves[] = {
 // graveyard tiles refuse spawns ("Monster not created"); these plaza spots were tested in game
 // from the console: east (16,17), north-east (15,14), south (11,21), south-west (7,20).
 static constexpr Wave BurialWaves[] = {
-	{ { { "mspawn", "zombie1", 3, { 16, 17 } }, { "mspawn", "zombie1", 3, { 7, 20 } } }, 2, AnyClass },
-	{ { { "mspawn", "zombie1", 4, { 15, 14 } }, { "mspawn", "skeleton1", 3, { 11, 21 } } }, 2, AnyClass },
-	{ { { "mspawn", "zombie1", 3, { 7, 20 } }, { "mspawn", "skeleton1", 5, { 16, 17 } } }, 2, AnyClass },
-	// Blood Raven and 4 zombies: the wave ends when all 5 are dead, in any order (she must be one).
-	{ { { "mspawn", "bloodraven", 1, { 15, 14 } }, { "mspawn", "zombie1", 4, { 11, 21 } } }, 2, AnyClass, BloodRavenClass },
+	{ { { "mspawn", "zombie1", 5, { 16, 17 } }, { "mspawn", "zombie1", 5, { 7, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 6, { 15, 14 } }, { "mspawn", "skeleton1", 5, { 11, 21 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 5, { 7, 20 } }, { "mspawn", "skeleton1", 8, { 16, 17 } } }, 2, AnyClass },
+	// Blood Raven and 6 zombies. The stop is cleared when everything is dead, she included.
+	{ { { "mspawn", "bloodraven", 1, { 15, 14 } }, { "mspawn", "zombie1", 6, { 11, 21 } } }, 2, AnyClass, BloodRavenClass },
 };
 
 static constexpr Arena Arenas[] = {
@@ -157,12 +160,15 @@ static constexpr Arena Arenas[] = {
 	{ "Burial Grounds", 9,                1500, 1300, BurialWaves, static_cast<int>(sizeof(BurialWaves) / sizeof(BurialWaves[0])) },
 };
 
-static constexpr int     ArrivalDelayMs = 1000;
-static std::atomic<int>  g_arena { -1 };      // index into Arenas, -1 = none running
-static std::atomic<int>  g_wave { 0 };        // 1-based wave in progress; > waveCount = done
-static std::atomic<int>  g_remaining { 0 };   // monsters left in the current wave
-static std::atomic<bool> g_portalDropped { false };
-static std::atomic<bool> g_bossDead { false };   // the current wave's boss (if it has one) is dead
+static constexpr int     ArrivalDelayMs = 1000;   // wave 1: right on arrival the map isn't loaded yet
+static constexpr int     WaveIntervalMs = 10000;  // each later wave: 10 s after the previous one spawned
+static std::atomic<int>      g_arena { -1 };      // index into Arenas, -1 = none running
+static std::atomic<int>      g_wave { 0 };        // waves spawned so far
+static std::atomic<int>      g_remaining { 0 };   // spawned monsters not yet dead (all waves)
+static std::atomic<uint32_t> g_boss { AnyClass }; // the boss to wait for, if a spawned wave had one
+static std::atomic<bool>     g_bossDead { true };
+static std::atomic<bool>     g_portalDropped { false };
+static std::atomic<uintptr_t> g_run { 1 };        // changes on every reset, so old timers do nothing
 
 static auto FindArena(int32_t levelId) noexcept -> int {
 	for (int i = 0; i < static_cast<int>(sizeof(Arenas) / sizeof(Arenas[0])); ++i) {
@@ -174,41 +180,65 @@ static auto FindArena(int32_t levelId) noexcept -> int {
 }
 
 static void ResetArena() noexcept {
+	++g_run;
 	g_arena = -1;
 	g_wave = 0;
 	g_remaining = 0;
+	g_boss = AnyClass;
+	g_bossDead = true;
 	g_portalDropped = false;
-	g_bossDead = false;
 }
 
-// UI thread.
-static void __cdecl StartNextWave(const D2RL::PluginContext* context, void*) noexcept {
+static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run) noexcept;
+
+// Runs `callback` on the UI thread after `delayMs`, unless the arena was reset meanwhile.
+static void Later(const D2RL::PluginContext* context, int delayMs, D2RL::Threads::Callback callback) noexcept {
+	const uintptr_t run = g_run.load();
+	std::thread([context, delayMs, callback, run] {
+		std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+		if (run == g_run.load()) {
+			g_threads->runOnUiThread(context, callback, reinterpret_cast<void*>(run));
+		}
+	}).detach();
+}
+
+// UI thread. All waves spawned and every spawned monster (and the boss) dead: give the scroll.
+static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) noexcept {
 	const int index = g_arena.load();
-	if (index < 0) {
+	if (index < 0 || reinterpret_cast<uintptr_t>(run) != g_run.load() || g_portalDropped.exchange(true)) {
+		return;
+	}
+	if (g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
+		context->LogWarn("Town Portal: could not queue the drop.");
+	}
+	char message[96] {};
+	std::snprintf(message, sizeof(message), "%s: cleared.", Arenas[index].name);
+	context->LogInfo(message);
+}
+
+// UI thread. Spawns the next wave and, if more are left, schedules the one after it.
+static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run) noexcept {
+	const int index = g_arena.load();
+	if (index < 0 || reinterpret_cast<uintptr_t>(run) != g_run.load()) {
 		return;
 	}
 	const Arena& arena = Arenas[index];
 	const int wave = g_wave.load() + 1;
-	char message[128] {};
 	if (wave > arena.waveCount) {
-		g_wave = wave;
-		if (!g_portalDropped.exchange(true) && g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
-			context->LogWarn("Town Portal: could not queue the drop.");
-		}
-		std::snprintf(message, sizeof(message), "%s: cleared.", arena.name);
-		context->LogInfo(message);
 		return;
 	}
 	const Wave& w = arena.waves[wave - 1];
-	int total = w.groups[0].count;  // with onlyClass set, only the first group (the boss) counts
-	if (w.onlyClass == AnyClass) {
-		for (int g = 1; g < w.groupCount; ++g) {
-			total += w.groups[g].count;
-		}
+	int total = 0;
+	for (int g = 0; g < w.groupCount; ++g) {
+		total += w.groups[g].count;
 	}
-	g_remaining = total;
-	g_bossDead = w.bossClass == AnyClass;  // no boss: nothing to wait for
+	if (w.bossClass != AnyClass) {
+		g_boss = w.bossClass;
+		g_bossDead = false;
+	}
+	g_remaining += total;
 	g_wave = wave;
+	char message[128] {};
 	for (int g = 0; g < w.groupCount; ++g) {
 		const Group& group = w.groups[g];
 		const int x = (arena.originX + group.at.tx) * 5 + 2;
@@ -220,38 +250,247 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void*) noe
 		}
 		RunConsole(context, message);
 	}
-	std::snprintf(message, sizeof(message), "%s: wave %d of %d (%d to kill).", arena.name, wave, arena.waveCount, total);
+	std::snprintf(message, sizeof(message), "%s: wave %d of %d (+%d, %d alive).", arena.name, wave, arena.waveCount, total, g_remaining.load());
 	context->LogInfo(message);
+	if (wave < arena.waveCount) {
+		Later(context, WaveIntervalMs, StartNextWave);
+	}
 }
 
-// Server thread. Count deaths in the running arena's level; start the next wave on the UI thread.
+// Server thread. Count deaths in the running arena's level. The arena is cleared when the last
+// wave has spawned, every spawned monster has died and the boss (if any) is dead. Extra monsters
+// (raised or revived) only add kills; the boss must still die.
 static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2RL::Lifecycle::MonsterDeathEvent* event, void*) noexcept {
 	if (context == nullptr || event == nullptr) {
 		return;
 	}
 	const int index = g_arena.load();
-	if (index < 0 || event->levelId != Arenas[index].levelId) {
+	if (index < 0 || event->levelId != Arenas[index].levelId || g_wave.load() < 1 || g_portalDropped.load()) {
 		return;
 	}
 	const Arena& arena = Arenas[index];
-	const int wave = g_wave.load();
-	if (wave < 1 || wave > arena.waveCount) {
-		return;
+	if (g_boss.load() != AnyClass && event->monster.classId == g_boss.load()) {
+		g_bossDead = true;
 	}
-	const Wave& w = arena.waves[wave - 1];
-	if (w.onlyClass != AnyClass && event->monster.classId != w.onlyClass) {
-		return;
-	}
-	const bool bossJustDied = w.bossClass != AnyClass && event->monster.classId == w.bossClass && !g_bossDead.exchange(true);
-	char message[96] {};
-	std::snprintf(message, sizeof(message), "%s: kill (class %u), %d left in wave %d.", arena.name, event->monster.classId, g_remaining.load() - 1, wave);
-	context->LogInfo(message);
-	// The wave is over when enough have died and its boss (if any) is among them. Extra monsters
-	// (raised or revived) only add kills; the boss must still die.
 	const int left = g_remaining.fetch_sub(1) - 1;
-	if ((left == 0 && g_bossDead.load()) || (bossJustDied && left <= 0)) {
-		g_threads->runOnUiThread(context, StartNextWave, nullptr);
+	char message[96] {};
+	std::snprintf(message, sizeof(message), "%s: kill (class %u), %d alive.", arena.name, event->monster.classId, left);
+	context->LogInfo(message);
+	if (g_wave.load() >= arena.waveCount && left <= 0 && g_bossDead.load()) {
+		g_threads->runOnUiThread(context, ClearArena, reinterpret_cast<void*>(g_run.load()));
 	}
+}
+
+// ---- Route map (the waypoint "map") ------------------------------------------------------
+// A plugin panel listing the act's stops as in the design sketch. A node button sends a UI
+// message (see OnUiMessage); the plugin closes the panel and sends the player there with the
+// console's goto. The layout also ships as a mod file (src/data/.../RouteMaphd.json), which
+// overrides this built-in copy, so layout changes only need a game restart. For now every UI message is also logged, to find the one the
+// town waypoint sends, so the map can replace Blizzard's list.
+static const D2RL::PanelService*     g_panels = nullptr;
+static D2RL::Panels::RegistrationHandle g_routeMap = D2RL::Panels::InvalidHandle;
+
+static constexpr char RouteMapLayout[] = R"json({
+ "type": "Panel",
+ "name": "darkestdiablo/RouteMap",
+ "fields": {
+  "rect": "$LeftPanelRect",
+  "anchor": "$LeftPanelAnchor",
+  "priority": 8500
+ },
+ "children": [
+  {
+   "type": "ImageWidget",
+   "name": "Background",
+   "fields": {
+    "rect": {
+     "x": 0,
+     "y": 0
+    },
+    "filename": "PANEL\\Waypoints\\Waypoints_Base",
+    "frame": 0
+   }
+  },
+  {
+   "type": "ImageWidget",
+   "name": "LeftHinge",
+   "fields": {
+    "rect": "$LeftHingeRect",
+    "filename": "$LeftHingeSprite"
+   }
+  },
+  {
+   "type": "TextBoxWidget",
+   "name": "Title",
+   "fields": {
+    "rect": "$InGamePanelTitleRect",
+    "text": "Act I - Choose your path",
+    "style": "$StyleTitleBlock"
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeDen",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 250
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Den of Evil",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorWhite",
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-8"
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeBurial",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 360
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Burial Grounds",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorWhite",
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-10"
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "Fork1",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 470
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Raven / Mausoleum / Crypt",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorLightGray",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeTristram",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 580
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Tristram",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorLightGray",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "Fork2",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 690
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Pit / Countess / Malus",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorLightGray",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeCatacombs",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 800
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Catacombs",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorLightGray",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "CloseButton",
+   "fields": {
+    "rect": {
+     "x": 1075,
+     "y": 9
+    },
+    "filename": "PANEL\\closebtn_4x",
+    "hoveredFrame": 3,
+    "tooltipString": "@d2r:strClose",
+    "sound": "cursor_close_window_hd",
+    "onClickMessage": "PanelManager:ClosePanel:darkestdiablo/RouteMap",
+    "pressedFrame": 1
+   }
+  }
+ ]
+})json";
+
+static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEvents::UiMessageEvent* event, void*) noexcept -> D2RL::SharedEvents::UiMessageAction {
+	using Action = D2RL::SharedEvents::UiMessageAction;
+	if (context == nullptr || event == nullptr) {
+		return Action::Continue;
+	}
+	const char* target = event->target != nullptr ? event->target : "";
+	const char* command = event->command != nullptr ? event->command : "";
+	const char* text = event->text != nullptr ? event->text : "";
+	char message[256] {};
+	if (std::strcmp(target, "MonsterHealth") != 0) {  // that one fires every frame
+		std::snprintf(message, sizeof(message), "UI message: %s:%s:%s", target, command, text);
+		context->LogInfo(message);
+	}
+	// Node buttons send "PanelManager:OpenPanel:darkestdiablo/travel-<level id>". The game drops
+	// button messages with targets or commands it doesn't know, so the travel order rides on a
+	// real command with a made-up panel name. Caught here and consumed before the game sees it.
+	static constexpr char TravelPrefix[] = "darkestdiablo/travel-";
+	if (std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
+		std::strncmp(text, TravelPrefix, sizeof(TravelPrefix) - 1) == 0) {
+		const int level = std::atoi(text + sizeof(TravelPrefix) - 1);
+		if (level > 0) {
+			if (g_panels != nullptr) {
+				g_panels->closePanel(context, g_routeMap);
+			}
+			std::snprintf(message, sizeof(message), "goto %d", level);
+			RunConsole(context, message);
+		}
+		return Action::Consume;
+	}
+	return Action::Continue;
 }
 
 static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::GameplayEvent* event, void*) noexcept {
@@ -268,11 +507,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		if (arena >= 0 && arena != g_arena.load()) {
 			ResetArena();          // a new arena, or the same one after leaving: start from wave 1
 			g_arena = arena;
-			// Wait a moment: right on arrival the map isn't loaded yet and spawns are dropped.
-			std::thread([context] {
-				std::this_thread::sleep_for(std::chrono::milliseconds(ArrivalDelayMs));
-				g_threads->runOnUiThread(context, StartNextWave, nullptr);
-			}).detach();
+			Later(context, ArrivalDelayMs, StartNextWave);
 		}
 		return;
 	}
@@ -300,7 +535,7 @@ static auto InfoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* c
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.6.2 is running.");
+	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.7.1 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -326,7 +561,21 @@ static auto WavesCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* 
 	}
 	ResetArena();
 	g_arena = arena;
-	StartNextWave(command->plugin, nullptr);
+	StartNextWave(command->plugin, reinterpret_cast<void*>(g_run.load()));
+	return D2RL::ConsoleCommandResult::Handled;
+}
+
+static auto MapCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr || g_panels == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	const auto result = g_panels->togglePanel(command->plugin, g_routeMap);
+	if (result != D2RL::Panels::Result::Success) {
+		char message[96] {};
+		std::snprintf(message, sizeof(message), "Route map: toggle failed (code %d).", static_cast<int>(result));
+		command->plugin->WriteConsoleMessage(message);
+		return D2RL::ConsoleCommandResult::Failed;
+	}
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -371,10 +620,50 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		return false;
 	}
 
-	context->LogInfo("Darkest Diablo plugin 0.6.2 loaded.");
+	// Route map panel and UI-message listener. Optional: without them the arenas still work.
+	const D2RL::ResourceService* resources = nullptr;
+	const D2RL::SharedEventService* sharedEvents = nullptr;
+	if (context->QueryService(&resources) == D2RL::ServiceQueryResult::Success && D2RL::HasResourceServiceField(resources, D2RL::ResourceServiceRequiredSize) &&
+		context->QueryService(&g_panels) == D2RL::ServiceQueryResult::Success && D2RL::HasPanelServiceField(g_panels, D2RL::PanelServiceRequiredSize)) {
+		const D2RL::Resources::ResourceRegistration resource {
+			.structSize = D2RL::Resources::ResourceRegistrationSize,
+			.path       = "data/global/ui/layouts/darkestdiablo/RouteMaphd.json",
+			.bytes      = RouteMapLayout,
+			.byteCount  = sizeof(RouteMapLayout) - 1,
+		};
+		D2RL::Resources::RegistrationHandle resourceHandle = D2RL::Resources::InvalidHandle;
+		const D2RL::Panels::PanelRegistration registration {
+			.structSize = D2RL::Panels::PanelRegistrationSize,
+			.flags      = D2RL::Panels::PanelFlags::CloseOnEscape,
+			.localId    = "RouteMap",
+		};
+		if (resources->registerResource(context, &resource, &resourceHandle) != D2RL::Resources::Result::Success ||
+			g_panels->registerPanel(context, &registration, &g_routeMap) != D2RL::Panels::Result::Success) {
+			context->LogWarn("Route map: could not register the panel.");
+			g_panels = nullptr;
+		}
+	} else {
+		g_panels = nullptr;
+		context->LogWarn("Route map: panel services missing.");
+	}
+	if (context->QueryService(&sharedEvents) == D2RL::ServiceQueryResult::Success && D2RL::HasSharedEventServiceField(sharedEvents, D2RL::SharedEventServiceRequiredSize)) {
+		const D2RL::SharedEvents::UiMessageListener listener {
+			.structSize = D2RL::SharedEvents::UiMessageListenerSize,
+			.callback   = OnUiMessage,
+		};
+		D2RL::SharedEvents::ListenerHandle handle = 0;
+		if (sharedEvents->registerUiMessageListener(context, &listener, &handle) != D2RL::SharedEvents::Result::Success) {
+			context->LogWarn("Route map: could not listen for UI messages.");
+		}
+	} else {
+		context->LogWarn("Route map: UI-message service missing.");
+	}
+
+	context->LogInfo("Darkest Diablo plugin 0.7.1 loaded.");
 	return context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
-		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).");
+		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&
+		context->RegisterConsoleCommand("dd-map", MapCommand, "Open or close the route map.");
 }
 
 D2RL_PLUGIN_EXPORT void D2RLoaderUnloadPlugin() noexcept {}

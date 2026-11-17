@@ -1,0 +1,170 @@
+{
+ "type": "Panel",
+ "name": "darkestdiablo/RouteMap",
+ "fields": {
+  "rect": "$LeftPanelRect",
+  "anchor": "$LeftPanelAnchor",
+  "priority": 8500
+ },
+ "children": [
+  {
+   "type": "ImageWidget",
+   "name": "Background",
+   "fields": {
+    "rect": {
+     "x": 0,
+     "y": 0
+    },
+    "filename": "PANEL\\Waypoints\\Waypoints_Base",
+    "frame": 0
+   }
+  },
+  {
+   "type": "ImageWidget",
+   "name": "LeftHinge",
+   "fields": {
+    "rect": "$LeftHingeRect",
+    "filename": "$LeftHingeSprite"
+   }
+  },
+  {
+   "type": "TextBoxWidget",
+   "name": "Title",
+   "fields": {
+    "rect": "$InGamePanelTitleRect",
+    "text": "Act I - Choose your path",
+    "style": "$StyleTitleBlock"
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeDen",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 250
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Den of Evil",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorWhite",
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-8"
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeBurial",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 360
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Burial Grounds",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorWhite",
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-10"
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "Fork1",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 470
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Raven / Mausoleum / Crypt",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorLightGray",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeTristram",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 580
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Tristram",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorLightGray",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "Fork2",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 690
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Pit / Countess / Malus",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorLightGray",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeCatacombs",
+   "fields": {
+    "rect": {
+     "x": 290,
+     "y": 800
+    },
+    "filename": "Panel\\Modals\\ModalButton",
+    "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Catacombs",
+    "pointSize": "$MediumFontSize",
+    "textColor": "$FontColorLightGray",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "CloseButton",
+   "fields": {
+    "rect": {
+     "x": 1075,
+     "y": 9
+    },
+    "filename": "PANEL\\closebtn_4x",
+    "hoveredFrame": 3,
+    "tooltipString": "@d2r:strClose",
+    "sound": "cursor_close_window_hd",
+    "onClickMessage": "PanelManager:ClosePanel:darkestdiablo/RouteMap",
+    "pressedFrame": 1
+   }
+  }
+ ]
+}
