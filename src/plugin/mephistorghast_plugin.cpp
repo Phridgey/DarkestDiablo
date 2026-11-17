@@ -6,7 +6,7 @@
 // - Console commands (Ctrl + ` with enable_console on in d2rloader/config/d2rloader.toml):
 //     mephisto     show that the plugin is running
 //     mephisto-tp  drop a Town Portal scroll now (for testing)
-// - Waypoints: when the player is ready in a game, the plugin runs D2RLoader's "waypoints"
+// - Waypoints: when the player is ready in a game, the plugin runs D2RLoader's "cheat waypoints"
 //   command, so a new character can reach the Den by waypoint on first load.
 //   For now this unlocks every waypoint. Per-stop unlocks wait for a waypoint service
 //   (D2RLoader/PluginSDK issue #9).
@@ -22,7 +22,7 @@ static constexpr D2RL::PluginInfo MephistorghastInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "mephistorghast",
 	.name        = "Mephistorghast",
-	.version     = "0.3.0",
+	.version     = "0.3.1",
 	.author      = "Mephistorghast team",
 	.description = "Roguelite rules for the Mephistorghast mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -72,7 +72,7 @@ static void __cdecl DropTownPortal(const D2RL::PluginContext* context, void*) no
 	context->LogWarn(message);
 }
 
-// Runs D2RLoader's "waypoints" console command through D2RCore's ExecuteConsoleCommand export.
+// Runs the "cheat waypoints" console command through D2RCore's ExecuteConsoleCommand export.
 // Gameplay listeners already run on the UI thread, which is where this call must happen.
 static void UnlockWaypoints(const D2RL::PluginContext* context) noexcept {
 	namespace CE = D2RL::CoreExports;
@@ -83,7 +83,7 @@ static void UnlockWaypoints(const D2RL::PluginContext* context) noexcept {
 		context->LogWarn("Waypoints: ExecuteConsoleCommand not found in D2RCore.");
 		return;
 	}
-	const bool ok = execute("waypoints");
+	const bool ok = execute("cheat waypoints");
 	context->LogInfo(ok ? "Waypoints: unlocked." : "Waypoints: the command did not run.");
 }
 
@@ -118,7 +118,7 @@ static auto MephistoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContex
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Mephistorghast plugin 0.3.0 is running.");
+	command->plugin->WriteConsoleMessage("Mephistorghast plugin 0.3.1 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -164,7 +164,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		}
 	}
 
-	context->LogInfo("Mephistorghast plugin 0.3.0 loaded.");
+	context->LogInfo("Mephistorghast plugin 0.3.1 loaded.");
 	return context->RegisterConsoleCommand("mephisto", MephistoCommand, "Show that the Mephistorghast plugin is running.") &&
 		context->RegisterConsoleCommand("mephisto-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).");
 }
