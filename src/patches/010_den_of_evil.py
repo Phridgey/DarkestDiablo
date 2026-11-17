@@ -19,6 +19,19 @@ def patch(t):
     for col in ("SizeY", "SizeY(N)", "SizeY(H)"):
         den[col] = SIZE_Y
 
+    # Players reach every location by waypoint. The Den's waypoint (in the map, by the entrance)
+    # takes Act 1 waypoint slot 1, which vanilla gives to the Cold Plains.
+    den["Waypoint"] = "1"
+    levels.first("Id", "3")["Waypoint"] = "255"  # Cold Plains: no waypoint
+
+    # The waypoint replaces the entrance stairs, so remove the stairs link both ways:
+    # the Den's exit to the Blood Moor, and the Blood Moor's cave entrance into the Den.
+    den["Vis0"], den["Warp0"] = "0", "-1"
+    blood_moor = levels.first("Id", "2")
+    for k in range(8):
+        if blood_moor[f"Vis{k}"] == DEN_LEVEL_ID:
+            blood_moor[f"Vis{k}"], blood_moor[f"Warp{k}"] = "0", "-1"
+
     prest = t.table("lvlprest")
     template = prest.first("Name", "Act 1 - Cave Den Of Evil N")
     row = dict(template)

@@ -2,7 +2,7 @@
   "name": "mephisto_den",
   "folder": "act1/caves",
   "room": 24,
-  "comment": "Den of Evil: entrance stairs -> narrow S-shaped tunnel (cavens2) twice -> Blizzard's round Den chamber with Corpsefire (cavenspec). Rooms are 24x24 tiles; y grows southward. Preview: build/previews/den_of_evil.png",
+  "comment": "Den of Evil: waypoint room (no stairs) -> narrow S-tunnel (cavens2) twice -> Blizzard's round Den chamber with Corpsefire (cavenspec). Rooms are 24x24 tiles; y grows southward.",
   "keep_monsters": [
     "act1/caves/cavenspec"
   ],
@@ -10,7 +10,7 @@
     {
       "x": 0,
       "y": 0,
-      "piece": "act1/caves/cavespre2"
+      "piece": "act1/caves/caves"
     },
     {
       "x": 0,
@@ -26,6 +26,29 @@
       "x": 0,
       "y": 3,
       "piece": "act1/caves/cavenspec"
+    }
+  ],
+  "close_edges": true,
+  "extra_objects": [
+    {
+      "type": 2,
+      "id": 52,
+      "tile": [
+        9,
+        3
+      ],
+      "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
+      "hd_prefab": {
+        "prefab": "data/hd/env/model/act1/outdoors/act1_outdoors_props/pf_waypoint01.json",
+        "offset": [
+          9,
+          10
+        ],
+        "models": [
+          "data/hd/env/model/act1/outdoors/act1_outdoors_props/waypoint01.model",
+          "data/hd/objects/waypoint_portals/waypoint_outside_act_1/model/torso.model"
+        ]
+      }
     }
   ]
 }

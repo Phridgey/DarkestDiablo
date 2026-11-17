@@ -166,6 +166,21 @@ def compose(spec):
         for o in d["objects"]:
             if o["type"] == 2 or (monsters and o["type"] == 1):
                 m["objects"].append({**o, "x": o["x"] + ox * 5, "y": o["y"] + oy * 5})
+    # Extra objects from the layout, e.g. a waypoint: {"type": 2, "id": <objpreset Index>, "tile": [x, y]}
+    # Placed at sub-tile tile*5+4, as the game's own maps place their waypoints.
+    for o in spec.get("extra_objects", []):
+        tx, ty = o["tile"]
+        m["objects"].append({"type": o["type"], "id": o["id"], "x": tx * 5 + 4, "y": ty * 5 + 4, "flags": 0})
+    # Close the map's outer edges: maze rooms are open where the next room would join. Mark open
+    # floor on the border as unwalkable (floor bit 0x20000), so players can't walk off the map.
+    if spec.get("close_edges", True):
+        for y in range(H):
+            for x in range(W):
+                if x in (0, W - 1) or y in (0, H - 1):
+                    i = y * W + x
+                    for a in m["floors"]:
+                        if a[i] and ((a[i] >> 20) & 0x3F) != 30:
+                            a[i] |= 0x20000
     return m, (gw, gh)
 
 
@@ -210,6 +225,26 @@ def build_hd(spec):
             ground["components"] = [c for c in ground.get("components") or [] if c.get("type") != "TerrainDefinitionComponent"]
             entities.append(ground)
         biome = biome or hd.get("biomeFilename", "")
+    # HD look for extra objects: the game draws some objects (waypoints) from a prefab in the map's
+    # HD file, not from the object itself. Sub-tile -> HD units: x2, plus the prefab's offset.
+    for o in spec.get("extra_objects", []):
+        pf = o.get("hd_prefab")
+        if not pf:
+            continue
+        tx, ty = o["tile"]
+        ox, oz = pf.get("offset", [0, 0])
+        entities.append({"type": "Entity", "name": "prefab", "id": next_id, "components": [
+            {"type": "TransformDefinitionComponent", "name": "prefab_TransformDefinitionComponent",
+             "position": {"x": float((tx * 5 + 4) * 2 + ox), "y": 0.0, "z": float((ty * 5 + 4) * 2 + oz)},
+             "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}, "scale": {"x": 1.0, "y": 1.0, "z": 1.0},
+             "inheritOnlyPosition": False},
+            {"type": "PrefabPlacementDefinitionComponent", "name": "prefab_PrefabPlacementDefinitionComponent",
+             "prefab": pf["prefab"]}]})
+        next_id += 1
+        for path in pf.get("models", []):
+            if path not in seen["models"]:
+                seen["models"].add(path)
+                deps["models"].append({"path": path})
     return {"dependencies": deps, "type": "Preset", "name": "preset", "entities": entities, "terrain": terrain,
             "biomeFilename": biome, "perTileBiomeOverrides": [], "specialTiles": {}}
 
