@@ -89,7 +89,8 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 ## Route map (the waypoint "map")
 - The town waypoint opens a map of the act's route (see the sketch: Den, Burial, fork x2,
   Tristram, fork x2, Catacombs). The player picks the next stop there.
-- First version: a list panel (`dd-map`). Next: open it from the waypoint, draw it as a tree.
+- First version: a list panel, opened by the town waypoint (or `dd-map`). Waypoints outside
+  town keep Blizzard's list, so the player is never stranded. Next: draw it as a tree.
 
 ## Fork 2 MF run: Rakanishu and Treehead (decided 2026-11-17)
 - Replaces the Pit as the MF option at the fork after Tristram (Pit / Countess / Malus becomes

@@ -9,6 +9,7 @@
 //     dd-tp        drop a Town Portal scroll now (for testing)
 //     dd-waves     restart the waves of the arena you stand in
 //     dd-map       open or close the route map
+// - Route map: clicking a waypoint in town opens the route map instead of Blizzard's list.
 // - Waypoints: when the player is ready in a game, the plugin runs D2RLoader's "cheat waypoints"
 //   command, so a new character can reach the Den by waypoint on first load.
 //   For now this unlocks every waypoint. Per-stop unlocks wait for a waypoint service
@@ -334,10 +335,49 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 // A plugin panel listing the act's stops as in the design sketch. A node button sends a UI
 // message (see OnUiMessage); the plugin closes the panel and sends the player there with the
 // console's goto. The layout also ships as a mod file (src/data/.../RouteMaphd.json), which
-// overrides this built-in copy, so layout changes only need a game restart. For now every UI message is also logged, to find the one the
-// town waypoint sends, so the map can replace Blizzard's list.
+// overrides this built-in copy, so layout changes only need a game restart. Clicking a town
+// waypoint opens this map instead of Blizzard's list (see OnUiMessage); waypoints outside town
+// keep Blizzard's list, so the player can always get home.
 static const D2RL::PanelService*     g_panels = nullptr;
+static const D2RL::WidgetService*    g_widgets = nullptr;  // sends native panel messages (optional)
 static D2RL::Panels::RegistrationHandle g_routeMap = D2RL::Panels::InvalidHandle;
+
+// The game's waypoint panel ("WaypointsPanelExpansion") that the route map replaced. Even with its
+// open message consumed, the game counts it as open (an empty left frame and a dimmed screen until
+// another panel closes it), so we close it ourselves. Empty when there is nothing to close.
+static char g_nativeWaypointPanel[64] {};
+
+// UI thread. Sends "PanelManager:ClosePanel:<the waypoint panel>", as the game's own close does.
+static void __cdecl CloseNativeWaypointPanel(const D2RL::PluginContext* context, void*) noexcept {
+	if (g_widgets == nullptr || g_nativeWaypointPanel[0] == '\0') {
+		return;
+	}
+	const D2RL::Widgets::UiAction action {
+		.structSize = D2RL::Widgets::UiActionSize,
+		.target     = "PanelManager",
+		.command    = "ClosePanel",
+		.text       = g_nativeWaypointPanel,
+	};
+	const auto result = g_widgets->dispatchUiAction(context, &action);
+	char message[128] {};
+	std::snprintf(message, sizeof(message), "Route map: closing %s -> %s (code %d).", g_nativeWaypointPanel,
+		result == D2RL::Widgets::Result::Success ? "sent" : "failed", static_cast<int>(result));
+	context->LogInfo(message);
+	if (result == D2RL::Widgets::Result::Success) {
+		g_nativeWaypointPanel[0] = '\0';
+	}
+}
+
+// levels.txt Ids of the five towns: Rogue Encampment, Lut Gholein, Kurast Docks,
+// Pandemonium Fortress, Harrogath.
+static auto InTown() noexcept -> bool {
+	switch (g_levelId) {
+	case 1: case 40: case 75: case 103: case 109:
+		return true;
+	default:
+		return false;
+	}
+}
 
 static constexpr char RouteMapLayout[] = R"json({
  "type": "Panel",
@@ -519,9 +559,26 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	const char* command = event->command != nullptr ? event->command : "";
 	const char* text = event->text != nullptr ? event->text : "";
 	char message[256] {};
-	if (std::strcmp(target, "MonsterHealth") != 0) {  // that one fires every frame
+	// Log UI messages for finding new ones, but not mouse and keys or the per-frame monster bar.
+	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0) {
 		std::snprintf(message, sizeof(message), "UI message: %s:%s:%s", target, command, text);
 		context->LogInfo(message);
+	}
+	// A town waypoint asks for Blizzard's list ("PanelManager:OpenPanel:WaypointsPanelExpansion").
+	// In town, consume that and open the route map instead.
+	static constexpr char WaypointPanelPrefix[] = "WaypointsPanel";
+	if (g_panels != nullptr && InTown() && std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
+		std::strncmp(text, WaypointPanelPrefix, sizeof(WaypointPanelPrefix) - 1) == 0) {
+		const auto result = g_panels->openPanel(context, g_routeMap);
+		if (result == D2RL::Panels::Result::Success) {
+			// Close the game's half-open waypoint panel, queued so it runs after this message.
+			std::snprintf(g_nativeWaypointPanel, sizeof(g_nativeWaypointPanel), "%s", text);
+			g_threads->runOnUiThread(context, CloseNativeWaypointPanel, nullptr);
+			return Action::Consume;
+		}
+		std::snprintf(message, sizeof(message), "Route map: open failed (code %d); showing Blizzard's waypoint list.", static_cast<int>(result));
+		context->LogWarn(message);
+		return Action::Continue;
 	}
 	// Node buttons send "PanelManager:OpenPanel:darkestdiablo/travel-<level id>". The game drops
 	// button messages with targets or commands it doesn't know, so the travel order rides on a
@@ -534,6 +591,8 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 			if (g_panels != nullptr) {
 				g_panels->closePanel(context, g_routeMap);
 			}
+			// If the earlier close didn't take, close the game's waypoint panel before leaving town.
+			g_threads->runOnUiThread(context, CloseNativeWaypointPanel, nullptr);
 			std::snprintf(message, sizeof(message), "goto %d", level);
 			RunConsole(context, message);
 		}
@@ -695,7 +754,11 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		g_panels = nullptr;
 		context->LogWarn("Route map: panel services missing.");
 	}
-	if (context->QueryService(&sharedEvents) == D2RL::ServiceQueryResult::Success && D2RL::HasSharedEventServiceField(sharedEvents, D2RL::SharedEventServiceRequiredSize)) {
+	if (context->QueryService(&g_widgets) != D2RL::ServiceQueryResult::Success || !D2RL::HasWidgetServiceField(g_widgets, D2RL::WidgetServiceRequiredSize)) {
+		g_widgets = nullptr;
+		context->LogWarn("Route map: widget service missing; the game's waypoint panel won't be closed.");
+	}
+	if (context->QueryService(&sharedEvents) == D2RL::ServiceQueryResult::Success &&D2RL::HasSharedEventServiceField(sharedEvents, D2RL::SharedEventServiceRequiredSize)) {
 		const D2RL::SharedEvents::UiMessageListener listener {
 			.structSize = D2RL::SharedEvents::UiMessageListenerSize,
 			.callback   = OnUiMessage,
