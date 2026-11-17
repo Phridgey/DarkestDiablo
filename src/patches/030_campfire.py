@@ -16,7 +16,11 @@ def patch(t):
     fire["OperateFn"] = "32"
     # A click box around the fire ring, like the Tree of Inifuss has. Without one the game
     # tests the mouse against the old flame picture, and the fire could not be clicked.
-    fire.update({"Left": "-70", "Top": "-70", "Width": "140", "Height": "100"})
+    # The box covers the whole camp spot: the stone ring and the log benches around it.
+    fire.update({"Left": "-220", "Top": "-170", "Width": "440", "Height": "320"})
+    # The fire was a picture-only effect that the game does not let the player point at. As an
+    # ordinary object, kept in step with the game like the stash chest, it can be clicked.
+    fire.update({"EnvEffect": "0", "Sync": "1"})
 
     bank = t.layout("bankexpansionlayouthd")
     bank["children"].append({

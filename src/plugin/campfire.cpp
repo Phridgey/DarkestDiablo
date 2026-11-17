@@ -43,6 +43,12 @@ constexpr char SlotsPanel[]    = "SaveSlots";
 constexpr char TravelerPanel[] = "Traveler";
 constexpr char CampPanel[]     = "Campfire";
 constexpr char FirePanel[]     = "Fire";
+constexpr char CurtainPanel[]  = "Curtain";
+constexpr char CurtainLayout[] = "data/global/ui/layouts/darkestdiablo/Curtainhd.json";
+// A black screen over the game's main menu while it is only being passed through.
+constexpr char CurtainJson[] = "{\"type\":\"Panel\",\"name\":\"darkestdiablo/Curtain\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true,\"priority\":9500},"
+	"\"children\":[{\"type\":\"RectangleWidget\",\"name\":\"Black\",\"fields\":{\"anchor\":{\"x\":-0.5},\"fitToScreen\":true,\"color\":[0.0,0.0,0.0,1.0]},"
+	"\"children\":[{\"type\":\"ClickCatcherWidget\",\"name\":\"catcher\",\"fields\":{\"fitToParent\":true}}]}]}";
 constexpr char FireLayout[]    = "data/global/ui/layouts/darkestdiablo/Firehd.json";
 constexpr char ActionPrefix[]  = "darkestdiablo/";  // buttons send PanelManager:OpenPanel:darkestdiablo/<action>
 
@@ -87,6 +93,9 @@ std::string g_gearNow;              // what the hero in the current game wears (
 struct Spot { int x = 0, y = 0, w = 0, h = 0; std::string px, py, pz, yaw, look; bool known = false; };
 bool g_atFire    = false;  // the Campfire screen is up
 bool g_slotsOpen = false;
+bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
+int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
+D2RL::Panels::RegistrationHandle g_curtainPanel = D2RL::Panels::InvalidHandle;
 fs::path g_dataDir;         // the mod's d2rloader folder: camp_data.txt, SaveSlots.layout.json
 D2RL::Resources::RegistrationHandle g_slotsLayout = D2RL::Resources::InvalidHandle;
 Spot g_spots[Camp::ClassCount];
@@ -476,8 +485,8 @@ auto FireLayoutJson() -> std::string {
 		const std::string cls = Camp::ClassNames[hero.cls];
 		figure(hero.cls, GearFields(hero.gear));
 		const int plateX = s.x + (s.w - 300) / 2;
-		kids += FireButton("Plate" + cls, plateX, 1730, hero.name + " - " + std::to_string(hero.level), act + "play-" + cls, Plate, "$FontColorWhite") + ",";
-		kids += FireButton("Bury" + cls, plateX, 1730, "Bury " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
+		kids += FireButton("Plate" + cls, plateX, 1460, hero.name + " - " + std::to_string(hero.level), act + "play-" + cls, Plate, "$FontColorWhite") + ",";
+		kids += FireButton("Bury" + cls, plateX, 1460, "Bury " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, in the game's standard look.
 	for (const int c : Camp::Creatable(g_camp, g_rng)) {
@@ -488,6 +497,11 @@ auto FireLayoutJson() -> std::string {
 	kids += "{\"type\":\"TextBoxWidget\",\"name\":\"DeleteHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
 		"\"text\":\"Choose the hero to bury. This can't be undone. Press Delete again to keep everyone.\","
 		"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
+	static constexpr char Large[] = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonLarge";
+	if (!g_camp.heroes.empty()) {
+		kids += FireButton("EnterIdle", -305, 1790, "Enter", act + "enter", Large, "$FontColorGray") + ",";
+		kids += FireButton("EnterReady", -305, 1790, "Enter", act + "enter", Large, "$FontColorRed") + ",";
+	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
 		FireButton("Options", 100, -640, "@d2r:OptionsHD", "PanelManager:OpenPanel:SettingsPanel", Med, "$LightButtonTextColor") + "," +
 		FireButton("Delete", 100, -500, "Delete", act + "delete-mode", Med, "$LightButtonTextColor") + "," +
@@ -522,6 +536,7 @@ auto RegisterFireLayout(const D2RL::PluginContext* context) -> bool {
 	return g_fireReady;
 }
 
+// Shows the right widgets for where the Campfire is: picking a hero, Delete, or making a hero.
 void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 	const std::string panel = FullName(FirePanel);
 	SetVisible(context, panel.c_str(), "DeleteHint", g_deleteMode);
@@ -529,6 +544,27 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 		const std::string cls = Camp::ClassNames[hero.cls];
 		SetVisible(context, panel.c_str(), ("Plate" + cls).c_str(), !g_deleteMode);
 		SetVisible(context, panel.c_str(), ("Bury" + cls).c_str(), g_deleteMode);
+	}
+	const bool ready = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr;
+	SetVisible(context, panel.c_str(), "EnterIdle", !g_createMode && !ready);
+	SetVisible(context, panel.c_str(), "EnterReady", !g_createMode && ready);
+	// The game's own name box, version picker and Create button.
+	SetVisible(context, "CharacterCreatePanel", "InputContainer", g_createMode);
+	SetVisible(context, "CharacterCreatePanel", "GameVersionContainer", g_createMode);
+	SetVisible(context, "CharacterCreatePanel", "ToGame", !Camp::Creatable(g_camp, g_rng).empty());
+}
+
+void __cdecl ShowFireState(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_atFire) {
+		ShowDeleteMode(context);
+	}
+}
+
+void __cdecl OpenCurtain(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (!g_inGame && !g_atFire && (g_wantFire || !g_pendingPlay.empty())) {
+		Open(context, g_curtainPanel, "curtain");
 	}
 }
 
@@ -541,7 +577,11 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	if (Open(context, g_firePanel, "Campfire")) {
 		g_atFire = true;
 		g_deleteMode = false;
+		g_createMode = false;
+		g_chosenHero = -1;
 		ShowDeleteMode(context);
+		Later(context, 300, ShowFireState);  // again once the game's screen has settled
+		Close(context, g_curtainPanel);
 		Log(context, "Camp: the Campfire is open. %s", Describe().c_str());
 	}
 }
@@ -572,6 +612,7 @@ void __cdecl PlayTimedOut(const D2RL::PluginContext* context, void*) noexcept {
 	}
 	Log(context, "Camp: %s was not loaded in time; back to the Campfire.", g_pendingPlay.c_str());
 	g_pendingPlay.clear();
+	Close(context, g_curtainPanel);
 	GoToFire(context, nullptr);
 }
 
@@ -585,8 +626,9 @@ void __cdecl PressPlay(const D2RL::PluginContext* context, void*) noexcept {
 	Later(context, 20000, PlayTimedOut);
 }
 
+// What the hero screen's own Back button sends; "ToFrontEnd" does nothing from that screen.
 void __cdecl BackToMenu(const D2RL::PluginContext* context, void*) noexcept {
-	Dispatch(context, "FrontEndNavigation", "ToFrontEnd");
+	Dispatch(context, "FrontEndNavigation", "ToCharacterSelect");
 }
 
 // A hero at the fire was clicked: load it.
@@ -874,12 +916,17 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 		Log(context, "Camp: the traveler moves on.");
 	} else if (std::strcmp(action, "open-campfire") == 0) {
 		ShowCamp(context, nullptr);
-	} else if (StartsWith(action, "play-")) {
-		PlayHero(context, Camp::ClassFromName(action + 5));
+	} else if (StartsWith(action, "play-")) {  // a name plate: pick that hero
+		g_chosenHero = Camp::ClassFromName(action + 5);
+		g_createMode = false;
+		ShowDeleteMode(context);
+	} else if (std::strcmp(action, "enter") == 0) {
+		PlayHero(context, g_chosenHero);
 	} else if (StartsWith(action, "bury-")) {
 		BuryHero(context, Camp::ClassFromName(action + 5));
 	} else if (std::strcmp(action, "delete-mode") == 0) {
 		g_deleteMode = !g_deleteMode;
+		g_createMode = false;
 		ShowDeleteMode(context);
 	} else if (std::strcmp(action, "to-campfire") == 0) {
 		RecordGear(context, nullptr);
@@ -948,6 +995,22 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 					.flags      = D2RL::Panels::PanelFlags::None,
 					.localId    = FirePanel,
 				};
+				const D2RL::Resources::ResourceRegistration curtainLayout {
+					.structSize = D2RL::Resources::ResourceRegistrationSize,
+					.path       = CurtainLayout,
+					.bytes      = CurtainJson,
+					.byteCount  = static_cast<uint32_t>(sizeof(CurtainJson) - 1),
+				};
+				D2RL::Resources::RegistrationHandle curtainHandle = D2RL::Resources::InvalidHandle;
+				const D2RL::Panels::PanelRegistration curtain {
+					.structSize = D2RL::Panels::PanelRegistrationSize,
+					.flags      = D2RL::Panels::PanelFlags::None,
+					.localId    = CurtainPanel,
+				};
+				if (resources->registerResource(context, &curtainLayout, &curtainHandle) != D2RL::Resources::Result::Success ||
+					g_panels->registerPanel(context, &curtain, &g_curtainPanel) != D2RL::Panels::Result::Success) {
+					g_curtainPanel = D2RL::Panels::InvalidHandle;
+				}
 				if (g_panels->registerPanel(context, &fire, &g_firePanel) != D2RL::Panels::Result::Success) {
 					context->LogWarn("Camp: could not register the Campfire panel; the game's character list is used.");
 					g_fireReady = false;
@@ -1013,10 +1076,16 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				g_atFire = false;
 				Close(context, g_firePanel);
 			}
+			if (std::strcmp(command, "ToGame") == 0) {
+				Close(context, g_curtainPanel);
+			}
 			return false;
 		}
 		if (panelManager && std::strcmp(text, "MainMenuPanel") == 0 && std::strcmp(command, "OpenExclusivePanel") == 0) {
 			g_awaitingMenu = false;  // the menu is loading (again): it reads the live folder now
+			if (g_threads != nullptr && (g_wantFire || !g_pendingPlay.empty())) {
+				g_threads->runOnUiThread(context, OpenCurtain, nullptr);  // the menu is only passed through
+			}
 			return false;
 		}
 		if (panelManager && std::strcmp(text, "CharacterSelectPanel") == 0 && std::strcmp(command, "OpenPanel") == 0) {
@@ -1051,16 +1120,22 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 		}
 		if (std::strcmp(target, "CharacterCreate") == 0) {
 			const int cls = Camp::ClassFromName(text);
-			if (cls >= 0 && g_camp.HeroOf(cls) != nullptr) {  // a hero of ours: a click loads (or buries) it
+			if (cls >= 0 && g_camp.HeroOf(cls) != nullptr) {  // a hero of ours: a click picks (or buries) it
 				if (std::strcmp(command, "Select") == 0) {
 					if (g_deleteMode) {
 						BuryHero(context, cls);
-					} else {
-						PlayHero(context, cls);
+						return true;
 					}
-					return true;
+					g_chosenHero = cls;
+					g_createMode = false;
+					g_selectedClass = -1;
+					ShowDeleteMode(context);
+					Later(context, 100, ShowFireState);
+				} else if (std::strcmp(command, "Unselect") == 0 && cls == g_chosenHero) {
+					g_chosenHero = -1;
+					ShowDeleteMode(context);
 				}
-				return false;  // hover and the rest: let the figure react
+				return false;  // let the figure react
 			}
 			const auto allowed = Camp::Creatable(g_camp, g_rng);
 			if (std::strcmp(command, "Select") == 0 || std::strcmp(command, "Hover") == 0) {
@@ -1069,10 +1144,21 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				}
 				if (std::strcmp(command, "Select") == 0) {
 					g_selectedClass = cls;
+					g_chosenHero = -1;
+					ShowDeleteMode(context);
+					Later(context, 100, ShowFireState);
 				}
 			} else if (std::strcmp(command, "Unselect") == 0 && cls == g_selectedClass) {
 				g_selectedClass = -1;
 			} else if (std::strcmp(command, "Create") == 0) {
+				if (g_atFire && !g_createMode) {  // first press: bring out the name box
+					if (!allowed.empty()) {
+						g_createMode = true;
+						g_chosenHero = -1;
+						ShowDeleteMode(context);
+					}
+					return true;
+				}
 				if (!Camp::State::Has(allowed, g_selectedClass)) {
 					Log(context, "Camp: Create refused; that class can't join right now.");
 					return true;
@@ -1105,6 +1191,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			g_gearNow.clear();
 			g_atFire = false;
 			Close(context, g_firePanel);
+			Close(context, g_curtainPanel);
 			break;
 		case Kind::LocalPlayerReady:
 			g_inGame = true;

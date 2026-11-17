@@ -11,7 +11,8 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    saying who is by its fire.
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
-   with a name plate. Clicking a hero (or its plate) loads it. Options, Delete and Exit Game are
+   with a name plate. Clicking a hero (or its plate) picks it and turns Enter red; Enter loads
+   it. Create brings out the name box for a new hero. Options, Delete and Exit Game are
    on the left; Change save (or Escape) lays the save slots over the fire.
 3. **New heroes** stand at the same fire in the game's standard look, and are made the usual
    way (click, name, Create). Only classes that may join right now are shown:
@@ -101,6 +102,11 @@ Did not work, and what was changed:
 - Hiding a figure of the game's hero screen hides nothing (the 3D figure stays). The game's
   eight figures are now moved out of sight in the layout, and the plugin's panel draws every
   figure that belongs at the fire.
+- Marking the bonfire clickable and giving it a click box was not enough. It is now an ordinary
+  object instead of a picture-only effect, with a click box over the whole camp spot (not yet
+  tried).
+- From the hero screen, "ToFrontEnd" goes nowhere; the Back button's "ToCharacterSelect" does.
+- The game's character list showed for a moment on the way through; a black panel now covers it.
 - Asking the main menu to load again while it is already up does nothing. Slots are now
   switched from the Campfire, which reads the camp itself.
 ## Not yet tried in the game
