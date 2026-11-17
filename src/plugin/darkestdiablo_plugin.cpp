@@ -138,11 +138,11 @@ static constexpr Wave DenWaves[] = {
 
 // Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py): waypoint at tile 5,1 (north). Waves come from the open south strip.
 static constexpr Wave BurialWaves[] = {
-	{ { { "mspawn", "zombie1", 6, { 12, 30 } } }, 1, AnyClass },
+	{ { { "mspawn", "zombie1", 6, { 12, 31 } } }, 1, AnyClass },
 	{ { { "mspawn", "zombie1", 4, { 4, 30 } }, { "mspawn", "skeleton1", 3, { 20, 30 } } }, 2, AnyClass },
 	{ { { "mspawn", "zombie1", 3, { 20, 30 } }, { "mspawn", "skeleton1", 5, { 4, 30 } } }, 2, AnyClass },
 	// Blood Raven and 4 zombies; the wave ends when she dies.
-	{ { { "mspawn", "bloodraven", 1, { 12, 30 } }, { "mspawn", "zombie1", 4, { 12, 29 } } }, 2, BloodRavenClass },
+	{ { { "mspawn", "bloodraven", 1, { 12, 31 } }, { "mspawn", "zombie1", 4, { 12, 29 } } }, 2, BloodRavenClass },
 };
 
 static constexpr Arena Arenas[] = {
