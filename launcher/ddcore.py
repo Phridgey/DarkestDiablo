@@ -348,7 +348,12 @@ def is_dev_link(game_dir):
     try:
         if hasattr(os.path, "isjunction") and os.path.isjunction(p):
             return True
-        return p.is_symlink() or os.path.realpath(p).lower() != os.path.abspath(p).lower()
+        if p.is_symlink():
+            return True
+        # Compare with the resolved parent, so short names (RUNNER~1) or a linked parent folder
+        # higher up don't count; only Mods/darkestdiablo itself being a link does.
+        inside = os.path.join(os.path.realpath(p.parent), p.name)
+        return os.path.normcase(os.path.realpath(p)) != os.path.normcase(inside)
     except OSError:
         return False
 
