@@ -22,9 +22,12 @@ BRANCH = "main"
 WORKSPACE = "darkestdiablo-src"
 KEEP = {"vanilla", "build", ".python"}   # survive a source refresh
 VS_PAGE = "https://visualstudio.microsoft.com/vs/community/"
-# Used only if the downloaded source has no tools/vanilla_files.txt.
+# Used only if the downloaded source has no tools/vanilla_files.txt (main before that list
+# existed). Keep it a copy of that file.
 DEFAULT_VANILLA = ["data/global/excel/", "data/local/lng/strings/", "data/global/dataversionbuild.txt",
-                   "data/global/tiles/act1/", "data/hd/env/preset/act1/"]
+                   "data/global/tiles/act1/", "data/hd/env/preset/act1/",
+                   "data/global/ui/layouts/", "data/hd/items/items.json", "data/hd/objects/objects.json",
+                   "data/hd/objects/env_wood/rogue_bonfire.json", "data/hd/objects/chests/bank.json"]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 

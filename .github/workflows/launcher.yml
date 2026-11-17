@@ -35,6 +35,7 @@ jobs:
         run: tools\build-launcher.cmd
       - name: Check the launcher can run the build scripts (its python.exe mode)
         shell: pwsh
+        timeout-minutes: 5
         run: |
           New-Item -ItemType Directory -Force shim | Out-Null
           Copy-Item build/launcher/DarkestDiabloLauncher.exe shim/python.exe
@@ -44,6 +45,9 @@ jobs:
           'import sys; sys.exit("expected failure")' | Set-Content -Encoding utf8 shim/fail.py
           $p = Start-Process shim/python.exe -ArgumentList "shim/fail.py" -Wait -PassThru -NoNewWindow
           if ($p.ExitCode -ne 1) { Write-Error "a failing script should exit 1, got $($p.ExitCode)"; exit 1 }
+          'raise RuntimeError("boom")' | Set-Content -Encoding utf8 shim/crash.py
+          $p = Start-Process shim/python.exe -ArgumentList "shim/crash.py" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 1) { Write-Error "a crashing script should exit 1 (no dialog), got $($p.ExitCode)"; exit 1 }
           exit 0
       - uses: actions/upload-artifact@v6
         with:

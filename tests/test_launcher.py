@@ -319,3 +319,9 @@ class FullPackageKeepsOtherFiles(Workspace):
         self.write_build(files)
         self.published.clear()  # no earlier manifests, so no delta: a full package
         return self.make_release(version)
+
+
+class VanillaListTests(unittest.TestCase):
+    def test_fallback_matches_the_list_file(self):
+        lines = [l.split("#", 1)[0].strip() for l in (ROOT / "tools" / "vanilla_files.txt").read_text().splitlines()]
+        self.assertEqual([l for l in lines if l], ddmain.DEFAULT_VANILLA)

@@ -539,6 +539,12 @@ def run_as_python():
             return e.code or 0
         print(e.code, file=sys.stderr)
         return 1
+    except BaseException:
+        # Print it like python.exe would. Left unhandled, the windowed .exe shows an error
+        # dialog instead, which would stop a build until someone clicks it away.
+        import traceback
+        traceback.print_exc()
+        return 1
     return 0
 
 
