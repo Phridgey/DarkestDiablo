@@ -48,6 +48,13 @@ class Table:
             raise KeyError(f"{self.path.name}: no row where {column} = {value!r}")
         return hits[0]
 
+    def add_copy(self, column, value, **changes):
+        """Add a row at the end that is a copy of an existing row, with some cells changed."""
+        row = dict(self.first(column, value))
+        row.update(changes)
+        self.rows.append(row)
+        return row
+
     def add_column(self, name, default=""):
         if name not in self.columns:
             self.columns.append(name)
@@ -117,6 +124,7 @@ class Tables:
     def __init__(self):
         self.loaded = {}
         self.layouts = {}
+        self.files = {}
 
     def layout(self, name, change=True):
         """A vanilla menu layout as parsed JSON. With change=False it is only read, not shipped."""
@@ -130,6 +138,20 @@ class Tables:
         return self.layouts[name]
 
     widget = staticmethod(find_widget)
+
+    def data(self, path):
+        """A vanilla JSON file by its path under data/ (e.g. "hd/objects/objects.json"), parsed.
+        It is shipped in the mod with whatever the patches changed."""
+        if path not in self.files:
+            src = VANILLA / path
+            if not src.exists():
+                raise FileNotFoundError(f"{src} is missing. Extract data/{path} from the game (see README.md).")
+            self.files[path] = loads_lenient(src.read_text(encoding="utf-8-sig"))
+        return self.files[path]
+
+    def add_data(self, path, content):
+        """Ship a new JSON file in the mod at this path under data/."""
+        self.files[path] = content
 
     def table(self, name):
         if name not in self.loaded:
@@ -229,6 +251,12 @@ def main():
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(layout, indent=1), encoding="utf-8")
         print(f"wrote: data/global/ui/layouts/{name}.json")
+
+    for path, content in t.files.items():
+        target = OUT / "data" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(content, indent=1), encoding="utf-8")
+        print(f"wrote: data/{path}")
 
     # The Campfire's own panels, and the mod's D2RLoader settings (more shared stash pages).
     import camp_layouts

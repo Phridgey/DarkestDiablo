@@ -89,7 +89,8 @@ menu), `dd-traveler` (in town: a traveler now).
 ## Building
 
 The build changes two of the game's menu layouts and reads item models, so `vanilla/` needs
-`data/global/ui/layouts` and `data/hd/items/items.json`, extracted the same way as the tables. Nothing of Blizzard's is in the repo.
+`data/global/ui/layouts`, `data/hd/items/items.json`, `data/hd/objects/objects.json` and
+`data/hd/objects/env_wood/rogue_bonfire.json`, extracted the same way as the tables. Nothing of Blizzard's is in the repo.
 
 ## Tried in the game so far
 
@@ -105,6 +106,9 @@ Did not work, and what was changed:
 - Marking the bonfire clickable and giving it a click box was not enough. It is now an ordinary
   object instead of a picture-only effect, with a click box over the whole camp spot (not yet
   tried).
+- Even as an ordinary object with every setting of a clickable one, the fire ignored the mouse.
+  The town's fire is now a new object, `CampBonfire`: a copy of the stash chest's row that
+  wears the bonfire's look (not yet tried). In the old graphics (G key) it shows as a chest.
 - From the hero screen, "ToFrontEnd" goes nowhere; the Back button's "ToCharacterSelect" does.
 - The game's character list showed for a moment on the way through; a black panel now covers it.
 - Asking the main menu to load again while it is already up does nothing. Slots are now

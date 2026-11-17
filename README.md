@@ -57,7 +57,8 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
   character list staged at the campfire, recruiting on the hero screen (a new save offers every
   class, after that only classes a traveler brought), travelers in town, permanent death, and a
   bigger shared stash per save. The town bonfire opens the stash, which has a Campfire button.
-  The build needs the game's menu layouts: extract `data/global/ui/layouts` into `vanilla/`.
+  The build needs the game's menu layouts: extract `data/global/ui/layouts` into `vanilla/`
+  (and the few other files `docs/campfire.md` lists under Building).
   Console: `dd-camp`, `dd-slot <1-3>`, `dd-traveler`.
 - **Console** (Ctrl + backtick, with `enable_console = true` in `d2rloader/config/d2rloader.toml`):
   `dd` (plugin running?), `dd-tp` (TP scroll), `dd-waves` (restart the waves of the arena you

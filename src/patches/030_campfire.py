@@ -1,26 +1,34 @@
 """The Campfire outside the plugin: the town bonfire, the camp screen, the stash button.
 
-- Bonfire: the Rogue Encampment's fire becomes clickable and opens the stash, like the stash
-  chest (OperateFn 32). The plugin can't see a click on a world object, only UI messages, so the
-  bonfire borrows the one town object whose window we can put a button on.
+- Bonfire: the Rogue Encampment's fire is swapped for a new object, CampBonfire. It is the
+  stash chest in every way the game cares about (a copy of the chest's row), so it can be
+  clicked and opens the stash, but it wears the bonfire's look. The plugin can't see a click
+  on a world object, only UI messages, so the bonfire borrows the one town object whose window
+  we can put a button on. Changing the old fire's own row never made it clickable.
 - Stash window: a Campfire button that opens the plugin's roster panel.
 - Hero screen: new title. It is the Campfire: the game's own figures are moved out of sight and
   the plugin draws the camp's figures (src/plugin/campfire.cpp).
 """
+import copy
 
 
 def patch(t):
-    fire = t.table("objects").first("Class", "RogueBonfire")
-    for mode in range(8):  # whichever state the town's fire is in
-        fire[f"Selectable{mode}"] = "1"
-    fire["OperateFn"] = "32"
-    # A click box around the fire ring, like the Tree of Inifuss has. Without one the game
-    # tests the mouse against the old flame picture, and the fire could not be clicked.
-    # The box covers the whole camp spot: the stone ring and the log benches around it.
-    fire.update({"Left": "-220", "Top": "-170", "Width": "440", "Height": "320"})
-    # The fire was a picture-only effect that the game does not let the player point at. As an
-    # ordinary object, kept in step with the game like the stash chest, it can be clicked.
-    fire.update({"EnvEffect": "0", "Sync": "1"})
+    # The new object: the stash chest's row under a new name. No stash mark on the map.
+    t.table("objects").add_copy("Class", "Bank", **{
+        "Class": "CampBonfire", "Name": "fire", "*Description": "Camp bonfire (opens the stash)",
+        "*ID": str(len(t.table("objects").rows) - 1), "AutoMap": "0"})
+    # Its look in the game's new graphics: the list of looks follows the table's row order, so
+    # the new one goes last, and it uses the old bonfire's model, flames and sound.
+    looks = t.data("hd/objects/objects.json")
+    looks["camp_bonfire"] = {"asset_path": "env_wood"}
+    look = copy.deepcopy(t.data("hd/objects/env_wood/rogue_bonfire.json"))
+    look["name"] = "camp_bonfire"
+    t.add_data("hd/objects/env_wood/camp_bonfire.json", look)
+    del t.files["hd/objects/env_wood/rogue_bonfire.json"]  # unchanged, not shipped
+    # The town's maps place "object 2 of Act 1" at the fire. That is now the new object.
+    for row in t.table("objpreset").rows:
+        if row.get("Act") == "1" and row.get("ObjectClass") == "RogueBonfire":
+            row["ObjectClass"] = "CampBonfire"
 
     bank = t.layout("bankexpansionlayouthd")
     bank["children"].append({
