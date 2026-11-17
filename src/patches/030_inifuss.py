@@ -11,6 +11,7 @@ unused cave levels so their world position is fixed (outdoor levels move every g
   crashed the game when linked to a hand-made outdoor map; crypt stairs work (as in the Burial
   Grounds).
 It gets the waypoint: Act 1 slot 3, taken from the Dark Wood, also in actinfo.txt (waypoint4).
+The tree is only scenery: it can't be clicked, so it never gives the Scroll of Inifuss.
 """
 
 ARENA_ID, ENTRY_ID = "11", "12"      # "Act 1 - Cave 4" / "Act 1 - Cave 5", reused
@@ -98,3 +99,8 @@ def patch(t):
     prest.rows[-1]["Dt1Mask"] = str(mask)
     prest.rows[-1]["Scan"] = "1"            # scan the map for warp tiles (the vanilla tree has none)
     prest_row(prest, "Act 1 - Crypt Prev E", "Act 1 - Darkest Diablo Inifuss Entry", ENTRY_ID, ENTRY_SIZE, ENTRY_MAP)
+
+    tree = t.table("objects").first("Class", "InifussTree")   # scenery only: no Scroll of Inifuss
+    tree["OperateFn"] = "0"
+    for k in range(8):
+        tree[f"Selectable{k}"] = "0"
