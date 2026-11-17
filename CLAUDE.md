@@ -31,3 +31,21 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
 
 ## Writing style
 Plain, jargon-free language in docs and commit messages.
+
+## Lessons learned (map and plugin work)
+- Close the game before `tools\build-plugin.cmd`: the running game locks the plugin DLL.
+- Outdoor levels (DrlgType 3, e.g. the Graveyard) are placed by the outdoor map builder somewhere
+  new every game, so spawn coordinates can't be known. Build arenas on unused cave levels
+  (fixed `OffsetX/Y`, own `Layer`) and copy the look from the real level's row.
+- World sub-tile = (level OffsetX/Y + map tile) * 5 + 2. `location player` prints yours.
+- Many tiles refuse monster spawns ("Monster not created") even where the map looks open, and
+  the game only spawns near the player. Test every spawn spot in game with
+  `cheat mspawn <id>,<n> @ x,y` before putting it in the plugin.
+- Spawning right on arrival fails while the map loads; wait about 1 s.
+- Stairs must use Blizzard's pairing: the graveyard's crypt door pairs with crypt stairs
+  (lvlwarp 6 and 8). Cave stairs there crashed the game.
+- Plugin panel buttons: use the ModalButton style (pressed/hovered/disabled frames, `textString`).
+  The game drops button messages with targets it doesn't know, so send a real command
+  (`PanelManager:OpenPanel:darkestdiablo/travel-<level>`) and catch it in the UI-message listener.
+- `ExecuteConsoleCommand` returns true when the command was accepted, not when it worked; check
+  the in-game console for errors.

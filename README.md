@@ -37,13 +37,38 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 ## What works so far
 - **Waypoints:** the plugin unlocks every waypoint when a character enters a game, so the next
   stop is always reachable ("scouted ahead"). Per-stop unlocks wait for a waypoint service in the
-  SDK (D2RLoader/PluginSDK issue #9). The Den of Evil takes the Cold Plains waypoint slot.
-- **Den of Evil arena:** one room. Arriving starts 5 waves of fallen, zombies and fallen shamans,
-  then Corpsefire and his pack. When that wave is dead, a Town Portal scroll drops.
+  SDK (D2RLoader/PluginSDK issue #9). Act I slots: 1 = Den of Evil (was Cold Plains),
+  2 = Burial Grounds entry (was Stony Field). The waypoint menu comes from `actinfo.txt` in 3.x.
+- **Arenas** (plugin, `Arenas` table): arriving starts the waves, wave 1 after 1 s, then one every
+  10 s whatever is still alive. When the last wave has spawned and everything is dead (the boss
+  included, any kill order), a Town Portal scroll goes into the inventory.
+  - **Den of Evil:** one room (`src/maps/den_of_evil.json`). Fallen, zombies and shamans, then
+    Corpsefire and his pack.
+  - **Burial Grounds:** you arrive by waypoint in a small crypt room, prep, and take the stairs
+    up. You come out at the graveyard's crypt door; the waves come at the plaza by the hanging
+    tree: zombies and skeletons, then Blood Raven with zombies. Built on two unused cave levels
+    (9 = arena, 10 = entry room), because outdoor levels are placed somewhere new every game.
+    See `src/patches/020_burial_grounds.py`.
+- **Route map** (`dd-map`): a panel listing the Act I stops. Den and Burial Grounds are
+  clickable and send you there; the rest are greyed out. The layout is a mod file
+  (`src/data/data/global/ui/layouts/darkestdiablo/RouteMaphd.json`), so changing it needs only a
+  game restart, not a plugin rebuild.
 - **Console** (Ctrl + backtick, with `enable_console = true` in `d2rloader/config/d2rloader.toml`):
-  `dd` (plugin running?), `dd-tp` (drop a TP scroll), `dd-waves` (restart the Den waves).
+  `dd` (plugin running?), `dd-tp` (TP scroll), `dd-waves` (restart the waves of the arena you
+  stand in), `dd-map` (route map). Handy for testing: `location player` prints your position;
+  `cheat mspawn zombie1,3 @ x,y` tests a spawn spot; `goto <level id>`; `god 1`.
 
 `tools\set_waypoints.py` still exists for editing a closed save's waypoints by hand.
+
+## Next up
+- Town waypoint opens the route map instead of Blizzard's list: the click sends
+  `PanelManager:OpenPanel:WaypointsPanelExpansion`; the plugin's UI-message listener can
+  consume it and open the map.
+- Draw the map as the tree from the design sketch (forks side by side, lines between nodes).
+- Blood Raven's fork (Blood Raven MF / Mausoleum / Crypt), then Tristram.
+- Tuning: lighter Den waves; black edges around single-room arenas (see `docs/design.md`).
+- Rename the repo folder on Fabrizio's PC from `E:\Dev\mephistorghast` to `darkestdiablo`
+  (blocked while a Claude session has it open), then rerun `tools\link.cmd`.
 
 ## Every change
 - Data or patches changed: `python tools\build.py`

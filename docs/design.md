@@ -67,7 +67,15 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - When can a character attempt a blaze of glory?
 - Does a recruit start at level 1? Do the 3 offers leave out classes already in the circle?
 
-## Arena stops (decided 2026-11-17)
+## Arena stops (decided 2026-11-17, updated)
+- Waves come on a timer: wave 1 shortly after arrival, then one every 10 s, whatever is still
+  alive. The stop is cleared when the last wave has spawned and everything is dead, the boss
+  included, in any kill order (players may go for the boss first).
+- The fight happens where the player can see it (e.g. Burial Grounds: the plaza by the hanging
+  tree), never in a far corner.
+- The player needs time to buff and prep: where possible, arrive in an entry room and walk
+  through a gate or stairs into the arena; that starts the waves. No short timers on arrival.
+- Burial Grounds packs: +50% over the first version.
 - The player arrives by waypoint into one room, and the fight stays in that room.
 - Example, Den of Evil: 5 waves of about 10 monsters, then a final wave with Corpsefire.
 - The last kill drops a Town Portal scroll. That is the way home.
@@ -77,3 +85,8 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - Den arena: the room's open edge shows black nothingness; cap it with walls or a closing room.
 - Den arena: the wave feel is right, but too dense for the first quest, when the player has no
   area damage yet. Lighter early waves, heavier later in the run.
+
+## Route map (the waypoint "map")
+- The town waypoint opens a map of the act's route (see the sketch: Den, Burial, fork x2,
+  Tristram, fork x2, Catacombs). The player picks the next stop there.
+- First version: a list panel (`dd-map`). Next: open it from the waypoint, draw it as a tree.
