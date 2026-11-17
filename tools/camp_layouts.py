@@ -7,12 +7,14 @@ plugin shows the right ones. Buttons talk to the plugin with a made-up panel nam
 PanelManager:OpenPanel:darkestdiablo/<action> (see campfire.cpp, OnAction).
 """
 CLASSES = ["Amazon", "Sorceress", "Necromancer", "Paladin", "Barbarian", "Druid", "Assassin", "Warlock"]
-FRAME = "Panel\\Modals\\Modal_No_Title_BG"   # about 1254 wide; buttons are 300 wide
+FRAME = "Panel\\Modals\\Modal_No_Title_BG"   # about 1226 wide and 428 tall
+BUTTON_W, BUTTON_H = 513, 92                # the ModalButton picture at full size (measured in game)
 
 
-def button(name, x, y, text, action=None, message=None, disabled=False, color="$FontColorWhite"):
+def button(name, x, y, text, action=None, message=None, disabled=False, color="$FontColorWhite", scale=1.0):
+    """`scale` shrinks the whole button, text included, so several fit side by side in the frame."""
     fields = {
-        "rect": {"x": x, "y": y},
+        "rect": {"x": x, "y": y, "scale": scale} if scale != 1.0 else {"x": x, "y": y},
         "filename": "Panel\\Modals\\ModalButton",
         "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
         "pressedFrame": 1,
@@ -112,25 +114,29 @@ def save_slots():
 
 
 def traveler():
-    kids = [text("Heading", 78, 60, 1076, 70, "A traveler joins your camp", "$StyleSettingsTitle"),
-            text("Help", 150, 140, 956, 110, "Choose who stays by the fire. They wait at the Campfire as a new hero.")]
-    for place, x in enumerate((120, 477, 834)):
+    # Three offers side by side: each button at 0.7 size is about 360 wide.
+    scale = 0.7
+    kids = [text("Heading", 78, 50, 1076, 70, "A traveler joins your camp", "$StyleSettingsTitle"),
+            text("Help", 135, 125, 956, 90, "Choose who stays by the fire. They wait at the Campfire as a new hero.")]
+    for place, x in enumerate((55, 433, 811)):
         for cls in CLASSES:
-            kids.append(button(f"Offer{place}{cls}", x, 275, cls, action=f"recruit-{cls}"))
-    kids.append(button("NotNow", 477, 385, "Not now", action="traveler-later"))
+            kids.append(button(f"Offer{place}{cls}", x, 225, cls, action=f"recruit-{cls}", scale=scale))
+    kids.append(button("NotNow", 433, 320, "Not now", action="traveler-later", scale=scale))
     return panel("Traveler", kids)
 
 
 def campfire():
-    kids = [text("Heading", 78, 50, 1076, 70, "The Campfire", "$StyleSettingsTitle"),
-            text("Help", 150, 120, 956, 80, "By the fire, waiting to join (new), or not in camp (grey).")]
+    # Eight classes in two rows of four: each button at 0.56 size is about 287 wide and 52 tall.
+    scale = 0.56
+    kids = [text("Heading", 78, 40, 1076, 70, "The Campfire", "$StyleSettingsTitle"),
+            text("Help", 135, 105, 956, 60, "By the fire, waiting to join (new), or not in camp (grey).")]
     for i, cls in enumerate(CLASSES):
-        x, y = 27 + (i % 4) * 300, 205 + (i // 4) * 85
-        kids.append(button(f"Hero{cls}", x, y, cls))
-        kids.append(button(f"Recruit{cls}", x, y, f"{cls} (new)", color="$FontColorGoldYellow"))
-        kids.append(button(f"Locked{cls}", x, y, cls, disabled=True, color="$FontColorLightGray"))
-    kids.append(button("ToCampfire", 327, 390, "Go to the fire", action="to-campfire"))
-    kids.append(button("Close", 627, 390, "@d2r:strClose", message="PanelManager:ClosePanel:darkestdiablo/Campfire"))
+        x, y = 30 + (i % 4) * 293, 185 + (i // 4) * 62
+        kids.append(button(f"Hero{cls}", x, y, cls, scale=scale))
+        kids.append(button(f"Recruit{cls}", x, y, f"{cls} (new)", color="$FontColorGoldYellow", scale=scale))
+        kids.append(button(f"Locked{cls}", x, y, cls, disabled=True, color="$FontColorLightGray", scale=scale))
+    kids.append(button("ToCampfire", 255, 325, "Go to the fire", action="to-campfire", scale=0.7))
+    kids.append(button("Close", 625, 325, "@d2r:strClose", message="PanelManager:ClosePanel:darkestdiablo/Campfire", scale=0.7))
     return panel("Campfire", kids)
 
 
