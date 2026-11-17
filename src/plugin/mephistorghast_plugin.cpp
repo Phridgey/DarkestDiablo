@@ -6,8 +6,15 @@
 // - Console commands (Ctrl + ` with enable_console on in d2rloader/config/d2rloader.toml):
 //     mephisto     show that the plugin is running
 //     mephisto-tp  drop a Town Portal scroll now (for testing)
+// - Waypoints: when the player is ready in a game, the plugin runs D2RLoader's "waypoints"
+//   command, so a new character can reach the Den by waypoint on first load.
+//   For now this unlocks every waypoint. Per-stop unlocks wait for a waypoint service
+//   (D2RLoader/PluginSDK issue #9).
 
 #include <D2RLPlugin/api.h>
+#include <D2RLPlugin/core_exports.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <cstdio>
 
 static constexpr D2RL::PluginInfo MephistorghastInfo {
@@ -15,7 +22,7 @@ static constexpr D2RL::PluginInfo MephistorghastInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "mephistorghast",
 	.name        = "Mephistorghast",
-	.version     = "0.2.0",
+	.version     = "0.3.0",
 	.author      = "Mephistorghast team",
 	.description = "Roguelite rules for the Mephistorghast mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -65,6 +72,21 @@ static void __cdecl DropTownPortal(const D2RL::PluginContext* context, void*) no
 	context->LogWarn(message);
 }
 
+// Runs D2RLoader's "waypoints" console command through D2RCore's ExecuteConsoleCommand export.
+// Gameplay listeners already run on the UI thread, which is where this call must happen.
+static void UnlockWaypoints(const D2RL::PluginContext* context) noexcept {
+	namespace CE = D2RL::CoreExports;
+	const HMODULE core = GetModuleHandleA(CE::CoreDllName);
+	const auto execute = core == nullptr ? nullptr :
+		reinterpret_cast<CE::ExecuteConsoleCommandFn>(GetProcAddress(core, CE::ExecuteConsoleCommandInfo.name));
+	if (execute == nullptr) {
+		context->LogWarn("Waypoints: ExecuteConsoleCommand not found in D2RCore.");
+		return;
+	}
+	const bool ok = execute("waypoints");
+	context->LogInfo(ok ? "Waypoints: unlocked." : "Waypoints: the command did not run.");
+}
+
 static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::GameplayEvent* event, void*) noexcept {
 	if (context == nullptr || !D2RL::Lifecycle::HasGameplayEventField(event, D2RL::Lifecycle::GameplayEventRequiredSize)) {
 		return;
@@ -72,6 +94,10 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
 	if (event->kind == Kind::LevelChanged) {
 		g_levelId = event->currentValue;
+		return;
+	}
+	if (event->kind == Kind::LocalPlayerReady) {
+		UnlockWaypoints(context);
 		return;
 	}
 	if (event->kind == Kind::GameLeft) {
@@ -92,7 +118,7 @@ static auto MephistoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContex
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Mephistorghast plugin 0.2.0 is running.");
+	command->plugin->WriteConsoleMessage("Mephistorghast plugin 0.3.0 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -125,7 +151,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	}
 
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
-	for (const auto kind : { Kind::LevelChanged, Kind::GameLeft, Kind::QuestCompleted }) {
+	for (const auto kind : { Kind::LocalPlayerReady, Kind::LevelChanged, Kind::GameLeft, Kind::QuestCompleted }) {
 		const D2RL::Lifecycle::GameplayEventListener listener {
 			.structSize = D2RL::Lifecycle::GameplayEventListenerSize,
 			.kind       = kind,
@@ -138,7 +164,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		}
 	}
 
-	context->LogInfo("Mephistorghast plugin 0.2.0 loaded.");
+	context->LogInfo("Mephistorghast plugin 0.3.0 loaded.");
 	return context->RegisterConsoleCommand("mephisto", MephistoCommand, "Show that the Mephistorghast plugin is running.") &&
 		context->RegisterConsoleCommand("mephisto-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).");
 }
