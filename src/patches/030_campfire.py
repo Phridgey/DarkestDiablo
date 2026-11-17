@@ -4,12 +4,9 @@
   chest (OperateFn 32). The plugin can't see a click on a world object, only UI messages, so the
   bonfire borrows the one town object whose window we can put a button on.
 - Stash window: a Campfire button that opens the plugin's roster panel.
-- Main menu (the character list): staged at the campfire instead of the five act backdrops, so
-  the selected hero stands by the fire in the gear it really wears.
-- Hero screen: new title; the game's own campfire with the eight classes.
+- Hero screen: new title. It is the Campfire: the plugin adds the camp's heroes to it
+  (src/plugin/campfire.cpp), so the game's character list is no longer used.
 """
-# Where the selected hero stands: between the Barbarian and the Paladin, a step toward the fire.
-HERO_SPOT = {"position": [1051.5, 0.1, 115.5], "yawDegrees": 40}
 
 
 def patch(t):
@@ -36,19 +33,6 @@ def patch(t):
         },
     })
 
-    # The hero screen's camera looks at the campfire; give the same view to the character list.
+    # The hero screen is the Campfire: the plugin draws the camp's heroes on it.
     create = t.layout("charactercreatepanelhd")
-    fire_camera = t.widget(create, "Camera")["fields"]
-    menu = t.layout("mainmenupanelhd")
-    for act in range(1, 6):
-        camera = t.widget(menu, f"Act{act}Camera")["fields"]
-        keep = {k: camera[k] for k in ("activateOnMessage", "activateOnOpened") if k in camera}
-        camera.clear()
-        camera.update({k: v for k, v in fire_camera.items() if k != "activateOnOpened"})
-        camera.update(keep)
-        t.widget(menu, f"Act{act}Player")["fields"].update(HERO_SPOT)
-    t.widget(menu, "Player")["fields"].update(HERO_SPOT)
-
-    t.widget(create, "Title")["fields"]["text"] = "Who joins the fire?"
-    select = t.layout("characterselectpanelhd")
-    t.widget(select, "CreateCharacter")["fields"]["textString"] = "Recruit"
+    t.widget(create, "Title")["fields"]["text"] = "The Campfire"

@@ -48,16 +48,50 @@ def panel(name, children, frame_y=-270, backdrop=False):
             "fields": {"anchor": {"x": 0.5, "y": 0.5}, "priority": 9000}, "children": kids}
 
 
+GOLD_TITLE = {"fontColor": "$FontColorGoldYellow", "spacing": "$ReducedSpacing", "alignment": {"h": "center"},
+              "pointSize": "$XExtraLargeFontSize", "dropShadow": "$DefaultDropShadow"}
+
+
+def line(name, y, value, color="$FontColorLightGray", size="$LargeFontSize"):
+    """A centered line of text across the middle of the screen (main menu look)."""
+    return {"type": "TextBoxWidget", "name": name,
+            "fields": {"rect": {"x": -900, "y": y, "width": 1800, "height": 70}, "text": value,
+                       "style": {"fontColor": color, "alignment": {"h": "center"}, "pointSize": size,
+                                 "dropShadow": "$DefaultDropShadow"}}}
+
+
+def menu_button(name, x, y, text, message, large=False):
+    """A button in the main menu's own style (the game's Play and Options buttons)."""
+    art = "FrontEnd_ButtonLarge" if large else "FrontEnd_ButtonMed"
+    return {"type": "ButtonWidget", "name": name,
+            "fields": {"rect": {"x": x, "y": y}, "filename": f"FrontEnd\\HD\\Final\\{art}",
+                       "textString": text, "onClickMessage": message,
+                       "pressedFrame": 1, "hoveredFrame": 3, "disabledFrame": 2,
+                       "text/style": "$StyleFEButtonText",
+                       "pointSize": "$ExtraLargeFontSize" if large else "$LargeFontSize",
+                       "textColor": "$LightButtonTextColor"}}
+
+
 def save_slots():
-    kids = [text("Heading", 78, 60, 1076, 70, "Choose your save", "$StyleSettingsTitle")]
+    """The first screen: the game's logo look. A dark screen, a gold title, and three of the main
+    menu's large buttons, each with a line saying who is by that save's fire."""
+    kids = [{"type": "RectangleWidget", "name": "Backdrop",
+             "fields": {"anchor": {"x": -0.5}, "fitToScreen": True, "color": [0.0, 0.0, 0.0, 0.93]},
+             "children": [{"type": "ClickCatcherWidget", "name": "catcher", "fields": {"fitToParent": True}}]},
+            {"type": "TextBoxWidget", "name": "Heading",
+             "fields": {"rect": {"x": -900, "y": 430, "width": 1800, "height": 90}, "fontType": "30pt",
+                        "text": "Choose your save", "style": GOLD_TITLE}},
+            line("Sub", 540, "Each save is its own camp, with its own heroes and stash.")]
     for slot in (1, 2, 3):
-        y = 150 + (slot - 1) * 100
-        kids.append(button(f"Slot{slot}", 90, y, f"Save {slot}", action=f"slot-{slot}"))
-        kids.append(text(f"Slot{slot}Summary", 420, y + 5, 760, 40, f"@darkestdiablo:Slot{slot}Summary"))
-        kids.append(text(f"Slot{slot}Last", 420, y + 45, 760, 36, "Last played"))
-    kids.append(text("RestartNotice", 150, 200, 956, 200,
-                     "This save is ready. Close the game and start it again to play it."))
-    return panel("SaveSlots", kids, backdrop=True)
+        y = 720 + (slot - 1) * 330
+        kids.append(menu_button(f"Slot{slot}", -305, y, f"Save {slot}",
+                                f"PanelManager:OpenPanel:darkestdiablo/slot-{slot}", large=True))
+        kids.append(line(f"Slot{slot}Summary", y + 150, f"@darkestdiablo:Slot{slot}Summary", "$FontColorWhite"))
+        kids.append(line(f"Slot{slot}Last", y + 210, "Last played", "$FontColorGoldYellow", "$MediumFontSize"))
+    kids.append(line("RestartNotice", 1740, "This save is ready. Close the game and start it again to play it.", "$FontColorWhite"))
+    kids.append(menu_button("Exit", -235, 1840, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit"))
+    return {"type": "Panel", "name": "darkestdiablo/SaveSlots",
+            "fields": {"anchor": {"x": 0.5}, "fitToParent": True, "priority": 9000}, "children": kids}
 
 
 def traveler():

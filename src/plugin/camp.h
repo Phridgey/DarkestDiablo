@@ -64,6 +64,7 @@ struct Hero {
 	std::string name;       // the save's file name without ".d2s"
 	int         cls   = -1;
 	int         level = 1;
+	std::string gear;       // what it wore when last seen: "<body spot>:<item code>" words, e.g. "4:hax 5:buc"
 };
 
 struct State {
@@ -170,7 +171,7 @@ inline void Adopt(State& state, const std::string& name, int cls, int level) {
 	State::Drop(state.recruits, cls);
 	State::Drop(state.fallen, cls);
 	state.offer.clear();
-	state.heroes.push_back({ name, cls, level });
+	state.heroes.push_back({ name, cls, level, {} });
 }
 
 inline void MarkFallen(State& state, const std::string& name) {
@@ -188,13 +189,19 @@ inline void MarkFallen(State& state, const std::string& name) {
 
 // ---- camp.txt ----------------------------------------------------------------------------
 // One fact per line: "started 1", "hero <Class> <level> <name>", "recruit <Class>",
-// "fallen <Class>", "offer <Class>". Unknown lines are ignored.
+// "fallen <Class>", "offer <Class>", "gear <Class> <spot>:<code> ..." (after its hero line).
+// Unknown lines are ignored.
 
 inline auto Serialize(const State& state) -> std::string {
 	std::ostringstream out;
 	out << "version 1\n" << "started " << (state.started ? 1 : 0) << "\n";
 	for (const auto& hero : state.heroes) {
 		out << "hero " << ClassNames[hero.cls] << " " << hero.level << " " << hero.name << "\n";
+	}
+	for (const auto& hero : state.heroes) {
+		if (!hero.gear.empty()) {
+			out << "gear " << ClassNames[hero.cls] << " " << hero.gear << "\n";
+		}
 	}
 	for (const int c : state.recruits) { out << "recruit " << ClassNames[c] << "\n"; }
 	for (const int c : state.fallen)   { out << "fallen " << ClassNames[c] << "\n"; }
@@ -219,6 +226,15 @@ inline auto Parse(const std::string& text) -> State {
 			if (hero.cls >= 0 && !hero.name.empty() && state.HeroOf(hero.cls) == nullptr) {
 				hero.level = std::clamp(hero.level, 1, 99);
 				state.heroes.push_back(hero);
+			}
+		} else if (key == "gear") {
+			std::string rest;
+			std::getline(words, rest);
+			const size_t start = rest.find_first_not_of(' ');
+			for (auto& hero : state.heroes) {
+				if (hero.cls == ClassFromName(value) && start != std::string::npos) {
+					hero.gear = rest.substr(start);
+				}
 			}
 		} else if (key == "recruit" || key == "fallen" || key == "offer") {
 			const int cls = ClassFromName(value);
@@ -376,6 +392,68 @@ inline auto SwitchSlot(const fs::path& live, int to, std::string& error) -> bool
 	return true;
 }
 
+// ---- The bench ----------------------------------------------------------------------------
+// The game's Play button loads the hero that is selected in its own list. To load the hero that
+// was clicked at the campfire, every other hero's files wait in camp/slot<N>/bench/ while the
+// menu loads, so the list holds one hero only. They come back before the camp is looked at again.
+
+inline auto BenchDir(const fs::path& live, int slot) -> fs::path {
+	return SlotDir(live, slot) / "bench";
+}
+
+inline auto HeroFiles(const fs::path& dir, const std::string& name) -> std::vector<fs::path> {
+	std::vector<fs::path> files;
+	std::error_code ec;
+	for (const auto& entry : fs::directory_iterator(dir, ec)) {
+		if (entry.is_regular_file(ec) && !IsSharedFile(entry.path()) && Lower(entry.path().stem().string()) == Lower(name)) {
+			files.push_back(entry.path());
+		}
+	}
+	return files;
+}
+
+// Benches every hero of the camp except `keep`.
+inline auto Bench(const fs::path& live, int slot, const State& state, const std::string& keep, std::string& error) -> bool {
+	std::vector<fs::path> files;
+	for (const auto& hero : state.heroes) {
+		if (Lower(hero.name) != Lower(keep)) {
+			const auto own = HeroFiles(live, hero.name);
+			files.insert(files.end(), own.begin(), own.end());
+		}
+	}
+	return files.empty() || MoveAll(files, BenchDir(live, slot), error);
+}
+
+// Brings benched files back. A file that is already in the live folder wins; the benched copy
+// then stays where it is.
+inline auto Unbench(const fs::path& live, int slot) -> int {
+	int left = 0;
+	std::error_code ec;
+	std::vector<fs::path> files;
+	for (const auto& entry : fs::directory_iterator(BenchDir(live, slot), ec)) {
+		if (entry.is_regular_file(ec)) {
+			files.push_back(entry.path());
+		}
+	}
+	for (const auto& file : files) {
+		const fs::path target = live / file.filename();
+		if (fs::exists(target, ec)) {
+			++left;
+			continue;
+		}
+		fs::rename(file, target, ec);
+		if (ec) {
+			++left;
+		}
+	}
+	return left;
+}
+
+inline auto Benched(const fs::path& live, int slot, const std::string& name) -> bool {
+	std::error_code ec;
+	return fs::exists(BenchDir(live, slot) / (name + ".d2s"), ec);
+}
+
 // What a save file says about its character. Only trusted when it looks right (`ok`).
 struct SaveInfo {
 	bool ok       = false;
@@ -416,13 +494,7 @@ inline auto HeroNames(const fs::path& live) -> std::vector<std::string> {
 
 // Moves every file of hero `name` out of the live folder into the graveyard.
 inline auto Bury(const fs::path& live, int slot, const std::string& name, std::string& error) -> bool {
-	std::vector<fs::path> files;
-	std::error_code ec;
-	for (const auto& entry : fs::directory_iterator(live, ec)) {
-		if (entry.is_regular_file(ec) && !IsSharedFile(entry.path()) && Lower(entry.path().stem().string()) == Lower(name)) {
-			files.push_back(entry.path());
-		}
-	}
+	const std::vector<fs::path> files = HeroFiles(live, name);
 	char stamp[32] {};
 	const std::time_t now = std::time(nullptr);
 	std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));
@@ -444,13 +516,12 @@ inline auto Reconcile(const fs::path& live, int slot, State& state, const Hints&
 	const auto onDisk = [&](const std::string& name) {
 		return std::any_of(names.begin(), names.end(), [&](const std::string& n) { return Lower(n) == Lower(name); });
 	};
-	// Heroes whose save is gone (deleted in the menu): they leave the camp; the class locks.
-	for (auto it = state.heroes.begin(); it != state.heroes.end();) {
-		if (!onDisk(it->name)) {
-			log.push_back(it->name + " (" + ClassNames[it->cls] + ") has no save any more; removed from the camp.");
-			it = state.heroes.erase(it);
-		} else {
-			++it;
+	// Heroes whose save is gone (deleted): that counts as a death. The class locks and is
+	// remembered as fallen. A hero waiting on the bench is not gone.
+	for (const auto& hero : std::vector<Hero>(state.heroes)) {
+		if (!onDisk(hero.name) && !Benched(live, slot, hero.name)) {
+			MarkFallen(state, hero.name);
+			log.push_back(hero.name + " the " + ClassNames[hero.cls] + " was deleted. That counts as a death: the class is locked again.");
 		}
 	}
 	// Saves the camp doesn't know: a hero that was just made.

@@ -140,6 +140,48 @@ class Tables:
         return self.loaded[name]
 
 
+def write_camp_data(t, target):
+    """What the plugin needs to draw saved heroes at the campfire, one fact per line:
+    "spot <Class> <x> <y> <width> <height> <px> <py> <pz> <yaw>"  where a class stands on the hero screen
+    "item <code> w|s <model file>"                                a weapon or shield and its model
+    "item <code> b <torso> <legs> <right arm> <left arm> <pad 1> <pad 2>"  body armor, 0 light to 2 heavy
+    Read from the vanilla files at build time, so nothing of Blizzard's is in the repo."""
+    lines = []
+    create = t.layout("charactercreatepanelhd", change=False)
+    for child in create["children"]:
+        if child.get("type") == "HDCharacterSelectorWidget":
+            f = child["fields"]
+            r, pos = f["rect"], f["player/position"]
+            lines.append("spot %s %d %d %d %d %s %s %s %s" % (
+                f["player/playerClass"], r["x"], r["y"], r["width"], r["height"], pos[0], pos[1], pos[2], f["player/yawDegrees"]))
+    models = {}
+    items_json = VANILLA / "hd" / "items" / "items.json"
+    if items_json.exists():
+        parsed = loads_lenient(items_json.read_text(encoding="utf-8-sig"))
+        for entry in (parsed if isinstance(parsed, list) else [parsed]):
+            for code, value in entry.items():
+                if isinstance(value, dict) and value.get("asset"):
+                    models[code] = value["asset"]
+    else:
+        print("note: vanilla/data/hd/items/items.json is missing; heroes at the campfire show armor weight only.")
+    try:
+        slots = {r["Code"]: r.get("BodyLoc1", "") for r in t.table("itemtypes").rows}
+        for r in t.table("weapons").rows:
+            if r.get("code") in models:
+                lines.append(f"item {r['code']} w data/hd/items/weapon/{models[r['code']]}.json")
+        for r in t.table("armor").rows:
+            code, where = r.get("code", ""), slots.get(r.get("type", ""), "")
+            if where == "tors":
+                lines.append("item %s b %s" % (code, " ".join(r.get(c) or "0" for c in ("Torso", "Legs", "rArm", "lArm", "rSPad", "lSPad"))))
+            elif where in ("rarm", "larm") and code in models:
+                lines.append(f"item {code} s data/hd/items/armor/{models[code]}.json")
+    except (FileNotFoundError, KeyError) as error:
+        print(f"note: item tables not read ({error}); heroes at the campfire show no gear.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote: d2rloader/camp_data.txt ({len(lines)} lines)")
+
+
 def main():
     if not VANILLA.exists():
         sys.exit("vanilla/ is missing. Extract the game's tables first (see README.md).")
@@ -194,6 +236,7 @@ def main():
     loader = ROOT / "src" / "d2rloader"
     if loader.exists():
         shutil.copytree(loader, OUT.parent / "d2rloader", dirs_exist_ok=True)
+    write_camp_data(t, OUT.parent / "d2rloader" / "camp_data.txt")
 
     # The D2RLoader plugin (built by tools/build-plugin.cmd) goes in the mod's own plugin folder.
     plugin = ROOT / "build" / "plugin" / "darkestdiablo.dll"

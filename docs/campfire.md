@@ -9,14 +9,16 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 
 1. **Save slots.** After the title screen a window asks for Save 1, 2 or 3, each with a line
    saying who is by its fire.
-2. **The Campfire.** The game's character list, staged at the campfire: the save's living heroes
-   are listed, and the selected one stands by the fire in the gear it really wears. Play enters
-   the game with that hero.
-3. **Recruit.** Opens the game's hero screen (the eight classes around the fire), showing only
-   the classes that may join right now:
+2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
+   selector. The save's living heroes stand at the fire in the gear they were last seen in, each
+   with a name plate. Clicking a hero (or its plate) loads it. Options, Delete and Exit Game are
+   on the left; Back returns to the save slots.
+3. **New heroes** stand at the same fire in the game's standard look, and are made the usual
+   way (click, name, Create). Only classes that may join right now are shown:
    - a brand new save: every class. The one picked starts the camp; the rest lock.
    - later: only classes a traveler brought (see below). They start at level 1 with nothing.
    - every hero dead and nobody waiting: a traveler turns up by himself with up to 3 classes.
+   **Delete** asks which hero to bury. A deleted hero counts as a death.
 4. **In town.** Each time a hero comes back to town from a stop there is a chance (25%) that
    "A traveler joins your camp" and offers up to 3 locked classes. The class of the last hero
    that fell is always one of them, once. The picked class waits at the Campfire as a recruit.
@@ -33,11 +35,16 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
   from a single folder. So a slot is a set of files: the live folder holds the loaded slot, the
   other slots are parked in `camp/slot<N>/files/`, and picking a slot moves files both ways.
   Settings and loot filters stay put and are shared by all slots.
-- **One hero in real gear at a time.** The hero screen (eight classes around the fire) draws
-  fixed models from its layout file; the game gives a plugin no way to dress them from a save.
-  The character list is the only screen that draws a save's real gear, and it draws the selected
-  character only. So the Campfire is the character list moved to the campfire, not the hero
-  screen with eight live heroes.
+- **Gear at the fire is a copy, not the save.** The hero screen draws its figures from a layout
+  file: a class, a weapon model, a shield model and light, medium or heavy armor per body part.
+  The plugin notes what a hero wears while it is played, and writes that into the layout of its
+  own panel (`Fire`) each time the Campfire opens. So a hero shows its weapon, shield and armor
+  weight as last played. Helmets, gloves, boots and item colors are not shown, and a hero that
+  has not been played since this was added stands there empty-handed.
+- **Loading the clicked hero.** The game only loads the hero selected in its own character list.
+  When a hero is clicked, the other heroes' files wait in `camp/slot<N>/bench/`, the main menu
+  loads with one hero in its list, and the plugin presses Play. The bench is emptied again
+  before the camp is next looked at. The character list flashes by on the way.
 - **Switching hero needs a load.** A game session holds one character. Changing hero means
   leaving the game and loading the other save, so there is a loading screen each time. "Go to
   the fire" makes that two clicks, but it can't be instant.
@@ -59,7 +66,8 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 | `src/plugin/camp.h` | The rules: classes, offers, the camp file, slot switching, burying. No game code. |
 | `src/plugin/campfire.cpp` | Talks to the game: UI messages, panels, game events, console commands. |
 | `tools/camp_layouts.py` | Our three panels (save slots, traveler, roster), written into the mod by the build. |
-| `src/patches/030_campfire.py` | Bonfire, stash button, the character list staged at the campfire, hero screen title. |
+| `src/patches/030_campfire.py` | Bonfire, stash button, hero screen title. |
+| `d2rloader/camp_data.txt` (built) | Where each class stands at the fire and how each item looks; made by `tools/build.py`. |
 | `src/d2rloader/` | The mod's D2RLoader settings: `add_shared_tabs = 7`. |
 
 In the save folder (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`):
@@ -68,7 +76,8 @@ In the save folder (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`):
     camp\slot<N>\camp.txt        that slot's camp: heroes, recruits, fallen classes, the traveler's offer
     camp\slot<N>\files\          that slot's saves and stash while another slot is loaded
     camp\graveyard\slot<N>\      fallen heroes
-    camp\options.txt             optional: "slot_picker 0", "traveler_chance 50"
+    camp\slot<N>\bench\        the other heroes' files while one hero is being loaded
+    camp\options.txt             optional: "slot_picker 0", "traveler_chance 50", "campfire_screen 0"
 
 The camp follows the save files: each time the menu loads, new saves join, deleted saves leave,
 dead ones are buried. Back up the whole folder to back up everything.
@@ -78,21 +87,27 @@ menu), `dd-traveler` (in town: a traveler now).
 
 ## Building
 
-The build changes four of the game's menu layouts, so `vanilla/` needs them: extract
-`data/global/ui/layouts` the same way as the tables. Nothing of Blizzard's is in the repo.
+The build changes two of the game's menu layouts and reads item models, so `vanilla/` needs
+`data/global/ui/layouts` and `data/hd/items/items.json`, extracted the same way as the tables. Nothing of Blizzard's is in the repo.
+
+## Tried in the game so far
+
+Worked (17 Nov 2026): the save slot window, picking a slot, the hero screen with all eight
+classes, making a hero. The town bonfire could not be clicked; it now has a click box (not yet
+tried again).
 
 ## Not yet tried in the game
 
-Everything here builds and the rules are tested, but none of it has run in the game yet. Each
-point fails soft and writes to `darkestdiablo.log`:
+Each point fails soft and writes to `darkestdiablo.log`. "campfire_screen 0" in
+`camp\options.txt` brings the game's character list back if the Campfire screen misbehaves.
 
-1. Does the slot window open over the main menu, and does the menu load the new slot's heroes
-   after a switch? If the menu doesn't reload, the window says to restart the game.
-2. Does the character list look right at the campfire (camera, where the hero stands)?
-3. Are the classes that can't join hidden on the hero screen? Their clicks are refused either way.
-4. Is the bonfire clickable, and does it open the stash?
-5. Do the extra stash pages show up? (`add_shared_tabs`, and whether `metadata.json` is needed.)
-6. Does "Go to the fire" leave the game?
-7. Death: is the hero buried after a hardcore death, and after a softcore one?
-8. Does the game read a save's class and level where `camp.h` expects them? If not, the camp
-   still works from what the plugin saw; only levels shown on the slot screen would be off.
+1. Does the Campfire open by itself after a slot is picked and after leaving a game?
+2. Do the camp's heroes stand at the fire, and are the game's own figures for those classes
+   hidden? Do the figures show weapon, shield and armor weight?
+3. Does clicking a figure load that hero? (The name plate is the sure way.) Is it the right
+   hero when the camp has two or more?
+4. Do Options, Delete and Exit Game work there? Does Back show the save slots?
+5. Is the bonfire clickable now, and does it open the stash with extra pages and the Campfire
+   button? Does "Go to the fire" leave the game and land on the Campfire?
+6. Death: is the hero buried after a hardcore death, and after a softcore one?
+7. Does the game read a save's class and level where `camp.h` expects them?

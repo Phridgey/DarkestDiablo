@@ -202,12 +202,29 @@ static void ReconcileFollowsTheSaveFiles() {
 	Reconcile(live, 1, camp, { .diedName = "Burr" });
 	CHECK(camp.heroes.empty() && camp.fallen == (std::vector<int> { Paladin, Sorceress }));
 	CHECK(HeroNames(live).empty());
-	// A save deleted by hand leaves the camp without counting as fallen.
+	// A deleted save counts as a death: the class is fallen and comes first in the next offer.
 	WriteSave(live / "Edan.d2s", Druid, 2);
 	Reconcile(live, 1, camp, { .newClass = Druid });
 	fs::remove(live / "Edan.d2s");
 	Reconcile(live, 1, camp, {});
-	CHECK(camp.heroes.empty() && !State::Has(camp.fallen, Druid));
+	CHECK(camp.heroes.empty() && camp.fallen.front() == Druid);
+	// The bench: every hero but the one to play waits outside the live folder, and is not
+	// taken for deleted while it waits.
+	Camp::State two;
+	WriteSave(live / "Kara.d2s", 6, 3);
+	Reconcile(live, 1, two, { .newClass = 6 });
+	WriteSave(live / "Kord.d2s", 4, 4);
+	two.recruits.push_back(4);
+	Reconcile(live, 1, two, {});
+	two.HeroNamed("Kara")->gear = "4:ktr 3:lea";
+	std::string error;
+	CHECK(Bench(live, 1, two, "Kord", error));
+	CHECK(HeroNames(live) == (std::vector<std::string> { "Kord" }));
+	Reconcile(live, 1, two, {});
+	CHECK(two.heroes.size() == 2);
+	CHECK(Unbench(live, 1) == 0);
+	CHECK(HeroNames(live).size() == 2);
+	CHECK(Parse(Serialize(two)).HeroNamed("Kara")->gear == "4:ktr 3:lea");
 }
 
 int main() {
