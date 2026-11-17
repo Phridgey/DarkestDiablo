@@ -27,7 +27,7 @@ static constexpr D2RL::PluginInfo DarkestDiabloInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "darkestdiablo",
 	.name        = "Darkest Diablo",
-	.version     = "0.4.1",
+	.version     = "0.4.2",
 	.author      = "Darkest Diablo team",
 	.description = "Roguelite rules for the Darkest Diablo mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -59,20 +59,20 @@ static void __cdecl DropTownPortal(const D2RL::PluginContext* context, void*) no
 		.durability      = D2RL::Items::DefaultValue,
 		.destination     = {
 			.structSize = D2RL::Items::ItemDestinationSize,
-			.container  = D2RL::Items::ItemContainer::Ground,
+			.container  = D2RL::Items::ItemContainer::Inventory,
 			.placement  = D2RL::Items::Placement::Automatic,
 		},
 	};
 	D2RL::ItemHandle item = D2RL::InvalidItemHandle;
 	auto result = g_items->createItem(context, player, &spec, &item);
 	if (result == D2RL::Items::Result::Success) {
-		context->LogInfo("Town Portal: dropped a scroll at the player's feet.");
+		context->LogInfo("Town Portal: put a scroll in the inventory.");
 		return;
 	}
-	spec.destination.container = D2RL::Items::ItemContainer::Inventory;
+	spec.destination.container = D2RL::Items::ItemContainer::Ground;
 	const auto fallback = g_items->createItem(context, player, &spec, &item);
 	char message[160] {};
-	std::snprintf(message, sizeof(message), "Town Portal: ground drop failed (code %d); inventory %s (code %d).",
+	std::snprintf(message, sizeof(message), "Town Portal: inventory failed (code %d); ground drop %s (code %d).",
 		static_cast<int>(result), fallback == D2RL::Items::Result::Success ? "worked" : "failed too", static_cast<int>(fallback));
 	context->LogWarn(message);
 }
@@ -111,6 +111,16 @@ static constexpr WaveMix Waves[ZombieWaves] = {
 static constexpr int      CorpsefireWave   = ZombieWaves + 1;
 static constexpr int      CorpsefireCount  = 6;   // Corpsefire + 5 minions (superuniques.txt)
 
+// Spawn spots: open tiles of the Den room, away from the waypoint (tile 9,5). The Den sits at
+// world tile (1500, 1000) (levels.txt OffsetX/Y); world sub-tile = tile * 5, +2 for the centre.
+struct Spot { int x, y; };
+static constexpr Spot TileSpot(int tx, int ty) { return { (1500 + tx) * 5 + 2, (1000 + ty) * 5 + 2 }; }
+static constexpr Spot FallenSpot     = TileSpot(19, 13);  // east
+static constexpr Spot ZombieSpot     = TileSpot(5, 17);   // south-west
+static constexpr Spot ShamanSpot     = TileSpot(16, 18);  // south-east
+static constexpr Spot CorpsefireSpot = TileSpot(12, 20);  // south
+static constexpr uint32_t ZombieClassId = 5;  // monstats row of zombie1; Corpsefire and his pack are zombie1
+
 static std::atomic<int>  g_wave { 0 };        // 0 = not started, 1..5 zombies, 6 = Corpsefire, 7 = done
 static std::atomic<int>  g_remaining { 0 };   // monsters left in the current wave
 static std::atomic<bool> g_portalDropped { false };
@@ -122,19 +132,20 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void*) noe
 		const WaveMix& mix = Waves[wave - 1];
 		g_remaining = mix.fallen + mix.zombies + mix.shamans;
 		g_wave = wave;
-		const struct { const char* id; int count; } groups[] = {
-			{ "fallen1", mix.fallen }, { "zombie1", mix.zombies }, { "fallenshaman1", mix.shamans },
+		const struct { const char* id; int count; Spot at; } groups[] = {
+			{ "fallen1", mix.fallen, FallenSpot }, { "zombie1", mix.zombies, ZombieSpot }, { "fallenshaman1", mix.shamans, ShamanSpot },
 		};
 		for (const auto& group : groups) {
 			if (group.count > 0) {
-				std::snprintf(message, sizeof(message), "cheat mspawn %s,%d", group.id, group.count);
+				std::snprintf(message, sizeof(message), "cheat mspawn %s,%d @ %d,%d", group.id, group.count, group.at.x, group.at.y);
 				RunConsole(context, message);
 			}
 		}
 	} else if (wave == CorpsefireWave) {
 		g_remaining = CorpsefireCount;
 		g_wave = wave;
-		RunConsole(context, "cheat monster super:40");
+		std::snprintf(message, sizeof(message), "cheat monster super:40 @ %d,%d", CorpsefireSpot.x, CorpsefireSpot.y);
+		RunConsole(context, message);
 	} else {
 		g_wave = CorpsefireWave + 1;
 		if (!g_portalDropped.exchange(true) && g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
@@ -153,6 +164,10 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 	}
 	const int wave = g_wave.load();
 	if (wave < 1 || wave > CorpsefireWave) {
+		return;
+	}
+	// Fallen shamans revive fallen, so stray fallen can die during Corpsefire's wave: count only zombies there.
+	if (wave == CorpsefireWave && event->monster.classId != ZombieClassId) {
 		return;
 	}
 	char message[96] {};
@@ -204,7 +219,7 @@ static auto InfoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* c
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.4.1 is running.");
+	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.4.2 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -271,7 +286,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		return false;
 	}
 
-	context->LogInfo("Darkest Diablo plugin 0.4.1 loaded.");
+	context->LogInfo("Darkest Diablo plugin 0.4.2 loaded.");
 	return context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Start the Den arena waves from wave 1 (test).");
