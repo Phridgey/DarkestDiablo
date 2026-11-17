@@ -52,7 +52,7 @@
     "textString": "Den of Evil",
     "pointSize": "$MediumFontSize",
     "textColor": "$FontColorWhite",
-    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-8"
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-13"
    }
   },
   {

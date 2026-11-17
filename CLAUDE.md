@@ -60,5 +60,11 @@ Plain, jargon-free language in docs and commit messages.
 - Plugin panel buttons: use the ModalButton style (pressed/hovered/disabled frames, `textString`).
   The game drops button messages with targets it doesn't know, so send a real command
   (`PanelManager:OpenPanel:darkestdiablo/travel-<level>`) and catch it in the UI-message listener.
+- Crowded arenas sometimes refuse a spawn ("Monster not created") and the plugin can't see it, so
+  an arena clears with up to `MissingSpawnSlack` monsters unaccounted for.
+- `createItem` refuses quest items (Book of Skill: `Unsupported`). Give those through a monster's
+  treasure class instead.
+- Console typing through computer use: the clipboard paste drops newlines; press Return after
+  each line. `cheat killmonster` kills one monster next to the player (handy to test clears).
 - `ExecuteConsoleCommand` returns true when the command was accepted, not when it worked; check
   the in-game console for errors.

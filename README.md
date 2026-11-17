@@ -52,13 +52,15 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 ## What works so far
 - **Waypoints:** the plugin unlocks every waypoint when a character enters a game, so the next
   stop is always reachable ("scouted ahead"). Per-stop unlocks wait for a waypoint service in the
-  SDK (D2RLoader/PluginSDK issue #9). Act I slots: 1 = Den of Evil (was Cold Plains),
+  SDK (D2RLoader/PluginSDK issue #9). Act I slots: 1 = Den of Evil arena (was Cold Plains),
   2 = Burial Grounds entry (was Stony Field), 3 = Tree of Inifuss entry (was Dark Wood). The waypoint menu comes from `actinfo.txt` in 3.x.
 - **Arenas** (plugin, `Arenas` table): arriving starts the waves, wave 1 after 1 s, then one every
   10 s whatever is still alive. When the last wave has spawned and everything is dead (the boss
   included, any kill order), a Town Portal scroll goes into the inventory.
-  - **Den of Evil:** one room (`src/maps/den_of_evil.json`). Fallen, zombies and shamans, then
-    Corpsefire and his pack.
+  - **Den of Evil:** one small chamber (`src/maps/den_of_evil.json`) on a spare cave level (13),
+    not the real Den, so the Den quest (and Akara's free respec) never happens. Fallen, zombies
+    and shamans, then Corpsefire and his pack. Corpsefire always drops a Book of Skill instead
+    (the quest's skill point).
   - **Burial Grounds:** you arrive by waypoint in a small crypt room, prep, and take the stairs
     up. You come out at the graveyard's crypt door; the waves come at the plaza by the hanging
     tree: zombies and skeletons, then Blood Raven with zombies. Built on two unused cave levels

@@ -2,13 +2,13 @@
   "name": "darkest_den",
   "folder": "act1/caves",
   "room": 24,
-  "comment": "Den of Evil arena: one room, Blizzard's round Den chamber (cavenspec). The player arrives by waypoint; the plugin spawns the waves and Corpsefire. Rooms are 24x24 tiles.",
+  "comment": "Den of Evil arena: one small chamber, Blizzard's cave room caveecrow (about half the size of the old Den chamber). The player arrives by waypoint on the west side; the plugin spawns the waves and Corpsefire to the east. Rooms are 24x24 tiles.",
   "keep_monsters": [],
   "pieces": [
     {
       "x": 0,
       "y": 0,
-      "piece": "act1/caves/cavenspec"
+      "piece": "act1/caves/caveecrow"
     }
   ],
   "close_edges": true,
@@ -17,8 +17,8 @@
       "type": 2,
       "id": 52,
       "tile": [
-        9,
-        5
+        11,
+        10
       ],
       "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
       "hd_prefab": {

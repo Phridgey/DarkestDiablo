@@ -30,30 +30,42 @@ static constexpr D2RL::PluginInfo DarkestDiabloInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "darkestdiablo",
 	.name        = "Darkest Diablo",
-	.version     = "0.8.0",
+	.version     = "0.9.0",
 	.author      = "Darkest Diablo team",
 	.description = "Roguelite rules for the Darkest Diablo mod.",
 	.flags       = D2RL::PluginFlags::Shared,
 };
 
-static constexpr int32_t DenOfEvilLevelId = 8;  // levels.txt Id of "Den of Evil"
+static constexpr int32_t DenOfEvilLevelId = 13; // levels.txt Id of our Den arena (a spare cave level, not the
+                                                // real Den, so the quest and its free respec never happen)
 
 static const D2RL::InventoryService* g_inventory = nullptr;
 static const D2RL::ItemService*      g_items     = nullptr;
 static const D2RL::ThreadService*    g_threads   = nullptr;
 static int32_t                       g_levelId   = -1;  // the level the local player is in
 
-// Runs on the game thread: create one Town Portal scroll ("tsc") on the ground by the player.
-// If the ground placement fails, put it in the inventory instead.
-static void __cdecl DropTownPortal(const D2RL::PluginContext* context, void*) noexcept {
+// An item code ("tsc", "ass") as the game's four-byte, space-padded value.
+static uint32_t ItemCode(const char* text) noexcept {
+	char c[4] = { ' ', ' ', ' ', ' ' };
+	for (int i = 0; i < 4 && text[i] != '\0'; ++i) {
+		c[i] = text[i];
+	}
+	return D2RL::Items::MakeItemCode(c[0], c[1], c[2], c[3]);
+}
+
+// Game thread: put one item in the player's inventory, or on the ground if the inventory is full.
+// (A ground drop as the first choice crashed the game once, so the inventory comes first.)
+static void GiveItem(const D2RL::PluginContext* context, const char* code, const char* label) noexcept {
 	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+	char message[160] {};
 	if (g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
-		context->LogWarn("Town Portal: could not find the player.");
+		std::snprintf(message, sizeof(message), "%s: could not find the player.", label);
+		context->LogWarn(message);
 		return;
 	}
 	D2RL::Items::ItemCreateSpec spec {
 		.structSize      = D2RL::Items::ItemCreateSpecSize,
-		.code            = D2RL::Items::MakeItemCode("tsc"),
+		.code            = ItemCode(code),
 		.quality         = D2RL::Items::Quality::Normal,
 		.qualityRecordId = D2RL::Items::RandomQualityRecord,
 		.itemLevel       = 1,
@@ -69,15 +81,20 @@ static void __cdecl DropTownPortal(const D2RL::PluginContext* context, void*) no
 	D2RL::ItemHandle item = D2RL::InvalidItemHandle;
 	auto result = g_items->createItem(context, player, &spec, &item);
 	if (result == D2RL::Items::Result::Success) {
-		context->LogInfo("Town Portal: put a scroll in the inventory.");
+		std::snprintf(message, sizeof(message), "%s: put it in the inventory.", label);
+		context->LogInfo(message);
 		return;
 	}
 	spec.destination.container = D2RL::Items::ItemContainer::Ground;
 	const auto fallback = g_items->createItem(context, player, &spec, &item);
-	char message[160] {};
-	std::snprintf(message, sizeof(message), "Town Portal: inventory failed (code %d); ground drop %s (code %d).",
-		static_cast<int>(result), fallback == D2RL::Items::Result::Success ? "worked" : "failed too", static_cast<int>(fallback));
+	std::snprintf(message, sizeof(message), "%s: inventory failed (code %d); ground drop %s (code %d).",
+		label, static_cast<int>(result), fallback == D2RL::Items::Result::Success ? "worked" : "failed too", static_cast<int>(fallback));
 	context->LogWarn(message);
+}
+
+// Game thread: the Town Portal scroll ("tsc") that ends every arena.
+static void __cdecl DropTownPortal(const D2RL::PluginContext* context, void*) noexcept {
+	GiveItem(context, "tsc", "Town Portal");
 }
 
 // Runs a console command through D2RCore's ExecuteConsoleCommand export (UI thread only).
@@ -131,15 +148,16 @@ static constexpr uint32_t AnyClass       = 0xFFFFFFFFU;
 static constexpr uint32_t ZombieClass    = 5;    // monstats row of zombie1 (Corpsefire is one)
 static constexpr uint32_t BloodRavenClass = 267; // monstats row of bloodraven
 
-// Den of Evil (level 8): waypoint at tile 9,5. Fallen east, zombies south-west, shamans south-east.
+// Den of Evil (level 13, small chamber): waypoint at tile 11,10 (west). Fallen east, zombies south,
+// shamans north.
 static constexpr Wave DenWaves[] = {
-	{ { { "mspawn", "fallen1", 7, { 19, 13 } }, { "mspawn", "zombie1", 3, { 5, 17 } } }, 2, AnyClass },
-	{ { { "mspawn", "fallen1", 5, { 19, 13 } }, { "mspawn", "zombie1", 4, { 5, 17 } }, { "mspawn", "fallenshaman1", 1, { 16, 18 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 19, 13 } }, { "mspawn", "zombie1", 4, { 5, 17 } }, { "mspawn", "fallenshaman1", 2, { 16, 18 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 19, 13 } }, { "mspawn", "zombie1", 3, { 5, 17 } }, { "mspawn", "fallenshaman1", 3, { 16, 18 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 3, { 19, 13 } }, { "mspawn", "zombie1", 4, { 5, 17 } }, { "mspawn", "fallenshaman1", 3, { 16, 18 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 7, { 21, 13 } }, { "mspawn", "zombie1", 3, { 18, 19 } } }, 2, AnyClass },
+	{ { { "mspawn", "fallen1", 5, { 21, 13 } }, { "mspawn", "zombie1", 4, { 18, 19 } }, { "mspawn", "fallenshaman1", 1, { 18, 9 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 4, { 21, 13 } }, { "mspawn", "zombie1", 4, { 18, 19 } }, { "mspawn", "fallenshaman1", 2, { 18, 9 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 5, { 21, 13 } }, { "mspawn", "zombie1", 3, { 18, 19 } }, { "mspawn", "fallenshaman1", 2, { 18, 9 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 4, { 21, 13 } }, { "mspawn", "zombie1", 4, { 18, 19 } }, { "mspawn", "fallenshaman1", 2, { 18, 9 } } }, 3, AnyClass },
 	// Corpsefire + 5 minions.
-	{ { { "monster", "super:40", 6, { 12, 20 } } }, 1, AnyClass },
+	{ { { "monster", "super:40", 6, { 19, 16 } } }, 1, AnyClass },
 };
 
 // Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py). The
@@ -171,13 +189,14 @@ static constexpr Wave InifussWaves[] = {
 };
 
 static constexpr Arena Arenas[] = {
-	{ "Den of Evil",    DenOfEvilLevelId, 1500, 1000, DenWaves,    static_cast<int>(sizeof(DenWaves) / sizeof(DenWaves[0])) },
+	{ "Den of Evil",    DenOfEvilLevelId, 1500, 2500, DenWaves,    static_cast<int>(sizeof(DenWaves) / sizeof(DenWaves[0])) },
 	{ "Burial Grounds", 9,                1500, 1300, BurialWaves, static_cast<int>(sizeof(BurialWaves) / sizeof(BurialWaves[0])) },
 	{ "Tree of Inifuss", 11,              1500, 1900, InifussWaves, static_cast<int>(sizeof(InifussWaves) / sizeof(InifussWaves[0])) },
 };
 
 static constexpr int     ArrivalDelayMs = 1000;   // wave 1: right on arrival the map isn't loaded yet
 static constexpr int     WaveIntervalMs = 10000;  // each later wave: 10 s after the previous one spawned
+static constexpr int     MissingSpawnSlack = 3;   // clear even if this many spawns failed (the boss must still die)
 static std::atomic<int>      g_arena { -1 };      // index into Arenas, -1 = none running
 static std::atomic<int>      g_wave { 0 };        // waves spawned so far
 static std::atomic<int>      g_remaining { 0 };   // spawned monsters not yet dead (all waves)
@@ -303,7 +322,10 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 	char message[96] {};
 	std::snprintf(message, sizeof(message), "%s: kill (class %u), %d alive.", arena.name, event->monster.classId, left);
 	context->LogInfo(message);
-	if (g_wave.load() >= arena.waveCount && left <= 0 && finalKills >= g_finalSize.load() && g_bossDead.load()) {
+	// Crowded maps sometimes refuse a spawn ("Monster not created") and the plugin can't tell, so
+	// allow a few missing monsters.
+	if (g_wave.load() >= arena.waveCount && left <= MissingSpawnSlack && finalKills >= g_finalSize.load() - MissingSpawnSlack &&
+		g_bossDead.load()) {
 		g_threads->runOnUiThread(context, ClearArena, reinterpret_cast<void*>(g_run.load()));
 	}
 }
@@ -562,7 +584,7 @@ static auto InfoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* c
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.8.0 is running.");
+	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.9.0 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -686,7 +708,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		context->LogWarn("Route map: UI-message service missing.");
 	}
 
-	context->LogInfo("Darkest Diablo plugin 0.8.0 loaded.");
+	context->LogInfo("Darkest Diablo plugin 0.9.0 loaded.");
 	return context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&
