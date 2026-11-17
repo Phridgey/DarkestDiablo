@@ -38,6 +38,7 @@ A release is a GitHub release tagged `v<version>` (like `v0.2.0`) with these fil
 | `manifest.json` | Every file of the mod with its size and SHA-256. The source of truth. |
 | `darkestdiablo-full.zip` | The whole mod. Used for new installs and as the fallback. |
 | `darkestdiablo-delta-from-<old>.zip` | Only the files that changed since `<old>`, plus `delta.json`. One per recent release (the last 5). |
+| `changelog.md` | What changed: the notes, then the commit messages since the last release. Also the release's description. |
 | `DarkestDiabloLauncher.exe` | Added automatically by the Launcher workflow when the release is published. |
 
 `manifest.json`:
@@ -54,6 +55,12 @@ A release is a GitHub release tagged `v<version>` (like `v0.2.0`) with these fil
   }
 }
 ```
+
+The manifest also has a `build` section the launcher ignores: the commit and branch it was built
+from, whether there were uncommitted changes, what it was made with (Python, Plugin SDK, compiler,
+D2RLoader), the checksum of every tool in `tools/` and `launcher/`, and of the tools we built (the
+plugin DLL, the launcher .exe). If two of us see different games on the same version, compare
+these first.
 
 Paths are relative to `Mods\darkestdiablo`, with forward slashes. Only `modinfo.json`,
 `darkestdiablo.mpq/` and `d2rloader/plugins/` are shipped; logs and settings the game writes into
@@ -89,11 +96,15 @@ than 5 releases) it downloads the full package instead.
        python tools/release.py 0.2.0
 
    It prints the size of the full package and of each delta. Files land in `build\release\0.2.0\`.
-3. Publish (needs the [GitHub CLI](https://cli.github.com), signed in with `gh auth login`):
+   It also writes `changelog.md`: your `--notes`, then every commit message since the last release.
+3. Push your commit, then publish. No extra tools: it signs in to GitHub the same way `git push`
+   does (or uses `GITHUB_TOKEN` if set).
 
        python tools/release.py 0.2.0 --publish --notes "Blood Raven's fork; lighter Den waves"
 
-   The first line of the notes is shown to players next to the Update button. The workflow then
+   The changelog becomes the release notes, and is attached as `changelog.md`. The first line (your
+   `--notes`) is shown to players next to the Update button. The release is uploaded as a draft and
+   only made public once every file is up, so players never see half a release. The workflow then
    attaches the launcher .exe to the release.
 
 Rules:
