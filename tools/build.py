@@ -1,4 +1,4 @@
-"""Build the mod into build/mephistorghast/mephistorghast.mpq/.
+"""Build the mod into build/mephistorghast/ (data in mephistorghast.mpq/, plugin in d2rloader/plugins/).
 
 Usage: python tools/build.py
 
@@ -102,6 +102,16 @@ def main():
     for name, table in t.loaded.items():
         table.save(OUT / "data" / EXCEL / f"{name}.txt")
         print(f"wrote: data/global/excel/{name}.txt")
+
+    # The D2RLoader plugin (built by tools/build-plugin.cmd) goes in the mod's own plugin folder.
+    plugin = ROOT / "build" / "plugin" / "mephistorghast.dll"
+    plugin_dir = OUT.parent / "d2rloader" / "plugins"
+    if plugin.exists():
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(plugin, plugin_dir / plugin.name)
+        print("placed: d2rloader/plugins/mephistorghast.dll")
+    else:
+        print("note: no plugin built yet (run tools\\build-plugin.cmd)")
 
     print(f"Built {OUT.relative_to(ROOT)}")
 

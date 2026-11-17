@@ -40,8 +40,9 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - The camp is the run: the circle of characters by the fire, plus the stash.
 - Hardcore rules: death is final for the character, and everything it wears and carries is lost.
   The camp carries on.
-- The next character is picked from a campfire-style screen, with the stash in view to plan.
-- One of each class in the circle, so a strong sorceress or paladin can't carry the run alone.
+- Recruiting: one of each class in the campfire circle. The first character can be any class;
+  each cleared stop offers 3 random classes to recruit, like Darkest Dungeon's stagecoach.
+- The next character to play is picked from the campfire circle, with the stash in view to plan.
 - Stashed items keep their level and attribute requirements. That is the balance.
 - The stash starts small. Optional challenges (e.g. "bonus for spears", "can't use shields")
   unlock more tabs and stash features.
@@ -54,13 +55,14 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 
 ## Technical approach
 - Data edits (tables, maps) for everything they can do.
-- A DLL for what data can't: fork/waypoint control, run and camp state, first-pick bonuses,
+- A D2RLoader plugin (our code, built with the D2RLoader Plugin SDK) for what data can't: fork/waypoint control, run and camp state, first-pick bonuses,
   magic find effects on sockets/superior/ethereal and runes, death and retirement rules,
   class limit, challenges, Atlas.
-- The DLL keeps its own camp file in the mod's save folder
+- The plugin keeps its own camp file in the mod's save folder
   (`Saved Games\Diablo II Resurrected\mods\mephistorghast`). Back it up with the saves.
 
 ## Open questions
 - Is Andariel (and each act boss) a forced final stop?
 - Examples of kiss and curse bonuses.
 - When can a character attempt a blaze of glory?
+- Does a recruit start at level 1? Do the 3 offers leave out classes already in the circle?
