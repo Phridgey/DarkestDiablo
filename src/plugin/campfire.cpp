@@ -1083,6 +1083,7 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 
 auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 	if (std::strcmp(action, "slot-delete-cancel") == 0) {
+		Log(context, "Camp: Keep it pressed (question %d about save %d).", g_confirmStep, g_confirmSlot);
 		g_confirmSlot = 0;
 		g_confirmStep = 0;
 		ShowSlotWidgets(context);

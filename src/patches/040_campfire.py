@@ -110,9 +110,19 @@ def patch(t):
     # TEST: in the four town maps a real stash chest stands exactly on the fire's spot, and the
     # fire object (which looks like a chest for now) stands a few steps away. If the chest on the
     # fire's spot can be clicked, the spot is fine and the fire object itself is the problem.
-    for town in ("townn1", "towne1", "towns1", "townw1"):
-        path = f"global/tiles/act1/town/{town}.ds1"
-        t.add_raw(path, swap_fire_and_chest(t.raw(path), FIRE_PRESET, CHEST_PRESET, dx=9, dy=4))
+    # The game ignored changed town maps shipped under their own names (0.9.9: nothing moved),
+    # while the arenas' maps, which have new names, load fine. So the changed maps get new names
+    # (darkest_town*.ds1, with a copy of the town's HD look under the same new name) and the town's
+    # row in lvlprest.txt points at them.
+    town_row = t.table("lvlprest").first("Name", "Act 1 - Town 1")
+    for n, town in enumerate(("townn1", "towne1", "towns1", "townw1"), start=1):
+        new = f"darkest_{town}"
+        t.add_raw(f"global/tiles/act1/town/{new}.ds1",
+                  swap_fire_and_chest(t.raw(f"global/tiles/act1/town/{town}.ds1"), FIRE_PRESET, CHEST_PRESET, dx=9, dy=4))
+        look_path = f"hd/env/preset/act1/town/{town}.json"
+        t.add_data(f"hd/env/preset/act1/town/{new}.json", copy.deepcopy(t.data(look_path)))
+        del t.files[look_path]  # read only, not shipped
+        town_row[f"File{n}"] = f"Act1/Town/{new}.ds1"
     # TEST: the fire ring's scenery carries a collision shape. If that shape is what swallows the
     # mouse, the chest in the fire becomes clickable once the shape is gone.
     prefab_path = "hd/env/model/global/prop/act1/town/prefab/pf_town_campfire01.json"
