@@ -12,6 +12,51 @@
   the plugin draws the camp's figures (src/plugin/campfire.cpp).
 """
 import copy
+import struct
+
+
+FIRE_PRESET = 2     # objpreset.txt, Act 1: RogueBonfire
+CHEST_PRESET = 102  # objpreset.txt, Act 1: Bank (the stash chest)
+
+
+def add_object_near(ds1, near_id, new_id, dx, dy):
+    """A town map (.ds1) with one more object: preset `new_id`, placed (dx, dy) sub-tiles from
+    the first object with preset `near_id`. Only the object list changes; the rest is kept
+    byte for byte."""
+    i32 = lambda at: struct.unpack_from("<i", ds1, at)[0]
+    version, width, height = i32(0), i32(4) + 1, i32(8) + 1
+    if version != 18:
+        raise ValueError(f"town map version {version}, expected 18")
+    tag_type, at = i32(16), 24
+    for _ in range(i32(20)):                 # names of the tile files
+        at = ds1.index(b"\0", at) + 1
+    walls, floors = i32(at), i32(at + 4)
+    layers = walls * 2 + floors + 1 + (1 if tag_type in (1, 2) else 0)   # + shadow, + tag layer
+    count_at = at + 8 + layers * width * height * 4
+    count = i32(count_at)
+    records = [struct.unpack_from("<5i", ds1, count_at + 4 + n * 20) for n in range(count)]
+    fire = next((r for r in records if r[0] == 2 and r[1] == near_id), None)
+    if fire is None:
+        raise ValueError("no bonfire in this town map")
+    end = count_at + 4 + count * 20
+    new = struct.pack("<5i", 2, new_id, fire[2] + dx, fire[3] + dy, 0)
+    return ds1[:count_at] + struct.pack("<i", count + 1) + ds1[count_at + 4:end] + new + ds1[end:]
+
+
+def strip_physics(node):
+    """Removes every collision shape from a scenery file (parsed JSON). Returns how many."""
+    removed = 0
+    if isinstance(node, dict):
+        for key, value in list(node.items()):
+            if isinstance(value, list):
+                kept = [v for v in value if not (isinstance(v, dict) and "Physics" in str(v.get("type", "")))]
+                removed += len(value) - len(kept)
+                node[key] = kept
+            removed += strip_physics(node[key])
+    elif isinstance(node, list):
+        for value in node:
+            removed += strip_physics(value)
+    return removed
 
 
 def patch(t):
@@ -38,6 +83,20 @@ def patch(t):
             have += [p for p in paths if p not in have]
     t.add_data("hd/objects/env_wood/rogue_bonfire.json", look)
     del t.files["hd/objects/chests/bank.json"]  # read only, not shipped
+
+    # TEST: a second, ordinary stash chest a few steps from the fire, added to the four town
+    # maps. If this one can be clicked and the chest in the fire can't, the spot is the problem.
+    for town in ("townn1", "towne1", "towns1", "townw1"):
+        path = f"global/tiles/act1/town/{town}.ds1"
+        t.add_raw(path, add_object_near(t.raw(path), near_id=FIRE_PRESET, new_id=CHEST_PRESET, dx=9, dy=4))
+    # TEST: the fire ring's scenery carries a collision shape. If that shape is what swallows the
+    # mouse, the chest in the fire becomes clickable once the shape is gone.
+    prefab_path = "hd/env/model/global/prop/act1/town/prefab/pf_town_campfire01.json"
+    prefab = t.data(prefab_path)
+    removed = strip_physics(prefab)
+    print(f"campfire scenery: {removed} collision shape(s) removed")
+    if not removed:
+        del t.files[prefab_path]  # nothing to change: not shipped
 
     bank = t.layout("bankexpansionlayouthd")
     bank["children"].append({

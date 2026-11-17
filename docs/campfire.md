@@ -122,6 +122,11 @@ Did not work, and what was changed:
 - The chest copy wearing the bonfire's model could not be clicked either, so the game seems to
   test the mouse against the model. As a test the copy now wears the chest's own model, in
   the bonfire's flames (not yet tried). If that can be clicked, it gets a model that suits.
+- With the fire's own row made a full copy of the chest's row and the chest's model in the
+  flames, the chest showed but still could not be clicked. Two more tests are in (not yet
+  tried): a second, ordinary stash chest a few steps from the fire, added to the four town
+  maps; and the fire ring's scenery without its collision shape, in case that shape swallows
+  the mouse.
 - Changing save at the Campfire kept showing the first save's heroes: the game keeps a panel
   it has drawn and does not read its layout again. The Campfire and the save slot screen now
   use a fresh spare panel each time their content changes (not yet tried).

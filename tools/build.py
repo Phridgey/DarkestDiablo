@@ -125,6 +125,7 @@ class Tables:
         self.loaded = {}
         self.layouts = {}
         self.files = {}
+        self.raws = {}
 
     def layout(self, name, change=True):
         """A vanilla menu layout as parsed JSON. With change=False it is only read, not shipped."""
@@ -148,6 +149,17 @@ class Tables:
                 raise FileNotFoundError(f"{src} is missing. Extract data/{path} from the game (see README.md).")
             self.files[path] = loads_lenient(src.read_text(encoding="utf-8-sig"))
         return self.files[path]
+
+    def raw(self, path):
+        """A vanilla file of any kind by its path under data/, as bytes. Read only."""
+        src = VANILLA / path
+        if not src.exists():
+            raise FileNotFoundError(f"{src} is missing. Add data/{path} to tools/vanilla_files.txt and extract it.")
+        return src.read_bytes()
+
+    def add_raw(self, path, content):
+        """Ship a file of any kind (bytes) in the mod at this path under data/."""
+        self.raws[path] = bytes(content)
 
     def add_data(self, path, content):
         """Ship a new JSON file in the mod at this path under data/."""
@@ -259,6 +271,12 @@ def main():
         target = OUT / "data" / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(content, indent=1), encoding="utf-8")
+        print(f"wrote: data/{path}")
+
+    for path, content in t.raws.items():
+        target = OUT / "data" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
         print(f"wrote: data/{path}")
 
     # The Campfire's own panels, and the mod's D2RLoader settings (more shared stash pages).
