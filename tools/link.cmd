@@ -1,8 +1,8 @@
 @echo off
 rem Run once on Windows. Links the build into the frozen game's Mods folder.
-rem Usage: tools\link.cmd "D:\Games\D2R-darkestdiablo"
+rem Usage: tools\link.cmd "<your game folder>"
 set GAME=%~1
-if "%GAME%"=="" set GAME=D:\Games\D2R-darkestdiablo
+if "%GAME%"=="" (echo Usage: tools\link.cmd "^<your game folder^>" & exit /b 1)
 set TARGET=%~dp0..\build\darkestdiablo
 if not exist "%TARGET%" (echo Run "python tools\build.py" first. & exit /b 1)
 rem Remove an old link (rmdir without /s only removes the link, never the build it points to).

@@ -1,0 +1,37 @@
+# Builds DarkestDiabloLauncher.exe on Windows.
+# - On every published release (tools/release.py --publish), the .exe is attached to that release,
+#   so players always find the launcher next to the newest update.
+# - Run it by hand (Actions > Launcher > Run workflow) to get the .exe as a downloadable artifact.
+name: Launcher
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  pull_request:
+    paths: ["launcher/**", "tools/release.py", "tests/**"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Test install and update logic
+        run: python -m unittest discover tests -v
+      - name: Build the launcher
+        shell: cmd
+        run: tools\build-launcher.cmd
+      - uses: actions/upload-artifact@v6
+        with:
+          name: DarkestDiabloLauncher
+          path: build/launcher/DarkestDiabloLauncher.exe
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" build/launcher/DarkestDiabloLauncher.exe --clobber
