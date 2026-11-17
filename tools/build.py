@@ -9,6 +9,7 @@ Usage: python tools/build.py
    Only tables a patch touched are written to the build.
 """
 import importlib.util, shutil, sys
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -91,6 +92,15 @@ def main():
     data = ROOT / "src" / "data"
     if data.exists():
         shutil.copytree(data, OUT, dirs_exist_ok=True)
+
+    # Hand-made maps: compose each src/maps/*.json layout from the game's rooms, copy into the mod.
+    maps = sorted((ROOT / "src" / "maps").glob("*.json"))
+    if maps:
+        import compose_map
+        for spec in maps:
+            sys.argv = ["compose_map.py", str(spec)]
+            compose_map.main()
+        shutil.copytree(ROOT / "build" / "maps" / "data", OUT / "data", dirs_exist_ok=True)
 
     t = Tables()
     for p in sorted((ROOT / "src" / "patches").glob("*.py")):

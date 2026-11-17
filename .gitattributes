@@ -1,4 +1,4 @@
-# Large binary assets go through Git LFS
-src/maps/** filter=lfs diff=lfs merge=lfs -text
+# Large binary assets go through Git LFS (map layouts in src/maps are small JSON and stay in Git)
+src/maps/**/*.ds1 filter=lfs diff=lfs merge=lfs -text
 src/art/** filter=lfs diff=lfs merge=lfs -text
 *.txt text eol=crlf

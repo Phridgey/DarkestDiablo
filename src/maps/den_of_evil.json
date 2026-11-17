@@ -1,0 +1,13 @@
+{
+  "name": "mephisto_den",
+  "folder": "act1/caves",
+  "room": 24,
+  "comment": "Den of Evil v1: a straight north-south tunnel from the entrance stairs to Blizzard's own Den special room (which places Corpsefire). Rooms are 24x24 tiles; y grows southward.",
+  "keep_monsters": ["act1/caves/cavenspec"],
+  "pieces": [
+    {"x": 0, "y": 0, "piece": "act1/caves/cavespre1"},
+    {"x": 0, "y": 1, "piece": "act1/caves/cavens"},
+    {"x": 0, "y": 2, "piece": "act1/caves/cavens2"},
+    {"x": 0, "y": 3, "piece": "act1/caves/cavenspec"}
+  ]
+}
