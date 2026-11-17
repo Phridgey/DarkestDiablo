@@ -616,6 +616,9 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			ResetArena();          // a new arena, or the same one after leaving: start from wave 1
 			g_arena = arena;
 			Later(context, ArrivalDelayMs, StartNextWave);
+		} else if (arena < 0 && g_arena.load() >= 0) {
+			ResetArena();          // left the arena (town portal, waypoint): stop its wave timer
+			context->LogInfo("Left the arena: waves stopped.");
 		}
 		return;
 	}
@@ -742,7 +745,11 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		D2RL::Resources::RegistrationHandle resourceHandle = D2RL::Resources::InvalidHandle;
 		const D2RL::Panels::PanelRegistration registration {
 			.structSize = D2RL::Panels::PanelRegistrationSize,
-			.flags      = D2RL::Panels::PanelFlags::CloseOnEscape,
+			// GameplayLeftSlot: the map takes the left side like Blizzard's waypoint list, and
+			// opening it closes the stock left panels. The town waypoint has already marked
+			// Blizzard's list open before we swap in the map; without this, its empty frame and the
+			// dimmed screen stay up until another panel closes them.
+			.flags      = D2RL::Panels::PanelFlags::CloseOnEscape | D2RL::Panels::PanelFlags::GameplayLeftSlot,
 			.localId    = "RouteMap",
 		};
 		if (resources->registerResource(context, &resource, &resourceHandle) != D2RL::Resources::Result::Success ||
