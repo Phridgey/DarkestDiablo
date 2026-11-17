@@ -378,17 +378,15 @@ void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 		SetVisible(context, panel.c_str(), ("Slot" + n + "Delete").c_str(), !asking && started);
 		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), g_confirmSlot == slot && g_confirmStep == 1);
 		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), g_confirmSlot == slot && g_confirmStep == 2);
-		// A hidden group's buttons still take clicks, so each button is hidden as well.
-		for (const char* part : { "AYes", "ANo" }) {
-			SetVisible(context, panel.c_str(), ("Confirm" + n + part).c_str(), g_confirmSlot == slot && g_confirmStep == 1);
-		}
-		for (const char* part : { "BYes", "BNo" }) {
-			SetVisible(context, panel.c_str(), ("Confirm" + n + part).c_str(), g_confirmSlot == slot && g_confirmStep == 2);
-		}
 	}
 	for (const char* part : { "Heading", "Sub", "Exit" }) {
 		SetVisible(context, panel.c_str(), part, !asking);
 	}
+	// The answer buttons are shared by the three saves (a hidden button still takes clicks).
+	SetVisible(context, panel.c_str(), "AskYes", g_confirmStep == 1);
+	SetVisible(context, panel.c_str(), "AskNo", g_confirmStep == 1);
+	SetVisible(context, panel.c_str(), "SureNo", g_confirmStep == 2);
+	SetVisible(context, panel.c_str(), "SureYes", g_confirmStep == 2);
 	SetVisible(context, panel.c_str(), "RestartNotice", false);
 }
 
@@ -1083,17 +1081,18 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 
 auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 	if (std::strcmp(action, "slot-delete-cancel") == 0) {
+		Log(context, "Camp: Keep it pressed (question %d about save %d).", g_confirmStep, g_confirmSlot);
 		g_confirmSlot = 0;
 		g_confirmStep = 0;
 		ShowSlotWidgets(context);
-	} else if (StartsWith(action, "slot-delete-yes-")) {
-		const int slot = std::atoi(action + 16);
-		if (slot == g_confirmSlot && g_confirmStep == 2) {
-			DeleteSave(context, slot);
+	} else if (std::strcmp(action, "slot-delete-yes") == 0) {
+		if (g_confirmSlot != 0 && g_confirmStep == 2) {
+			DeleteSave(context, g_confirmSlot);
 		}
-	} else if (StartsWith(action, "slot-delete-sure-")) {
-		if (std::atoi(action + 17) == g_confirmSlot && g_confirmStep == 1) {
+	} else if (std::strcmp(action, "slot-delete-sure") == 0) {
+		if (g_confirmSlot != 0 && g_confirmStep == 1) {
 			g_confirmStep = 2;
+			Log(context, "Camp: asking once more before deleting save %d.", g_confirmSlot);
 			ShowSlotWidgets(context);
 		}
 	} else if (StartsWith(action, "slot-delete-")) {
