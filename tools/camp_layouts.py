@@ -95,15 +95,17 @@ def save_slots():
         kids.append(menu_button(f"Slot{slot}Delete", 345, y + 22, "Delete", act + f"slot-delete-{slot}"))
     # Deleting a save is asked twice. Each question is a ready-made group the plugin shows; the
     # buttons swap sides for the second question, so a double click can't answer both.
+    # A hidden group's buttons still take clicks in this game, so the plugin hides each button
+    # too, and they sit low on the screen where no slot button is (y 1650).
     for slot in (1, 2, 3):
-        yes1 = menu_button("Yes", -500, 1000, f"Delete Save {slot}", act + f"slot-delete-sure-{slot}")
-        no1 = menu_button("No", 30, 1000, "Keep it", act + "slot-delete-cancel")
+        yes1 = menu_button(f"Confirm{slot}AYes", -500, 1650, f"Delete Save {slot}", act + f"slot-delete-sure-{slot}")
+        no1 = menu_button(f"Confirm{slot}ANo", 30, 1650, "Keep it", act + "slot-delete-cancel")
         kids.append({"type": "Widget", "name": f"Confirm{slot}A", "fields": {"rect": {"x": 0, "y": 0}}, "children": [
             line("Title", 640, f"Delete Save {slot}?", "$FontColorGoldYellow", "$XExtraLargeFontSize"),
             line("Text", 780, "Its heroes, everything they carry and its stash will be gone."),
             line("Text2", 850, "The other saves are not touched."), yes1, no1]})
-        no2 = menu_button("No", -500, 1000, "Keep it", act + "slot-delete-cancel")
-        yes2 = menu_button("Yes", 30, 1000, f"Yes, delete Save {slot}", act + f"slot-delete-yes-{slot}")
+        no2 = menu_button(f"Confirm{slot}BNo", -500, 1650, "Keep it", act + "slot-delete-cancel")
+        yes2 = menu_button(f"Confirm{slot}BYes", 30, 1650, f"Yes, delete Save {slot}", act + f"slot-delete-yes-{slot}")
         kids.append({"type": "Widget", "name": f"Confirm{slot}B", "fields": {"rect": {"x": 0, "y": 0}}, "children": [
             line("Title", 640, "Are you sure?", "$FontColorRed", "$XExtraLargeFontSize"),
             line("Text", 780, f"Save {slot} can't be brought back. You won't be asked again."), no2, yes2]})

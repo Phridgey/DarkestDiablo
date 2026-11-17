@@ -378,6 +378,13 @@ void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 		SetVisible(context, panel.c_str(), ("Slot" + n + "Delete").c_str(), !asking && started);
 		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), g_confirmSlot == slot && g_confirmStep == 1);
 		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), g_confirmSlot == slot && g_confirmStep == 2);
+		// A hidden group's buttons still take clicks, so each button is hidden as well.
+		for (const char* part : { "AYes", "ANo" }) {
+			SetVisible(context, panel.c_str(), ("Confirm" + n + part).c_str(), g_confirmSlot == slot && g_confirmStep == 1);
+		}
+		for (const char* part : { "BYes", "BNo" }) {
+			SetVisible(context, panel.c_str(), ("Confirm" + n + part).c_str(), g_confirmSlot == slot && g_confirmStep == 2);
+		}
 	}
 	for (const char* part : { "Heading", "Sub", "Exit" }) {
 		SetVisible(context, panel.c_str(), part, !asking);
@@ -1095,6 +1102,7 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 			g_confirmSlot = slot;
 			g_confirmStep = 1;
 			ShowSlotWidgets(context);
+			Log(context, "Camp: asking before deleting save %d.", slot);
 		}
 	} else if (StartsWith(action, "slot-")) {
 		PickSlot(context, std::atoi(action + 5));
