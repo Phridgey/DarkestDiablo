@@ -28,7 +28,7 @@ static constexpr D2RL::PluginInfo DarkestDiabloInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "darkestdiablo",
 	.name        = "Darkest Diablo",
-	.version     = "0.6.1",
+	.version     = "0.6.2",
 	.author      = "Darkest Diablo team",
 	.description = "Roguelite rules for the Darkest Diablo mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -114,6 +114,7 @@ struct Wave {
 	Group    groups[3];
 	int      groupCount;
 	uint32_t onlyClass;               // count only deaths of this monstats row (0xFFFFFFFF: any)
+	uint32_t bossClass = 0xFFFFFFFFU; // if set, the wave also needs this monster dead (any kill order)
 };
 struct Arena {
 	const char* name;
@@ -140,14 +141,15 @@ static constexpr Wave DenWaves[] = {
 
 // Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py). The
 // waypoint is in the entry room (level 10); its stairs come out at the graveyard's crypt door
-// (tile 12,27). Spots tested in game with the console (many nearby tiles refuse: "Monster not
-// created"): east (19,27), west (2,28), south-west (4,31), south-east (21,30).
+// (tile 12,27). The fight is on the open plaza by the hanging tree (about tile 12,17). Many
+// graveyard tiles refuse spawns ("Monster not created"); these plaza spots were tested in game
+// from the console: east (16,17), north-east (15,14), south (11,21), south-west (7,20).
 static constexpr Wave BurialWaves[] = {
-	{ { { "mspawn", "zombie1", 3, { 19, 27 } }, { "mspawn", "zombie1", 3, { 2, 28 } } }, 2, AnyClass },
-	{ { { "mspawn", "zombie1", 4, { 4, 31 } }, { "mspawn", "skeleton1", 3, { 21, 30 } } }, 2, AnyClass },
-	{ { { "mspawn", "zombie1", 3, { 19, 27 } }, { "mspawn", "skeleton1", 5, { 2, 28 } } }, 2, AnyClass },
-	// Blood Raven and 4 zombies; the wave ends when she dies.
-	{ { { "mspawn", "bloodraven", 1, { 19, 27 } }, { "mspawn", "zombie1", 4, { 4, 31 } } }, 2, BloodRavenClass },
+	{ { { "mspawn", "zombie1", 3, { 16, 17 } }, { "mspawn", "zombie1", 3, { 7, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 4, { 15, 14 } }, { "mspawn", "skeleton1", 3, { 11, 21 } } }, 2, AnyClass },
+	{ { { "mspawn", "zombie1", 3, { 7, 20 } }, { "mspawn", "skeleton1", 5, { 16, 17 } } }, 2, AnyClass },
+	// Blood Raven and 4 zombies: the wave ends when all 5 are dead, in any order (she must be one).
+	{ { { "mspawn", "bloodraven", 1, { 15, 14 } }, { "mspawn", "zombie1", 4, { 11, 21 } } }, 2, AnyClass, BloodRavenClass },
 };
 
 static constexpr Arena Arenas[] = {
@@ -160,6 +162,7 @@ static std::atomic<int>  g_arena { -1 };      // index into Arenas, -1 = none ru
 static std::atomic<int>  g_wave { 0 };        // 1-based wave in progress; > waveCount = done
 static std::atomic<int>  g_remaining { 0 };   // monsters left in the current wave
 static std::atomic<bool> g_portalDropped { false };
+static std::atomic<bool> g_bossDead { false };   // the current wave's boss (if it has one) is dead
 
 static auto FindArena(int32_t levelId) noexcept -> int {
 	for (int i = 0; i < static_cast<int>(sizeof(Arenas) / sizeof(Arenas[0])); ++i) {
@@ -175,6 +178,7 @@ static void ResetArena() noexcept {
 	g_wave = 0;
 	g_remaining = 0;
 	g_portalDropped = false;
+	g_bossDead = false;
 }
 
 // UI thread.
@@ -203,6 +207,7 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void*) noe
 		}
 	}
 	g_remaining = total;
+	g_bossDead = w.bossClass == AnyClass;  // no boss: nothing to wait for
 	g_wave = wave;
 	for (int g = 0; g < w.groupCount; ++g) {
 		const Group& group = w.groups[g];
@@ -233,14 +238,18 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 	if (wave < 1 || wave > arena.waveCount) {
 		return;
 	}
-	const uint32_t only = arena.waves[wave - 1].onlyClass;
-	if (only != AnyClass && event->monster.classId != only) {
+	const Wave& w = arena.waves[wave - 1];
+	if (w.onlyClass != AnyClass && event->monster.classId != w.onlyClass) {
 		return;
 	}
+	const bool bossJustDied = w.bossClass != AnyClass && event->monster.classId == w.bossClass && !g_bossDead.exchange(true);
 	char message[96] {};
 	std::snprintf(message, sizeof(message), "%s: kill (class %u), %d left in wave %d.", arena.name, event->monster.classId, g_remaining.load() - 1, wave);
 	context->LogInfo(message);
-	if (g_remaining.fetch_sub(1) == 1) {
+	// The wave is over when enough have died and its boss (if any) is among them. Extra monsters
+	// (raised or revived) only add kills; the boss must still die.
+	const int left = g_remaining.fetch_sub(1) - 1;
+	if ((left == 0 && g_bossDead.load()) || (bossJustDied && left <= 0)) {
 		g_threads->runOnUiThread(context, StartNextWave, nullptr);
 	}
 }
@@ -291,7 +300,7 @@ static auto InfoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* c
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.6.1 is running.");
+	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.6.2 is running.");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -362,7 +371,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		return false;
 	}
 
-	context->LogInfo("Darkest Diablo plugin 0.6.1 loaded.");
+	context->LogInfo("Darkest Diablo plugin 0.6.2 loaded.");
 	return context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).");
