@@ -4,8 +4,8 @@
   chest (OperateFn 32). The plugin can't see a click on a world object, only UI messages, so the
   bonfire borrows the one town object whose window we can put a button on.
 - Stash window: a Campfire button that opens the plugin's roster panel.
-- Hero screen: new title. It is the Campfire: the plugin adds the camp's heroes to it
-  (src/plugin/campfire.cpp), so the game's character list is no longer used.
+- Hero screen: new title. It is the Campfire: the game's own figures are moved out of sight and
+  the plugin draws the camp's figures (src/plugin/campfire.cpp).
 """
 
 
@@ -36,3 +36,13 @@ def patch(t):
     # The hero screen is the Campfire: the plugin draws the camp's heroes on it.
     create = t.layout("charactercreatepanelhd")
     t.widget(create, "Title")["fields"]["text"] = "The Campfire"
+    t.widget(create, "ToMainMenu")["fields"]["textString"] = "Change save"
+    # The game's own eight figures can't be hidden or changed while the game runs, so they are
+    # moved out of sight (under the ground, off the screen). The plugin's Fire panel draws the
+    # figures that belong at this camp's fire. tools/build.py notes their spots and looks first.
+    for child in create["children"]:
+        if child.get("type") == "HDCharacterSelectorWidget":
+            fields = child["fields"]
+            fields["rect"] = dict(fields["rect"], x=fields["rect"]["x"] + 40000)
+            x, _, z = fields["player/position"]
+            fields["player/position"] = [x, -300.0, z]

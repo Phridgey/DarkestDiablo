@@ -12,7 +12,7 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
    with a name plate. Clicking a hero (or its plate) loads it. Options, Delete and Exit Game are
-   on the left; Back returns to the save slots.
+   on the left; Change save (or Escape) lays the save slots over the fire.
 3. **New heroes** stand at the same fire in the game's standard look, and are made the usual
    way (click, name, Create). Only classes that may join right now are shown:
    - a brand new save: every class. The one picked starts the camp; the rest lock.
@@ -92,10 +92,17 @@ The build changes two of the game's menu layouts and reads item models, so `vani
 
 ## Tried in the game so far
 
-Worked (17 Nov 2026): the save slot window, picking a slot, the hero screen with all eight
-classes, making a hero. The town bonfire could not be clicked; it now has a click box (not yet
-tried again).
+Worked (17 Nov 2026): the save slot screen and picking a slot; landing on the Campfire after a
+slot pick and after leaving a game; making a hero there; clicking a hero's class to load it
+(bench, main menu, Play); the Options, Delete and Exit buttons showing; noting what a hero wears.
 
+Did not work, and what was changed:
+- The town bonfire could not be clicked; it now has a click box (not yet tried again).
+- Hiding a figure of the game's hero screen hides nothing (the 3D figure stays). The game's
+  eight figures are now moved out of sight in the layout, and the plugin's panel draws every
+  figure that belongs at the fire.
+- Asking the main menu to load again while it is already up does nothing. Slots are now
+  switched from the Campfire, which reads the camp itself.
 ## Not yet tried in the game
 
 Each point fails soft and writes to `darkestdiablo.log`. "campfire_screen 0" in

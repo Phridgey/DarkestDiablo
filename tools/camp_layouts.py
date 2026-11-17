@@ -86,7 +86,7 @@ def save_slots():
         y = 720 + (slot - 1) * 330
         kids.append(menu_button(f"Slot{slot}", -305, y, f"Save {slot}",
                                 f"PanelManager:OpenPanel:darkestdiablo/slot-{slot}", large=True))
-        kids.append(line(f"Slot{slot}Summary", y + 150, f"@darkestdiablo:Slot{slot}Summary", "$FontColorWhite"))
+        kids.append(line(f"Slot{slot}Summary", y + 150, f"SLOT{slot}SUMMARY", "$FontColorWhite"))
         kids.append(line(f"Slot{slot}Last", y + 210, "Last played", "$FontColorGoldYellow", "$MediumFontSize"))
     kids.append(line("RestartNotice", 1740, "This save is ready. Close the game and start it again to play it.", "$FontColorWhite"))
     kids.append(menu_button("Exit", -235, 1840, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit"))
@@ -117,4 +117,4 @@ def campfire():
     return panel("Campfire", kids)
 
 
-LAYOUTS = {"SaveSlots": save_slots, "Traveler": traveler, "Campfire": campfire}
+LAYOUTS = {"Traveler": traveler, "Campfire": campfire}  # save_slots goes out as a template (tools/build.py)

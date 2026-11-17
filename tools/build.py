@@ -143,17 +143,20 @@ class Tables:
 def write_camp_data(t, target):
     """What the plugin needs to draw saved heroes at the campfire, one fact per line:
     "spot <Class> <x> <y> <width> <height> <px> <py> <pz> <yaw>"  where a class stands on the hero screen
+    "look <Class> <layout fields>"                                what a new hero of the class holds and wears there
     "item <code> w|s <model file>"                                a weapon or shield and its model
     "item <code> b <torso> <legs> <right arm> <left arm> <pad 1> <pad 2>"  body armor, 0 light to 2 heavy
     Read from the vanilla files at build time, so nothing of Blizzard's is in the repo."""
     lines = []
-    create = t.layout("charactercreatepanelhd", change=False)
+    create = loads_lenient((VANILLA / "global" / "ui" / "layouts" / "charactercreatepanelhd.json").read_text(encoding="utf-8-sig"))
     for child in create["children"]:
         if child.get("type") == "HDCharacterSelectorWidget":
             f = child["fields"]
             r, pos = f["rect"], f["player/position"]
             lines.append("spot %s %d %d %d %d %s %s %s %s" % (
                 f["player/playerClass"], r["x"], r["y"], r["width"], r["height"], pos[0], pos[1], pos[2], f["player/yawDegrees"]))
+            look = {k: v for k, v in f.items() if k.startswith("player/") and k not in ("player/playerClass", "player/position", "player/yawDegrees")}
+            lines.append("look %s %s" % (f["player/playerClass"], json.dumps(look, separators=(",", ":"))[1:-1]))
     models = {}
     items_json = VANILLA / "hd" / "items" / "items.json"
     if items_json.exists():
@@ -233,6 +236,11 @@ def main():
     panels.mkdir(parents=True, exist_ok=True)
     for name, make in camp_layouts.LAYOUTS.items():
         (panels / f"{name}hd.json").write_text(json.dumps(make(), indent=1), encoding="utf-8")
+    # The save slot screen's text changes (who is by each fire), so the plugin hands it to the
+    # game itself each time, from this template. A copy in the layouts folder would win over it.
+    template = OUT.parent / "d2rloader" / "SaveSlots.layout.json"
+    template.parent.mkdir(parents=True, exist_ok=True)
+    template.write_text(json.dumps(camp_layouts.save_slots()), encoding="utf-8")
     loader = ROOT / "src" / "d2rloader"
     if loader.exists():
         shutil.copytree(loader, OUT.parent / "d2rloader", dirs_exist_ok=True)

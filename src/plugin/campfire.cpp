@@ -83,9 +83,12 @@ bool        g_wantFire    = false;  // when the main menu has loaded, go on to t
 bool        g_deleteMode  = false;  // Delete was pressed: the next hero clicked is buried
 std::string g_pendingPlay;          // the hero to load once the main menu is up
 std::string g_gearNow;              // what the hero in the current game wears (see RecordGear)
-fs::path    g_modDir;
 
-struct Spot { int x = 0, y = 0, w = 0, h = 0; std::string px, py, pz, yaw; bool known = false; };
+struct Spot { int x = 0, y = 0, w = 0, h = 0; std::string px, py, pz, yaw, look; bool known = false; };
+bool g_atFire    = false;  // the Campfire screen is up
+bool g_slotsOpen = false;
+fs::path g_dataDir;         // the mod's d2rloader folder: camp_data.txt, SaveSlots.layout.json
+D2RL::Resources::RegistrationHandle g_slotsLayout = D2RL::Resources::InvalidHandle;
 Spot g_spots[Camp::ClassCount];
 struct ItemLook { char kind = 0; std::string value; };
 std::vector<std::pair<std::string, ItemLook>> g_looks;  // item code -> how it looks on a figure
@@ -249,18 +252,22 @@ void Later(const D2RL::PluginContext* context, int delayMs, D2RL::Threads::Callb
 }
 
 void __cdecl GoToFire(const D2RL::PluginContext* context, void*) noexcept;
+void RefreshFire(const D2RL::PluginContext* context);
+auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool;
 
 // ---- Save slots ---------------------------------------------------------------------------
 
 void __cdecl ShowSlots(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
-	if (g_slotChosen || g_inGame) {
+	if (g_inGame) {
 		return;
 	}
+	RegisterSlotsLayout(context);
 	if (!Open(context, g_slotsPanel, "save slot")) {
 		g_slotChosen = true;  // carry on with the slot that is live
 		return;
 	}
+	g_slotsOpen = true;
 	const std::string panel = FullName(SlotsPanel);
 	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
 		SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Last").c_str(), slot == g_slot);
@@ -299,37 +306,66 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 		return "Leave the game first: slots can only change at the main menu.";
 	}
 	g_slotChosen = true;
+	g_slotsOpen = false;
 	Close(context, g_slotsPanel);
 	Camp::Unbench(g_live, g_slot);
-	if (slot == g_slot) {
-		if (g_fireOn && g_fireReady && g_threads != nullptr) {
+	const bool fire = g_fireOn && g_fireReady && g_threads != nullptr;
+	std::string said = "Save " + std::to_string(slot) + " is already loaded.";
+	if (slot != g_slot) {
+		std::string error;
+		if (!Camp::SwitchSlot(g_live, slot, error)) {
+			Log(context, "Camp: could not switch to save %d: %s", slot, error.c_str());
+			return "Could not switch save: " + error;
+		}
+		g_slot = slot;
+		g_camp = Camp::LoadState(g_live, g_slot);
+		g_pendingClass = -1;
+		Reconcile(context, false);
+		Log(context, "Camp: switched to save %d. %s", slot, Describe().c_str());
+		said = "Switched to save " + std::to_string(slot) + ".";
+		if (!fire) {  // the game's character list has to be read again
+			g_awaitingMenu = true;
+			if (g_threads != nullptr) {
+				g_threads->runOnUiThread(context, ReloadMenu, nullptr);
+			}
+			return said;
+		}
+	}
+	if (fire) {  // the Campfire reads the camp itself; the menu's list is read again when a hero is loaded
+		if (g_atFire) {
+			RefreshFire(context);
+		} else {
 			g_threads->runOnUiThread(context, GoToFire, nullptr);
 		}
-		return "Save " + std::to_string(slot) + " is already loaded.";
 	}
-	std::string error;
-	if (!Camp::SwitchSlot(g_live, slot, error)) {
-		Log(context, "Camp: could not switch to save %d: %s", slot, error.c_str());
-		return "Could not switch save: " + error;
-	}
-	g_slot = slot;
-	g_camp = Camp::LoadState(g_live, g_slot);
-	g_pendingClass = -1;
-	Reconcile(context, false);
-	Log(context, "Camp: switched to save %d. %s", slot, Describe().c_str());
-	g_awaitingMenu = true;
-	g_wantFire = g_fireOn && g_fireReady;
-	if (g_threads != nullptr) {
-		g_threads->runOnUiThread(context, ReloadMenu, nullptr);
-	}
-	return "Switched to save " + std::to_string(slot) + ".";
+	return said;
 }
 
 // ---- The Campfire screen ------------------------------------------------------------------
 
 // tools/build.py writes d2rloader/camp_data.txt: where each class stands, and how items look.
 void ReadCampData(const D2RL::PluginContext* context) {
-	std::istringstream in(Camp::ReadFile(g_modDir / "d2rloader" / "camp_data.txt"));
+	std::vector<fs::path> places;
+	if (context->pluginDirectory != nullptr) {
+		places.push_back(fs::path(context->pluginDirectory).parent_path());
+		places.push_back(fs::path(context->pluginDirectory));
+	}
+	if (context->modDirectory != nullptr) {
+		const fs::path mod(context->modDirectory);
+		places.push_back(mod / "d2rloader");
+		places.push_back(mod.parent_path() / "d2rloader");
+	}
+	std::error_code ec;
+	for (const auto& place : places) {
+		if (fs::exists(place / "camp_data.txt", ec)) {
+			g_dataDir = place;
+			break;
+		}
+	}
+	if (g_dataDir.empty()) {
+		Log(context, "Camp: camp_data.txt not found (looked in %d places, first: %s).", static_cast<int>(places.size()), places.empty() ? "-" : places.front().string().c_str());
+	}
+	std::istringstream in(Camp::ReadFile(g_dataDir / "camp_data.txt"));
 	std::string line;
 	int spots = 0;
 	while (std::getline(in, line)) {
@@ -343,6 +379,17 @@ void ReadCampData(const D2RL::PluginContext* context) {
 				words >> s.x >> s.y >> s.w >> s.h >> s.px >> s.py >> s.pz >> s.yaw;
 				s.known = !s.yaw.empty();
 				spots += s.known ? 1 : 0;
+			}
+		} else if (key == "look") {
+			const int cls = Camp::ClassFromName(name);
+			std::string rest;
+			std::getline(words, rest);
+			const size_t start = rest.find_first_not_of(' ');
+			if (cls >= 0 && start != std::string::npos) {
+				g_spots[cls].look = rest.substr(start);
+				while (!g_spots[cls].look.empty() && g_spots[cls].look.back() == '\r') {
+					g_spots[cls].look.pop_back();
+				}
 			}
 		} else if (key == "item") {
 			ItemLook look;
@@ -413,18 +460,30 @@ auto FireLayoutJson() -> std::string {
 	static constexpr char Plate[] = "Panel\\\\Modals\\\\ModalButton";
 	const std::string act = "PanelManager:OpenPanel:darkestdiablo/";
 	std::string kids;
+	const auto figure = [&](int c, const std::string& look) {
+		const Spot& s = g_spots[c];
+		const std::string cls = Camp::ClassNames[c];
+		kids += "{\"type\":\"HDCharacterSelectorWidget\",\"name\":\"" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(s.x) + ",\"y\":" + std::to_string(s.y) +
+			",\"width\":" + std::to_string(s.w) + ",\"height\":" + std::to_string(s.h) + "},\"player/playerClass\":\"" + cls +
+			"\",\"player/position\":[" + s.px + "," + s.py + "," + s.pz + "],\"player/yawDegrees\":" + s.yaw + look + ",\"focusIndicatorVisible\":false}},";
+	};
+	// The camp's heroes, each in what it was last seen wearing, with a name plate.
 	for (const auto& hero : g_camp.heroes) {
 		const Spot& s = g_spots[hero.cls];
 		if (!s.known) {
 			continue;
 		}
 		const std::string cls = Camp::ClassNames[hero.cls];
-		kids += "{\"type\":\"HDCharacterSelectorWidget\",\"name\":\"Hero" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(s.x) + ",\"y\":" + std::to_string(s.y) +
-			",\"width\":" + std::to_string(s.w) + ",\"height\":" + std::to_string(s.h) + "},\"player/playerClass\":\"" + cls +
-			"\",\"player/position\":[" + s.px + "," + s.py + "," + s.pz + "],\"player/yawDegrees\":" + s.yaw + GearFields(hero.gear) + ",\"focusIndicatorVisible\":false}},";
+		figure(hero.cls, GearFields(hero.gear));
 		const int plateX = s.x + (s.w - 300) / 2;
 		kids += FireButton("Plate" + cls, plateX, 1730, hero.name + " - " + std::to_string(hero.level), act + "play-" + cls, Plate, "$FontColorWhite") + ",";
 		kids += FireButton("Bury" + cls, plateX, 1730, "Bury " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
+	}
+	// The classes that may join right now, in the game's standard look.
+	for (const int c : Camp::Creatable(g_camp, g_rng)) {
+		if (g_spots[c].known && g_camp.HeroOf(c) == nullptr) {
+			figure(c, g_spots[c].look.empty() ? "" : "," + g_spots[c].look);
+		}
 	}
 	kids += "{\"type\":\"TextBoxWidget\",\"name\":\"DeleteHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
 		"\"text\":\"Choose the hero to bury. This can't be undone. Press Delete again to keep everyone.\","
@@ -473,29 +532,25 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 	}
 }
 
-// Hides the classes that can't be made right now. Runs a moment after the hero screen opens.
-void __cdecl FilterHeroScreen(const D2RL::PluginContext* context, void*) noexcept {
-	const Lock lock(g_mutex);
-	const auto allowed = Camp::Creatable(g_camp, g_rng);
-	int hidden = 0;
-	for (int c = 0; c < Camp::ClassCount; ++c) {
-		const bool show = Camp::State::Has(allowed, c);
-		if (SetVisible(context, "CharacterCreatePanel", Camp::ClassNames[c], show) && !show) {
-			++hidden;
-		}
-	}
-	Log(context, "Camp: the Campfire offers %d class(es) to make, hid %d.", static_cast<int>(allowed.size()), hidden);
-}
-
-// The hero screen has opened: lay the camp's heroes over it.
+// The hero screen has opened: lay the camp's figures over it.
 void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
-	FilterHeroScreen(context, nullptr);
-	if (g_fireOn && g_fireReady && Open(context, g_firePanel, "Campfire")) {
+	if (g_inGame || !g_fireOn || !g_fireReady) {
+		return;
+	}
+	if (Open(context, g_firePanel, "Campfire")) {
+		g_atFire = true;
 		g_deleteMode = false;
 		ShowDeleteMode(context);
 		Log(context, "Camp: the Campfire is open. %s", Describe().c_str());
 	}
+}
+
+// The camp changed while the Campfire is up (a hero was buried, another save was picked).
+void RefreshFire(const D2RL::PluginContext* context) {
+	Close(context, g_firePanel);
+	RegisterFireLayout(context);
+	Later(context, 150, OpenFire);
 }
 
 // From the main menu on to the Campfire.
@@ -568,14 +623,10 @@ void BuryHero(const D2RL::PluginContext* context, int cls) {
 		return;
 	}
 	const std::string panel = FullName(FirePanel);
-	for (const char* part : { "Hero", "Plate", "Bury" }) {
-		SetVisible(context, panel.c_str(), (std::string(part) + Camp::ClassNames[cls]).c_str(), false);
-	}
 	Camp::MarkFallen(g_camp, name);
 	Camp::SaveState(g_live, g_slot, g_camp);
 	g_deleteMode = false;
-	ShowDeleteMode(context);
-	FilterHeroScreen(context, nullptr);  // an empty fire brings a traveler: show who may join
+	RefreshFire(context);  // an empty fire brings a traveler: show who may join
 	Log(context, "Camp: %s the %s was deleted. That counts as a death. %s", name.c_str(), Camp::ClassNames[cls], Describe().c_str());
 }
 
@@ -730,31 +781,40 @@ auto FindSaveFolder() -> fs::path {
 	return out;
 }
 
-// The slot screen's summary lines, as a string file made at launch (the only moment the screen
-// is shown). Layout text can't be changed later through the SDK.
-void RegisterSlotStrings(const D2RL::PluginContext* context, const D2RL::ResourceService* resources) {
-	static constexpr const char* Locales[] = { "enUS", "deDE", "esES", "frFR", "itIT", "koKR", "plPL", "ruRU", "zhCN", "zhTW", "esMX", "jaJP", "ptBR" };
-	std::string json = "[";
-	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
-		const Camp::State camp = slot == g_slot ? g_camp : Camp::LoadState(g_live, slot);
-		const std::string text = Camp::Summary(camp);  // class names, numbers and plain words: nothing to escape
-		json += std::string(slot > 1 ? "," : "") + "{\"Key\":\"Slot" + std::to_string(slot) + "Summary\"";
-		for (const char* locale : Locales) {
-			json += std::string(",\"") + locale + "\":\"" + text + "\"";
-		}
-		json += "}";
+// The save slot screen, with who is by each fire written in. Its template is made by
+// tools/camp_layouts.py; the loader reads the layout when the panel opens.
+auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool {
+	if (g_resources == nullptr) {
+		return false;
 	}
-	json += "]";
+	std::string json = Camp::ReadFile(g_dataDir / "SaveSlots.layout.json");
+	if (json.empty()) {
+		return false;
+	}
+	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
+		const std::string mark = "SLOT" + std::to_string(slot) + "SUMMARY";
+		const Camp::State camp = slot == g_slot ? g_camp : Camp::LoadState(g_live, slot);
+		if (const size_t at = json.find(mark); at != std::string::npos) {
+			json.replace(at, mark.size(), Camp::Summary(camp));
+		}
+	}
+	if (g_slotsLayout != D2RL::Resources::InvalidHandle) {
+		if (g_resources->unregisterResource(context, g_slotsLayout) != D2RL::Resources::Result::Success) {
+			return true;  // the earlier text stays
+		}
+		g_slotsLayout = D2RL::Resources::InvalidHandle;
+	}
 	const D2RL::Resources::ResourceRegistration resource {
 		.structSize = D2RL::Resources::ResourceRegistrationSize,
-		.path       = "data/local/lng/strings/d2rloader/darkestdiablo/camp.json",
+		.path       = "data/global/ui/layouts/darkestdiablo/SaveSlotshd.json",
 		.bytes      = json.data(),
 		.byteCount  = static_cast<uint32_t>(json.size()),
 	};
-	D2RL::Resources::RegistrationHandle handle = D2RL::Resources::InvalidHandle;
-	if (resources->registerResource(context, &resource, &handle) != D2RL::Resources::Result::Success) {
-		context->LogWarn("Camp: could not add the save slot summaries.");
+	const auto result = g_resources->registerResource(context, &resource, &g_slotsLayout);
+	if (result != D2RL::Resources::Result::Success) {
+		Log(context, "Camp: could not hand over the save slot screen (code %d).", static_cast<int>(result));
 	}
+	return result == D2RL::Resources::Result::Success;
 }
 
 // Registers a panel whose layout is a file of the mod (made by tools/camp_layouts.py). The file
@@ -853,9 +913,6 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		}
 		Reconcile(context, false);
 		Log(context, "Camp: %s", Describe().c_str());
-		if (context->modDirectory != nullptr) {
-			g_modDir = context->modDirectory;
-		}
 		ReadCampData(context);
 		if (context->QueryService(&g_inventory) != D2RL::ServiceQueryResult::Success || !D2RL::HasInventoryServiceField(g_inventory, D2RL::InventoryServiceRequiredSize)) {
 			g_inventory = nullptr;
@@ -879,6 +936,8 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 			context->LogWarn("Camp: widget service missing; classes can't be hidden on the hero screen.");
 		}
 		if (context->QueryService(&g_panels) == D2RL::ServiceQueryResult::Success && D2RL::HasPanelServiceField(g_panels, D2RL::PanelServiceRequiredSize)) {
+			g_resources = resources;
+			RegisterSlotsLayout(context);
 			g_slotsPanel    = RegisterPanel(context, resources, SlotsPanel);
 			g_travelerPanel = RegisterPanel(context, resources, TravelerPanel);
 			g_campPanel     = RegisterPanel(context, resources, CampPanel);
@@ -897,9 +956,6 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		} else {
 			g_panels = nullptr;
 			context->LogWarn("Camp: panel service missing; no slot screen, traveler or roster panel.");
-		}
-		if (resources != nullptr) {
-			RegisterSlotStrings(context, resources);
 		}
 	} catch (const std::exception& error) {
 		Log(context, "Camp: setup failed (%s). The Campfire is off.", error.what());
@@ -921,6 +977,10 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 		if (panelManager && std::strcmp(command, "OpenPanel") == 0 && StartsWith(text, ActionPrefix)) {
 			return OnAction(context, text + sizeof(ActionPrefix) - 1);
 		}
+		if (panelManager && std::strcmp(command, "ClosePanel") == 0 && std::strcmp(text, "darkestdiablo/SaveSlots") == 0) {
+			g_slotsOpen = false;
+			return false;
+		}
 		if (std::strcmp(target, "FrontEndNavigation") == 0) {
 			if (std::strcmp(command, "ToFrontEnd") == 0) {  // the main menu is about to load: after launch, a game or the hero screen
 				const bool afterGame = g_inGame;
@@ -939,7 +999,18 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				Log(context, "Camp: nobody is waiting to join; the hero screen stays closed.");
 				return true;
 			}
+			if (std::strcmp(command, "ToCharacterSelect") == 0 && g_atFire && g_pendingPlay.empty() && g_slotPicker && g_threads != nullptr) {
+				// Back (or Escape) at the Campfire: the save slots, laid over it. Again closes them.
+				if (g_slotsOpen) {
+					g_slotsOpen = false;
+					Close(context, g_slotsPanel);
+				} else {
+					g_threads->runOnUiThread(context, ShowSlots, nullptr);
+				}
+				return true;
+			}
 			if (std::strcmp(command, "ToCharacterCreate") != 0) {
+				g_atFire = false;
 				Close(context, g_firePanel);
 			}
 			return false;
@@ -957,9 +1028,6 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				g_slotChosen = true;
 				g_wantFire = false;
 				g_threads->runOnUiThread(context, GoToFire, nullptr);
-			} else if (g_slotChosen && g_slotPicker && g_fireOn && g_fireReady && g_threads != nullptr) {
-				g_slotChosen = false;  // Back from the Campfire: the save slots again
-				g_threads->runOnUiThread(context, ShowSlots, nullptr);
 			} else {
 				g_slotChosen = true;
 			}
@@ -969,7 +1037,6 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			g_selectedClass = -1;
 			if (g_threads != nullptr) {
 				g_threads->runOnUiThread(context, OpenFire, nullptr);
-				Later(context, 500, FilterHeroScreen);  // again once the screen has settled
 			}
 			return false;
 		}
@@ -1036,6 +1103,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			g_pendingPlay.clear();
 			g_wantFire = false;
 			g_gearNow.clear();
+			g_atFire = false;
 			Close(context, g_firePanel);
 			break;
 		case Kind::LocalPlayerReady:
