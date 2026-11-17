@@ -20,9 +20,11 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 2. **D2RLoader.** Download D2RLoader 1.3.1 or later from
    https://www.nexusmods.com/diablo2resurrected/mods/1119 and extract it into the frozen copy
    (next to `D2R.exe`). It warns that 3.4 is not fully tested; that is expected.
-3. **Vanilla tables.** Extract `data/global/excel`, `data/local/lng/strings` and
-   `data/global/dataversionbuild.txt` from the frozen copy into `vanilla/` (CascView, or
-   `tools/extract.cpp`). Write the build number into `vanilla/D2R_VERSION`.
+3. **Vanilla files.** Extract these from the frozen copy into `vanilla/` (CascView, or
+   `tools/extract.cpp`), keeping their folders: `data/global/excel`, `data/local/lng/strings`,
+   `data/global/dataversionbuild.txt`, and for the hand-made maps the room pieces
+   `data/global/tiles/act1/caves` and `data/hd/env/preset/act1/caves`. Write the build number
+   into `vanilla/D2R_VERSION`.
 4. **Build and link.**
 
        tools\build-plugin.cmd
