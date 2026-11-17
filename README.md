@@ -37,8 +37,9 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 3. **Vanilla files.** Extract these from the frozen copy into `vanilla/` (CascView, or
    `tools/extract.cpp`), keeping their folders: `data/global/excel`, `data/local/lng/strings`,
    `data/global/dataversionbuild.txt`, and for the hand-made maps the room pieces
-   `data/global/tiles/act1/caves` and `data/hd/env/preset/act1/caves`. Write the build number
-   into `vanilla/D2R_VERSION`.
+   in `data/global/tiles/act1/` and `data/hd/env/preset/act1/`: the `caves`, `crypt`, `graveyard`
+   and `outdoors` folders of each. Write the build number into `vanilla/D2R_VERSION`.
+   Building CascLib with a recent CMake needs `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
 4. **Build and link.**
 
        tools\build-plugin.cmd
