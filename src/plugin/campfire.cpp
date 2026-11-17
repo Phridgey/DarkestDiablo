@@ -486,8 +486,15 @@ auto FireLayoutJson() -> std::string {
 		const std::string cls = Camp::ClassNames[hero.cls];
 		figure(hero.cls, GearFields(hero.gear));
 		const int plateX = s.x + (s.w - 300) / 2;
-		kids += FireButton("Plate" + cls, plateX, 1460, hero.name + " - " + std::to_string(hero.level), act + "play-" + cls, Plate, "$FontColorWhite") + ",";
-		kids += FireButton("Bury" + cls, plateX, 1460, "Bury " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
+		// The name plate: a dark framed plaque with the name in gold and "Level N Class" under it.
+		const int plaqueX = s.x + (s.w - 380) / 2;
+		kids += "{\"type\":\"NineTileImageWidget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\","
+			"\"backgroundColor\":[0.0,0.0,0.0,0.8],\"tileScale\":1.0,\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":1450,\"width\":380,\"height\":128}},\"children\":["
+			"{\"type\":\"TextBoxWidget\",\"name\":\"Name\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
+			"\"style\":{\"pointSize\":\"$ExtraLargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorGoldYellow\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
+			"{\"type\":\"TextBoxWidget\",\"name\":\"Rank\",\"fields\":{\"rect\":{\"x\":0,\"y\":72,\"width\":380,\"height\":44},\"text\":\"Level " + std::to_string(hero.level) + " " + cls + "\","
+			"\"style\":{\"pointSize\":\"$MediumFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
+		kids += FireButton("Bury" + cls, plateX, 1590, "Bury " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, in the game's standard look.
 	for (const int c : Camp::Creatable(g_camp, g_rng)) {
@@ -500,8 +507,20 @@ auto FireLayoutJson() -> std::string {
 		"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
 	static constexpr char Large[] = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonLarge";
 	if (!g_camp.heroes.empty()) {
-		kids += FireButton("EnterIdle", -305, 1790, "Enter", act + "enter", Large, "$FontColorGray") + ",";
-		kids += FireButton("EnterReady", -305, 1790, "Enter", act + "enter", Large, "$FontColorRed") + ",";
+		// Enter: the game's largest button, drawn bigger. Grey until a hero is picked; then the
+		// button itself is red, with a red glow behind it.
+		const auto enter = [&](const char* name, bool ready) {
+			std::string out = std::string("{\"type\":\"Widget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":1740}},\"children\":[";
+			if (ready) {
+				out += "{\"type\":\"RectangleWidget\",\"name\":\"Glow\",\"fields\":{\"rect\":{\"x\":-432,\"y\":-14,\"width\":864,\"height\":190},\"color\":[0.85,0.05,0.02,0.55]}},";
+			}
+			out += std::string("{\"type\":\"ButtonWidget\",\"name\":\"Button\",\"fields\":{\"rect\":{\"x\":-412,\"y\":0,\"scale\":1.35},\"filename\":\"") + Large +
+				"\",\"textString\":\"ENTER\",\"onClickMessage\":\"" + act + "enter\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"
+				"\"text/style\":\"$StyleFEButtonText\",\"pointSize\":\"$XExtraLargeFontSize\"," +
+				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.22,\"b\":0.16,\"a\":1.0},\"textColor\":\"$FontColorWhite\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
+			return out;
+		};
+		kids += enter("EnterIdle", false) + "," + enter("EnterReady", true) + ",";
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
 		FireButton("Options", 100, -640, "@d2r:OptionsHD", "PanelManager:OpenPanel:SettingsPanel", Med, "$LightButtonTextColor") + "," +
@@ -550,8 +569,16 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 	SetVisible(context, panel.c_str(), "EnterIdle", !g_createMode && !ready);
 	SetVisible(context, panel.c_str(), "EnterReady", !g_createMode && ready);
 	// The game's own name box, version picker and Create button.
-	SetVisible(context, "CharacterCreatePanel", "InputContainer", g_createMode);
-	SetVisible(context, "CharacterCreatePanel", "GameVersionContainer", g_createMode);
+	// The game shows its name box again by itself, so each part of it is hidden too.
+	int found = 0;
+	for (const char* part : { "InputContainer", "NameLabel", "InputBackground", "InputText", "HardcoreCheckbox", "LadderToggle", "GameVersionContainer" }) {
+		found += SetVisible(context, "CharacterCreatePanel", part, g_createMode) ? 1 : 0;
+	}
+	static int lastFound = -1;
+	if (found != lastFound) {
+		lastFound = found;
+		Log(context, "Camp: name box parts reached: %d of 7.", found);
+	}
 	SetVisible(context, "CharacterCreatePanel", "ToGame", !Camp::Creatable(g_camp, g_rng).empty());
 }
 
