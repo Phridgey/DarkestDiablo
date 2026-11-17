@@ -12,7 +12,7 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
    with a name plate. Clicking a hero (or its plate) picks it and turns Enter red; Enter loads
-   it. Create brings out the name box for a new hero. Options, Retire and Exit Game are
+   it. Create brings out the name box for a new hero; on a save with no heroes yet the name box is out from the start. Options, Retire and Exit Game are
    on the left; Change save (or Escape) lays the save slots over the fire.
 3. **New heroes** stand at the same fire in the game's standard look, and are made the usual
    way (click, name, Create). Only classes that may join right now are shown:
