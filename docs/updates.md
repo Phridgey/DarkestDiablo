@@ -56,7 +56,8 @@ A release is a GitHub release tagged `v<version>` (like `v0.2.0`) with these fil
 ```
 
 Paths are relative to `Mods\darkestdiablo`, with forward slashes. Only `modinfo.json`,
-`darkestdiablo.mpq/` and `d2rloader/plugins/` are shipped; logs and settings the game writes into
+`darkestdiablo.mpq/`, `d2rloader/plugins/` and the mod's own settings and data in `d2rloader/`
+(`metadata.json`, `config/`, `camp_data.txt`, `SaveSlots.layout.json`) are shipped; logs and settings the game writes into
 your build stay on your PC.
 
 `delta.json` inside a delta zip:

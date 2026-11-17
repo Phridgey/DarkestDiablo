@@ -13,9 +13,11 @@
 //   command, so a new character can reach the Den by waypoint on first load.
 //   For now this unlocks every waypoint. Per-stop unlocks wait for a waypoint service
 //   (D2RLoader/PluginSDK issue #9).
+// - The Campfire (campfire.cpp): save slots, the hero roster, recruiting, permanent death.
 
 #include <D2RLPlugin/api.h>
 #include <D2RLPlugin/core_exports.h>
+#include "campfire.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <atomic>
@@ -30,7 +32,7 @@ static constexpr D2RL::PluginInfo DarkestDiabloInfo {
 	.abiVersion  = D2RL_PLUGIN_ABI_VERSION,
 	.id          = "darkestdiablo",
 	.name        = "Darkest Diablo",
-	.version     = "0.9.0",
+	.version     = Campfire::Version,
 	.author      = "Darkest Diablo team",
 	.description = "Roguelite rules for the Darkest Diablo mod.",
 	.flags       = D2RL::PluginFlags::Shared,
@@ -519,9 +521,12 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	const char* command = event->command != nullptr ? event->command : "";
 	const char* text = event->text != nullptr ? event->text : "";
 	char message[256] {};
-	if (std::strcmp(target, "MonsterHealth") != 0) {  // that one fires every frame
+	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0) {  // those fire all the time
 		std::snprintf(message, sizeof(message), "UI message: %s:%s:%s", target, command, text);
 		context->LogInfo(message);
+	}
+	if (Campfire::OnUiMessage(context, target, command, text)) {
+		return Action::Consume;
 	}
 	// Node buttons send "PanelManager:OpenPanel:darkestdiablo/travel-<level id>". The game drops
 	// button messages with targets or commands it doesn't know, so the travel order rides on a
@@ -546,6 +551,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	if (context == nullptr || !D2RL::Lifecycle::HasGameplayEventField(event, D2RL::Lifecycle::GameplayEventRequiredSize)) {
 		return;
 	}
+	Campfire::OnGameplayEvent(context, event);
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
 	if (event->kind == Kind::LevelChanged) {
 		g_levelId = event->currentValue;
@@ -584,7 +590,7 @@ static auto InfoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* c
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	command->plugin->WriteConsoleMessage("Darkest Diablo plugin 0.9.0 is running.");
+	command->plugin->WriteConsoleMessage((std::string("Darkest Diablo plugin ") + Campfire::Version + " is running.").c_str());
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -646,7 +652,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	}
 
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
-	for (const auto kind : { Kind::LocalPlayerReady, Kind::LevelChanged, Kind::GameLeft, Kind::QuestCompleted }) {
+	for (const auto kind : { Kind::GameJoined, Kind::LocalPlayerReady, Kind::LevelChanged, Kind::PlayerLevelChanged, Kind::PlayerResurrected, Kind::GameLeft, Kind::QuestCompleted }) {
 		const D2RL::Lifecycle::GameplayEventListener listener {
 			.structSize = D2RL::Lifecycle::GameplayEventListenerSize,
 			.kind       = kind,
@@ -708,8 +714,9 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		context->LogWarn("Route map: UI-message service missing.");
 	}
 
-	context->LogInfo("Darkest Diablo plugin 0.9.0 loaded.");
-	return context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
+	context->LogInfo((std::string("Darkest Diablo plugin ") + Campfire::Version + " loaded.").c_str());
+	return Campfire::Load(context) &&
+		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&
 		context->RegisterConsoleCommand("dd-map", MapCommand, "Open or close the route map.");

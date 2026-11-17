@@ -40,8 +40,13 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - The camp is the run: the circle of characters by the fire, plus the stash.
 - Hardcore rules: death is final for the character, and everything it wears and carries is lost.
   The camp carries on.
-- Recruiting: one of each class in the campfire circle. The first character can be any class;
-  each cleared stop offers 3 random classes to recruit, like Darkest Dungeon's stagecoach.
+- Recruiting: one of each class in the campfire circle. The first character can be any class.
+  After that, each return to town has a chance that a traveler joins the camp and offers up to
+  3 locked classes (decided 2026-11-17). The first offer after a death includes the fallen
+  hero's class. A recruit starts at level 1 with nothing.
+- Three save slots; each is its own camp with its own stash.
+- In town, the bonfire leads to the Campfire. How it is built, and what the engine forced:
+  `docs/campfire.md`.
 - The next character to play is picked from the campfire circle, with the stash in view to plan.
 - Stashed items keep their level and attribute requirements. That is the balance.
 - The stash starts small. Optional challenges (e.g. "bonus for spears", "can't use shields")
@@ -58,14 +63,13 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - A D2RLoader plugin (our code, built with the D2RLoader Plugin SDK) for what data can't: fork/waypoint control, run and camp state, first-pick bonuses,
   magic find effects on sockets/superior/ethereal and runes, death and retirement rules,
   class limit, challenges, Atlas.
-- The plugin keeps its own camp file in the mod's save folder
+- The plugin keeps its camp files in the `camp` folder of the mod's save folder
   (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`). Back it up with the saves.
 
 ## Open questions
 - Is Andariel (and each act boss) a forced final stop?
 - Examples of kiss and curse bonuses.
 - When can a character attempt a blaze of glory?
-- Does a recruit start at level 1? Do the 3 offers leave out classes already in the circle?
 
 ## Arena stops (decided 2026-11-17, updated)
 - Waves come on a timer: wave 1 shortly after arrival, then one every 10 s, whatever is still

@@ -7,8 +7,12 @@ Usage: python tools/build.py
 3. Runs each src/patches/*.py in name order. A patch defines patch(t), where t.table(name)
    loads a vanilla table (e.g. "levels") and returns a Table you can change in place.
    Only tables a patch touched are written to the build.
+   t.layout(name) does the same for a game menu layout (e.g. "mainmenupanelhd"): it returns the
+   parsed JSON, to change in place.
+4. Writes the Campfire's own panels (tools/camp_layouts.py) and copies src/d2rloader/ (the mod's
+   D2RLoader settings) next to the data.
 """
-import importlib.util, shutil, sys
+import importlib.util, json, shutil, sys
 sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
 from pathlib import Path
 
@@ -44,6 +48,13 @@ class Table:
             raise KeyError(f"{self.path.name}: no row where {column} = {value!r}")
         return hits[0]
 
+    def add_copy(self, column, value, **changes):
+        """Add a row at the end that is a copy of an existing row, with some cells changed."""
+        row = dict(self.first(column, value))
+        row.update(changes)
+        self.rows.append(row)
+        return row
+
     def add_column(self, name, default=""):
         if name not in self.columns:
             self.columns.append(name)
@@ -61,9 +72,86 @@ class Table:
         path.write_bytes(("\r\n".join(out) + "\r\n").encode("utf-8"))
 
 
+def loads_lenient(text):
+    """Parse the game's layout files: JSON with // comments and trailing commas."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':  # copy a string as it is
+            j = i + 1
+            while text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+        elif text.startswith("/*", i):
+            i = text.index("*/", i) + 2
+        elif c == ",":
+            j = i + 1
+            while True:  # look past spaces and comments for what follows the comma
+                while j < n and text[j].isspace():
+                    j += 1
+                if text.startswith("//", j):
+                    while j < n and text[j] != "\n":
+                        j += 1
+                elif text.startswith("/*", j):
+                    j = text.index("*/", j) + 2
+                else:
+                    break
+            if j >= n or text[j] not in "}]":
+                out.append(c)
+            i += 1
+        else:
+            out.append(c)
+            i += 1
+    return json.loads("".join(out))
+
+
+def find_widget(node, name):
+    """The widget called `name` in a parsed layout (searching children), or None."""
+    if node.get("name") == name:
+        return node
+    for child in node.get("children", []):
+        hit = find_widget(child, name)
+        if hit:
+            return hit
+    return None
+
+
 class Tables:
     def __init__(self):
         self.loaded = {}
+        self.layouts = {}
+        self.files = {}
+
+    def layout(self, name, change=True):
+        """A vanilla menu layout as parsed JSON. With change=False it is only read, not shipped."""
+        src = VANILLA / "global" / "ui" / "layouts" / f"{name}.json"
+        if not src.exists():
+            raise FileNotFoundError(f"{src} is missing. Extract data/global/ui/layouts from the game (see README.md).")
+        if not change:
+            return self.layouts.get(name) or loads_lenient(src.read_text(encoding="utf-8-sig"))
+        if name not in self.layouts:
+            self.layouts[name] = loads_lenient(src.read_text(encoding="utf-8-sig"))
+        return self.layouts[name]
+
+    widget = staticmethod(find_widget)
+
+    def data(self, path):
+        """A vanilla JSON file by its path under data/ (e.g. "hd/objects/objects.json"), parsed.
+        It is shipped in the mod with whatever the patches changed."""
+        if path not in self.files:
+            src = VANILLA / path
+            if not src.exists():
+                raise FileNotFoundError(f"{src} is missing. Extract data/{path} from the game (see README.md).")
+            self.files[path] = loads_lenient(src.read_text(encoding="utf-8-sig"))
+        return self.files[path]
+
+    def add_data(self, path, content):
+        """Ship a new JSON file in the mod at this path under data/."""
+        self.files[path] = content
 
     def table(self, name):
         if name not in self.loaded:
@@ -72,6 +160,51 @@ class Tables:
                 raise FileNotFoundError(f"{src} is missing. Extract the vanilla files first.")
             self.loaded[name] = Table(src)
         return self.loaded[name]
+
+
+def write_camp_data(t, target):
+    """What the plugin needs to draw saved heroes at the campfire, one fact per line:
+    "spot <Class> <x> <y> <width> <height> <px> <py> <pz> <yaw>"  where a class stands on the hero screen
+    "look <Class> <layout fields>"                                what a new hero of the class holds and wears there
+    "item <code> w|s <model file>"                                a weapon or shield and its model
+    "item <code> b <torso> <legs> <right arm> <left arm> <pad 1> <pad 2>"  body armor, 0 light to 2 heavy
+    Read from the vanilla files at build time, so nothing of Blizzard's is in the repo."""
+    lines = []
+    create = loads_lenient((VANILLA / "global" / "ui" / "layouts" / "charactercreatepanelhd.json").read_text(encoding="utf-8-sig"))
+    for child in create["children"]:
+        if child.get("type") == "HDCharacterSelectorWidget":
+            f = child["fields"]
+            r, pos = f["rect"], f["player/position"]
+            lines.append("spot %s %d %d %d %d %s %s %s %s" % (
+                f["player/playerClass"], r["x"], r["y"], r["width"], r["height"], pos[0], pos[1], pos[2], f["player/yawDegrees"]))
+            look = {k: v for k, v in f.items() if k.startswith("player/") and k not in ("player/playerClass", "player/position", "player/yawDegrees")}
+            lines.append("look %s %s" % (f["player/playerClass"], json.dumps(look, separators=(",", ":"))[1:-1]))
+    models = {}
+    items_json = VANILLA / "hd" / "items" / "items.json"
+    if items_json.exists():
+        parsed = loads_lenient(items_json.read_text(encoding="utf-8-sig"))
+        for entry in (parsed if isinstance(parsed, list) else [parsed]):
+            for code, value in entry.items():
+                if isinstance(value, dict) and value.get("asset"):
+                    models[code] = value["asset"]
+    else:
+        print("note: vanilla/data/hd/items/items.json is missing; heroes at the campfire show armor weight only.")
+    try:
+        slots = {r["Code"]: r.get("BodyLoc1", "") for r in t.table("itemtypes").rows}
+        for r in t.table("weapons").rows:
+            if r.get("code") in models:
+                lines.append(f"item {r['code']} w data/hd/items/weapon/{models[r['code']]}.json")
+        for r in t.table("armor").rows:
+            code, where = r.get("code", ""), slots.get(r.get("type", ""), "")
+            if where == "tors":
+                lines.append("item %s b %s" % (code, " ".join(r.get(c) or "0" for c in ("Torso", "Legs", "rArm", "lArm", "rSPad", "lSPad"))))
+            elif where in ("rarm", "larm") and code in models:
+                lines.append(f"item {code} s data/hd/items/armor/{models[code]}.json")
+    except (FileNotFoundError, KeyError) as error:
+        print(f"note: item tables not read ({error}); heroes at the campfire show no gear.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote: d2rloader/camp_data.txt ({len(lines)} lines)")
 
 
 def main():
@@ -112,6 +245,34 @@ def main():
     for name, table in t.loaded.items():
         table.save(OUT / "data" / EXCEL / f"{name}.txt")
         print(f"wrote: data/global/excel/{name}.txt")
+
+    for name, layout in t.layouts.items():
+        target = OUT / "data" / "global" / "ui" / "layouts" / f"{name}.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(layout, indent=1), encoding="utf-8")
+        print(f"wrote: data/global/ui/layouts/{name}.json")
+
+    for path, content in t.files.items():
+        target = OUT / "data" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(content, indent=1), encoding="utf-8")
+        print(f"wrote: data/{path}")
+
+    # The Campfire's own panels, and the mod's D2RLoader settings (more shared stash pages).
+    import camp_layouts
+    panels = OUT / "data" / "global" / "ui" / "layouts" / "darkestdiablo"
+    panels.mkdir(parents=True, exist_ok=True)
+    for name, make in camp_layouts.LAYOUTS.items():
+        (panels / f"{name}hd.json").write_text(json.dumps(make(), indent=1), encoding="utf-8")
+    # The save slot screen's text changes (who is by each fire), so the plugin hands it to the
+    # game itself each time, from this template. A copy in the layouts folder would win over it.
+    template = OUT.parent / "d2rloader" / "SaveSlots.layout.json"
+    template.parent.mkdir(parents=True, exist_ok=True)
+    template.write_text(json.dumps(camp_layouts.save_slots()), encoding="utf-8")
+    loader = ROOT / "src" / "d2rloader"
+    if loader.exists():
+        shutil.copytree(loader, OUT.parent / "d2rloader", dirs_exist_ok=True)
+    write_camp_data(t, OUT.parent / "d2rloader" / "camp_data.txt")
 
     # The D2RLoader plugin (built by tools/build-plugin.cmd) goes in the mod's own plugin folder.
     plugin = ROOT / "build" / "plugin" / "darkestdiablo.dll"
