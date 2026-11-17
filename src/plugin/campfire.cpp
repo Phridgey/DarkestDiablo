@@ -722,7 +722,7 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	if (PoolOpen(context, g_fire, "Campfire")) {
 		g_atFire = true;
 		g_deleteMode = false;
-		g_createMode = false;
+		g_createMode = g_camp.heroes.empty();  // a new save has nobody to pick: go straight to making a hero
 		g_chosenHero = -1;
 		ShowDeleteMode(context);
 		Later(context, 300, ShowFireState);  // again once the game's screen has settled
@@ -1118,7 +1118,7 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 		BuryHero(context, Camp::ClassFromName(action + 5));
 	} else if (std::strcmp(action, "delete-mode") == 0) {
 		g_deleteMode = !g_deleteMode;
-		g_createMode = false;
+		g_createMode = g_camp.heroes.empty();
 		ShowDeleteMode(context);
 	} else if (std::strcmp(action, "to-campfire") == 0) {
 		RecordGear(context, nullptr);
