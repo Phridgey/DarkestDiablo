@@ -4,20 +4,26 @@ Run from source:  python launcher/darkestdiablo_launcher.py
 Build the .exe:   tools\\build-launcher.cmd
 
 First run: finds the D2R install, asks where the Darkest Diablo game folder goes, copies the
-game there (the normal install is never changed), sets up D2RLoader, downloads the mod.
-After that: shows Update when a new release is out, otherwise Play.
+game there (the normal install is never changed), sets up D2RLoader, then installs the mod.
+After that: shows Update when there is something new, otherwise Play.
+
+Two channels (the "channel" setting in %APPDATA%\\DarkestDiablo\\launcher.json):
+- "main" (the default for now): builds the newest commit on main on this PC (ddmain.py).
+- "releases": downloads published GitHub releases (ddcore.py, docs/updates.md).
 
 The look is a nod to the old installer menus: a dark screen, a gold title, a short list of
 text choices that light up under the mouse, and a few embers. All of it is drawn here; there
 are no image or sound files. It is silent on purpose.
 """
-import queue, random, sys, threading, webbrowser
+import os, queue, random, sys, threading, webbrowser
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, font as tkfont, messagebox, simpledialog
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ddcore  # noqa: E402
+import ddmain  # noqa: E402
+import build_stdlib  # noqa: E402,F401  (bundles what the repo's build scripts import)
 
 W, H = 760, 520
 BG_TOP, BG_BOTTOM = (8, 6, 5), (34, 10, 6)
@@ -172,11 +178,19 @@ class Launcher:
     def set_progress(self, done, total, label):
         if not hasattr(self, "bar"):
             return
-        frac = 0 if not total else max(0.0, min(1.0, done / total))
+        self.c.itemconfigure(self.status_id, text=label)
+        if not total:
+            # No known size (reading game files, building): a short glow sweeping along the bar.
+            self.pulse = (getattr(self, "pulse", 0) + 7) % (W - 224 - 60)
+            x0 = 112 + self.pulse
+            self.c.coords(self.bar, x0, 287, x0 + 60, 303)
+            self.c.coords(self.bar_glow, x0, 288, x0 + 60, 288)
+            self.c.itemconfigure(self.pct_id, text="")
+            return
+        frac = max(0.0, min(1.0, done / total))
         x = 112 + (W - 224 - 4) * frac
         self.c.coords(self.bar, 112, 287, x, 303)
         self.c.coords(self.bar_glow, 112, 288, x, 288)
-        self.c.itemconfigure(self.status_id, text=label)
         self.c.itemconfigure(self.pct_id, text=f"{frac * 100:.0f}%" + (f"   {ddcore.gb(done)} of {ddcore.gb(total)}" if total > 1 else ""))
 
     # ------------------------------------------------------------ background work
@@ -313,7 +327,13 @@ class Launcher:
             return
         self.install_mod()
 
+    @property
+    def channel(self):
+        return self.settings.get("channel", "main")
+
     def install_mod(self):
+        if self.channel == "main":
+            return self.build_main()
         self.progress_screen("Fetching Darkest Diablo")
         game = self.settings["game_dir"]
 
@@ -321,6 +341,35 @@ class Launcher:
             self.release = self.release or self.fetch_release()
             ddcore.update(game, self.release, self.report)
         self.run(work, lambda _: self.main_screen(), self.release_failed)
+
+    def build_main(self):
+        self.progress_screen("Building Darkest Diablo from the latest main")
+        game = self.settings["game_dir"]
+        commit = getattr(self, "main_commit", None)
+        self.run(lambda: ddmain.build_and_install(game, self.report, commit),
+                 lambda _: self.main_screen(), self.build_failed)
+
+    def build_failed(self, e):
+        self.clear()
+        if isinstance(e, ddmain.NeedVisualStudio):
+            self.text(190, "Visual Studio is needed, for now", GOLD, self.f_menu)
+            self.text(250, "Until there are releases, the launcher builds Darkest Diablo on this PC, and its "
+                           "code part needs Visual Studio's C++ tools. Install Visual Studio Community (free) "
+                           "with \"Desktop development with C++\", then try again.", TEXT)
+            return self.menu([("Open the Visual Studio page", lambda: webbrowser.open(ddmain.VS_PAGE)),
+                              ("Try again", self.build_main), ("Quit", self.root.destroy)], top=340)
+        self.text(200, "The build didn't finish", RED, self.f_menu)
+        self.text(260, str(e), TEXT, self.f_small)
+        items = []
+        if isinstance(e, ddmain.BuildFailed):
+            items.append(("Open the build log", lambda: os.startfile(str(e.log)) if hasattr(os, "startfile")
+                          else webbrowser.open(Path(e.log).as_uri())))
+        installed = ddcore.read_install(self.settings["game_dir"])
+        items += [("Try again", self.build_main)]
+        if installed:
+            items.append(("Back", self.main_screen))
+        items.append(("Quit", self.root.destroy))
+        self.menu(items, top=345)
 
     def fetch_release(self):
         return ddcore.latest_release(self.settings.get("token"))
@@ -368,6 +417,8 @@ class Launcher:
         self.text(205, f"Version {version}" if version else "Not installed yet", GOLD, self.f_menu)
         self.check_id = self.text(240, "Looking for updates...", TEXT_DIM, self.f_small)
         self.menu_main(update=None, playable=bool(version))
+        if self.channel == "main":
+            return self.check_main(installed if version else None)
 
         def done(rel):
             self.release = rel
@@ -383,7 +434,8 @@ class Launcher:
             what = "Update" if version else "Install"
             self.c.itemconfigure(self.check_id, text=f"{what} {rel.version} is ready ({ddcore.gb(size)})." + warn
                                  + (f"\n{rel.notes.strip().splitlines()[0][:90]}" if rel.notes.strip() else ""))
-            self.clear_menu_and(lambda: self.menu_main(update=rel, playable=bool(version)))
+            self.clear_menu_and(lambda: self.menu_main(update=f"Update to {rel.version}" if version
+                                                       else "Install Darkest Diablo", playable=bool(version)))
 
         def failed(e):
             if not self.c.find_withtag(self.check_id):
@@ -397,6 +449,36 @@ class Launcher:
             self.c.itemconfigure(self.check_id, text=msg)
         self.run(self.fetch_release, done, failed)
 
+    def check_main(self, installed):
+        have = (installed or {}).get("commit")
+
+        def work():
+            latest = ddmain.latest_commit()
+            ahead = ddmain.changes_since(have, latest["sha"]) if have and have != latest["sha"] else None
+            return latest, ahead
+
+        def done(result):
+            latest, ahead = result
+            self.main_commit = latest
+            if not self.c.find_withtag(self.check_id):
+                return
+            note = latest["message"][:80]
+            if have == latest["sha"]:
+                self.c.itemconfigure(self.check_id, text=f"Up to date with main.\nLatest change: {note}")
+                return
+            if installed:
+                what = f"{ahead} new change{'s' if ahead != 1 else ''} on main" if ahead else "New changes on main"
+                label = "Update to the latest main"
+            else:
+                what, label = "Ready to build from main", "Install Darkest Diablo"
+            self.c.itemconfigure(self.check_id, text=f"{what}. Latest: {note}")
+            self.clear_menu_and(lambda: self.menu_main(update=label, playable=bool(installed)))
+
+        def failed(e):
+            if self.c.find_withtag(self.check_id):
+                self.c.itemconfigure(self.check_id, text=f"Couldn't check GitHub for changes: {e}")
+        self.run(work, done, failed)
+
     def clear_menu_and(self, draw):
         for item in self.c.find_withtag("menu"):
             self.c.delete(item)
@@ -405,7 +487,7 @@ class Launcher:
     def menu_main(self, update, playable=True, token=False):
         items = []
         if update is not None:
-            items.append((f"Update to {update.version}" if playable else "Install Darkest Diablo", self.install_mod))
+            items.append((update, self.install_mod))
         if playable or update is None:
             items.append(("Play", self.play if playable or ddcore.is_dev_link(self.settings["game_dir"]) else None))
         if token:
@@ -435,7 +517,34 @@ class Launcher:
         self.root.after(1500, self.root.destroy)
 
 
+def run_as_python():
+    """The launcher .exe has Python inside. Copied as python.exe (ddmain.python_shim), it runs the
+    repo's build scripts the way python.exe would, so players don't need to install Python."""
+    import runpy
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w")
+    if sys.stderr is None:
+        sys.stderr = sys.stdout
+    args = [a for a in sys.argv[1:] if not (a.startswith("-") and a in ("-u", "-I", "-B", "-E", "-s"))]
+    if not args:
+        print("This copy of the Darkest Diablo launcher only runs scripts.")
+        return 2
+    script = Path(args[0]).resolve()
+    sys.argv = [str(script)] + args[1:]
+    sys.path.insert(0, str(script.parent))
+    try:
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as e:
+        if e.code is None or isinstance(e.code, int):
+            return e.code or 0
+        print(e.code, file=sys.stderr)
+        return 1
+    return 0
+
+
 def main():
+    if Path(sys.executable).stem.lower() == "python" and getattr(sys, "frozen", False):
+        sys.exit(run_as_python())
     root = tk.Tk()
     Launcher(root)
     root.mainloop()

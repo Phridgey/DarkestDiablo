@@ -23,7 +23,10 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
 - `tools/build-plugin.cmd` — builds the plugin and places it in the mod (Windows, needs Visual Studio).
 - `tools/build.py` — builds `build/darkestdiablo/darkestdiablo.mpq/`.
 - `tools/link.cmd` — run once on Windows: links the build into the frozen game's `Mods` folder.
-- `launcher/` — the players' launcher (finds D2R, makes the game folder, Update / Play).
+- `launcher/` — the players' launcher (finds D2R, makes the game folder, Update / Play). For now it
+  builds the newest `main` on the player's PC with `tools\build-plugin.cmd` (`launcher/ddmain.py`).
+- `tools/vanilla_files.txt` — every game file the build reads. The launcher extracts exactly these.
+  A change that reads a new game file must add it here, or players' builds fail.
 - `tools/release.py` — publishes the build as a GitHub release the launcher can update from.
   Read `docs/updates.md` before changing what the build outputs, where files go, or the release format.
 
@@ -32,7 +35,11 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
    `tools\build-plugin.cmd` (plugin + data). 3. With the Battle.net app open, run `D2RLoader.exe`
    in the frozen copy; its default mod is `darkestdiablo`. Its log is `d2rloader/logs/d2rloader.log`.
 4. One branch per feature, merged by pull request.
-5. To ship to players: `python tools/release.py <version> --publish` from an up-to-date `main`
+5. `main` is what players' launchers build, so only merge what builds with
+   `tools\build-plugin.cmd` from a fresh `vanilla/` extracted with `tools/vanilla_files.txt`.
+   A new file in `build/darkestdiablo` reaches players only once it is in `SHIPPED`
+   (`launcher/ddcore.py`).
+6. To ship releases (later): `python tools/release.py <version> --publish` from an up-to-date `main`
    build. Updates are deltas of whole changed files; never edit or delete a published release.
 
 ## Paths

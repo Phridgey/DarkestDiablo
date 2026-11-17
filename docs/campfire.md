@@ -89,9 +89,9 @@ menu), `dd-traveler` (in town: a traveler now).
 
 ## Building
 
-The build changes two of the game's menu layouts and reads item models, so `vanilla/` needs
-`data/global/ui/layouts`, `data/hd/items/items.json`, `data/hd/objects/objects.json` and
-`data/hd/objects/env_wood/rogue_bonfire.json` and `data/hd/objects/chests/bank.json`, extracted the same way as the tables. Nothing of Blizzard's is in the repo.
+The build changes two of the game's menu layouts and reads item and object models from the game.
+All of them are in `tools/vanilla_files.txt`, which the launcher and the README's setup extract.
+Nothing of Blizzard's is in the repo.
 
 ## Tried in the game so far
 

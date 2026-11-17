@@ -9,14 +9,17 @@ The mod has two parts:
   built with the official [D2RLoader Plugin SDK](https://github.com/D2RLoader/PluginSDK) (MIT).
 
 ## Playing (no repo needed)
-Download **DarkestDiabloLauncher.exe** from the newest release and run it. It finds your D2R,
-asks where to put the Darkest Diablo game folder (any folder, any drive), copies the game there
-(your normal install is never changed), helps you add D2RLoader, and downloads the mod. After
-that it shows **Update** when there is one, otherwise **Play**. You still need the Battle.net app
-open to play.
+Get **DarkestDiabloLauncher.exe** (from the newest run of the Launcher workflow under Actions,
+until there are releases) and run it. It finds your D2R, asks where to put the Darkest Diablo game
+folder (any folder, any drive), copies the game there (your normal install is never changed) and
+helps you add D2RLoader. Then it builds the newest `main` on your PC and installs it. After that
+it shows **Update** when `main` has new changes, otherwise **Play**. You still need the Battle.net
+app open to play, and for now Visual Studio's C++ tools (the plugin is built on your PC).
 
-**Contributors:** players get our work through GitHub releases, as small updates that hold only
-the files that changed. How releases work and how to publish one: `docs/updates.md`.
+**Contributors:** whatever is on `main` is what the launcher builds, with the same
+`tools\build-plugin.cmd` you use. So `main` must always build, and every game file the build reads
+must be listed in `tools/vanilla_files.txt`. Later, players get releases instead: small updates
+that hold only the files that changed. Both are explained in `docs/updates.md`.
 
 ## One-time setup (each of us, to develop)
 You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop development with C++".
@@ -34,12 +37,14 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 2. **Your build instead of a release.** If the launcher installed a release into
    `<your game folder>\Mods\darkestdiablo`, delete that folder before step 4 so the link can
    take its place. The launcher sees the link and leaves it alone ("Developer build").
-3. **Vanilla files.** Extract these from the frozen copy into `vanilla/` (CascView, or
-   `tools/extract.cpp`), keeping their folders: `data/global/excel`, `data/local/lng/strings`,
-   `data/global/dataversionbuild.txt`, and for the hand-made maps the room pieces
-   in `data/global/tiles/act1/` and `data/hd/env/preset/act1/`: the `caves`, `crypt`, `graveyard`
-   and `outdoors` folders of each. Write the build number into `vanilla/D2R_VERSION`.
-   Building CascLib with a recent CMake needs `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
+3. **Vanilla files.** `tools/vanilla_files.txt` lists the game files the build reads. Build the
+   reader once with `tools\build-extract.cmd` (fetches CascLib), then extract them from the
+   frozen copy and write its build number:
+
+       build\extract\extract.exe "<your game folder>" vanilla @tools\vanilla_files.txt
+       echo 3.4.95032> vanilla\D2R_VERSION
+
+   (The launcher does this by itself in `<game folder>\darkestdiablo-src`.)
 4. **Build and link.**
 
        tools\build-plugin.cmd
@@ -78,8 +83,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
   character list staged at the campfire, recruiting on the hero screen (a new save offers every
   class, after that only classes a traveler brought), travelers in town, permanent death, and a
   bigger shared stash per save. The town bonfire opens the stash, which has a Campfire button.
-  The build needs the game's menu layouts: extract `data/global/ui/layouts` into `vanilla/`
-  (and the few other files `docs/campfire.md` lists under Building).
+  The build needs the game's menu layouts and a few model files (all in `tools/vanilla_files.txt`).
   Console: `dd-camp`, `dd-slot <1-3>`, `dd-traveler`.
 - **Console** (Ctrl + backtick, with `enable_console = true` in `d2rloader/config/d2rloader.toml`):
   `dd` (plugin running?), `dd-tp` (TP scroll), `dd-waves` (restart the waves of the arena you

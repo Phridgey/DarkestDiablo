@@ -236,6 +236,28 @@ def version_key(v):
     return tuple(int(x) if x.isdigit() else 0 for x in str(v).lstrip("v").split("."))
 
 
+# What of build/darkestdiablo is the mod, as paths or folders inside it. Everything else there
+# (logs, settings the game or plugin write while you play a linked build) stays on your PC.
+# When the build starts writing a new file or folder, add it here: releases and the launcher's
+# main channel both ship exactly this.
+SHIPPED = ("modinfo.json", f"{MOD_NAME}.mpq/", "d2rloader/plugins/",
+           # The Campfire: the mod's loader settings (more stash pages) and what the plugin reads.
+           "d2rloader/metadata.json", "d2rloader/config/", "d2rloader/camp_data.txt",
+           "d2rloader/SaveSlots.layout.json")
+
+
+def collect_build(build_dir):
+    """{relative path: {size, sha256}} of the shipped files of a built mod folder
+    (build/darkestdiablo). Used by tools/release.py and the main channel alike."""
+    build_dir = Path(build_dir)
+    files = {}
+    for f in sorted(p for p in build_dir.rglob("*") if p.is_file()):
+        rel = f.relative_to(build_dir).as_posix()
+        if any(rel == s or (s.endswith("/") and rel.startswith(s)) for s in SHIPPED):
+            files[rel] = {"size": f.stat().st_size, "sha256": sha256_file(f)}
+    return files
+
+
 def diff_manifests(old_files, new_files):
     """(changed or added paths, removed paths) between two manifests' "files" maps."""
     changed = sorted(p for p, f in new_files.items() if old_files.get(p, {}).get("sha256") != f["sha256"])
@@ -366,9 +388,28 @@ def read_install(game_dir):
 
 
 def write_install(game_dir, manifest):
-    rec = {"version": manifest["version"], "d2r_version": manifest.get("d2r_version"),
-           "files": manifest["files"], "installed_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    """Record what is installed: the manifest's facts (version, channel, commit...) and its files."""
+    rec = {k: v for k, v in manifest.items() if k != "format"}
+    rec.setdefault("channel", "releases")
+    rec["installed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     (Path(game_dir) / INSTALL_RECORD).write_text(json.dumps(rec, indent=1), encoding="utf-8")
+
+
+def place_files(source, names, target, removed):
+    """Copy the named files from source into the mod folder and delete the ones a previous
+    install put there that are gone now. Nothing else in the mod folder is touched, so files
+    the game or the plugin write there (logs, settings) survive every update."""
+    for rel in sorted(names):
+        dst = target / safe_rel(rel)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dst.with_name(dst.name + ".dd-new")
+        shutil.copyfile(source / rel, tmp)
+        os.replace(tmp, dst)
+    for rel in removed:
+        try:
+            (target / safe_rel(rel)).unlink()
+        except FileNotFoundError:
+            pass
 
 
 def apply_package(zip_path, game_dir, manifest, installed):
@@ -405,18 +446,11 @@ def apply_package(zip_path, game_dir, manifest, installed):
                 raise RuntimeError(f"{rel} did not download correctly.")
 
         if meta is None:
-            # Full package: it must hold every file. Swap the whole folder.
+            # Full package: it must hold every file.
             missing = set(new_files) - staged
             if missing:
                 raise RuntimeError(f"The package is missing {len(missing)} files.")
-            old = target.with_name(f".{MOD_NAME}-old")
-            if old.exists():
-                shutil.rmtree(old)
-            if target.exists():
-                target.rename(old)
-            staging.rename(target)
-            if old.exists():
-                shutil.rmtree(old, ignore_errors=True)
+            removed = sorted(set(old_files) - set(new_files))
         else:
             # Delta: it holds the changed files; everything else must already be right.
             if meta.get("from") != (installed or {}).get("version"):
@@ -430,16 +464,8 @@ def apply_package(zip_path, game_dir, manifest, installed):
                 cur = target / rel
                 if not cur.is_file() or cur.stat().st_size != f["size"] or sha256_file(cur) != f["sha256"]:
                     raise RuntimeError(f"Your copy of {rel} is not the expected one; a full download is needed.")
-            for rel in staged:
-                dst = target / rel
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(staging / rel, dst)
-            for rel in removed:
-                try:
-                    (target / safe_rel(rel)).unlink()
-                except FileNotFoundError:
-                    pass
-            shutil.rmtree(staging, ignore_errors=True)
+        place_files(staging, staged, target, removed)
+        shutil.rmtree(staging, ignore_errors=True)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise

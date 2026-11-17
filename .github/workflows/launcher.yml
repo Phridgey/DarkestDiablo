@@ -1,4 +1,5 @@
-# Builds DarkestDiabloLauncher.exe on Windows.
+# Builds DarkestDiabloLauncher.exe on Windows (with the game file reader, tools/extract.cpp, inside).
+# - On every push to main that changes the launcher, the .exe is kept as a downloadable artifact.
 # - On every published release (tools/release.py --publish), the .exe is attached to that release,
 #   so players always find the launcher next to the newest update.
 # - Run it by hand (Actions > Launcher > Run workflow) to get the .exe as a downloadable artifact.
@@ -7,8 +8,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["launcher/**", "tools/release.py", "tools/extract*", "tools/extract/**", "tools/build-*.cmd", "tests/**", ".github/workflows/launcher.yml"]
   pull_request:
-    paths: ["launcher/**", "tools/release.py", "tests/**"]
+    paths: ["launcher/**", "tools/release.py", "tools/extract*", "tools/extract/**", "tools/build-*.cmd", "tests/**", ".github/workflows/launcher.yml"]
 
 permissions:
   contents: write
@@ -23,9 +27,24 @@ jobs:
           python-version: "3.12"
       - name: Test install and update logic
         run: python -m unittest discover tests -v
+      - name: Build the game file reader
+        shell: cmd
+        run: tools\build-extract.cmd
       - name: Build the launcher
         shell: cmd
         run: tools\build-launcher.cmd
+      - name: Check the launcher can run the build scripts (its python.exe mode)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force shim | Out-Null
+          Copy-Item build/launcher/DarkestDiabloLauncher.exe shim/python.exe
+          'import json, struct, copy, importlib.util, sys; print("ok", sys.argv[1])' | Set-Content -Encoding utf8 shim/check.py
+          $out = & shim/python.exe shim/check.py hello | Out-String
+          if ($LASTEXITCODE -ne 0 -or $out -notmatch "ok hello") { Write-Error "python mode failed: $out"; exit 1 }
+          'import sys; sys.exit("expected failure")' | Set-Content -Encoding utf8 shim/fail.py
+          $p = Start-Process shim/python.exe -ArgumentList "shim/fail.py" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 1) { Write-Error "a failing script should exit 1, got $($p.ExitCode)"; exit 1 }
+          exit 0
       - uses: actions/upload-artifact@v6
         with:
           name: DarkestDiabloLauncher
