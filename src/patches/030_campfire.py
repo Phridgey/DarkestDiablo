@@ -14,9 +14,12 @@ HERO_SPOT = {"position": [1051.5, 0.1, 115.5], "yawDegrees": 40}
 
 def patch(t):
     fire = t.table("objects").first("Class", "RogueBonfire")
-    for mode in ("Selectable0", "Selectable1", "Selectable2"):  # the fire burns in modes 1 and 2
-        fire[mode] = "1"
+    for mode in range(8):  # whichever state the town's fire is in
+        fire[f"Selectable{mode}"] = "1"
     fire["OperateFn"] = "32"
+    # A click box around the fire ring, like the Tree of Inifuss has. Without one the game
+    # tests the mouse against the old flame picture, and the fire could not be clicked.
+    fire.update({"Left": "-70", "Top": "-70", "Width": "140", "Height": "100"})
 
     bank = t.layout("bankexpansionlayouthd")
     bank["children"].append({
