@@ -1,14 +1,14 @@
 {
   "name": "darkest_burial_entry",
-  "folder": "act1/caves",
-  "room": 24,
-  "comment": "Burial Grounds entry: one cave room with stairs up (cavespre1) and the waypoint. The player arrives here, preps, then takes the stairs up into the graveyard arena; that starts the waves.",
+  "folder": "act1/crypt",
+  "room": 8,
+  "comment": "Burial Grounds entry: one crypt room with stairs up (cryptewarpprev, 8x8 tiles) and the waypoint. Blizzard pairs these crypt stairs with the graveyard's crypt door. The player arrives here, preps, then takes the stairs up into the graveyard arena; that starts the waves.",
   "keep_monsters": [],
   "pieces": [
     {
       "x": 0,
       "y": 0,
-      "piece": "act1/caves/cavespre1"
+      "piece": "act1/crypt/cryptewarpprev"
     }
   ],
   "close_edges": true,
@@ -17,8 +17,8 @@
       "type": 2,
       "id": 52,
       "tile": [
-        13,
-        8
+        6,
+        4
       ],
       "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
       "hd_prefab": {
