@@ -1,0 +1,37 @@
+{
+  "name": "darkest_burial_entry",
+  "folder": "act1/caves",
+  "room": 24,
+  "comment": "Burial Grounds entry: one cave room with stairs up (cavespre1) and the waypoint. The player arrives here, preps, then takes the stairs up into the graveyard arena; that starts the waves.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/caves/cavespre1"
+    }
+  ],
+  "close_edges": true,
+  "extra_objects": [
+    {
+      "type": 2,
+      "id": 52,
+      "tile": [
+        13,
+        8
+      ],
+      "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
+      "hd_prefab": {
+        "prefab": "data/hd/env/model/act1/outdoors/act1_outdoors_props/pf_waypoint01.json",
+        "offset": [
+          9,
+          10
+        ],
+        "models": [
+          "data/hd/env/model/act1/outdoors/act1_outdoors_props/waypoint01.model",
+          "data/hd/objects/waypoint_portals/waypoint_outside_act_1/model/torso.model"
+        ]
+      }
+    }
+  ]
+}

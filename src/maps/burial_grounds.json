@@ -2,7 +2,7 @@
   "name": "darkest_burial",
   "folder": "act1/graveyard",
   "room": 24,
-  "comment": "Burial Grounds arena: Blizzard's graveyard map (gravey) on its own. Blood Raven's preset is dropped; the plugin spawns the waves and her. The crypt and mausoleum doors stay but lead nowhere.",
+  "comment": "Burial Grounds arena: Blizzard's graveyard map (gravey) on its own, no waypoint. The player comes up the entry room's stairs and arrives at the crypt door (tile 12,27); that starts the waves. Blood Raven's preset is dropped; the plugin spawns the waves and her. The mausoleum door leads nowhere.",
   "keep_monsters": [],
   "pieces": [
     {
@@ -12,26 +12,5 @@
     }
   ],
   "close_edges": true,
-  "extra_objects": [
-    {
-      "type": 2,
-      "id": 52,
-      "tile": [
-        5,
-        1
-      ],
-      "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
-      "hd_prefab": {
-        "prefab": "data/hd/env/model/act1/outdoors/act1_outdoors_props/pf_waypoint01.json",
-        "offset": [
-          9,
-          10
-        ],
-        "models": [
-          "data/hd/env/model/act1/outdoors/act1_outdoors_props/waypoint01.model",
-          "data/hd/objects/waypoint_portals/waypoint_outside_act_1/model/torso.model"
-        ]
-      }
-    }
-  ]
+  "extra_objects": []
 }
