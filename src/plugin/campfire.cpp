@@ -572,6 +572,13 @@ auto GearFields(const std::string& gear) -> std::string {
 	return out;
 }
 
+// The mod version, small, in the bottom right corner of our full-screen panels.
+auto VersionWidgetJson() -> std::string {
+	return std::string("{\"type\":\"Widget\",\"name\":\"VersionCorner\",\"fields\":{\"anchor\":{\"x\":0.5,\"y\":1.0}},\"children\":["
+		"{\"type\":\"TextBoxWidget\",\"name\":\"Version\",\"fields\":{\"rect\":{\"x\":-760,\"y\":-90,\"width\":720,\"height\":50},\"text\":\"Darkest Diablo ") + Campfire::Version +
+		"\",\"style\":{\"fontColor\":\"$FontColorLightGray\",\"alignment\":{\"h\":\"right\"},\"pointSize\":\"$MediumFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}}]}";
+}
+
 auto FireButton(const std::string& name, int x, int y, const std::string& text, const std::string& message, const char* art, const char* color) -> std::string {
 	return "{\"type\":\"ButtonWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y) +
 		"},\"filename\":\"" + art + "\",\"textString\":\"" + text + "\",\"onClickMessage\":\"" + message +
@@ -641,6 +648,7 @@ auto FireLayoutJson() -> std::string {
 		FireButton("Options", 100, -640, "@d2r:OptionsHD", "PanelManager:OpenPanel:SettingsPanel", Med, "$LightButtonTextColor") + "," +
 		FireButton("Delete", 100, -500, "Retire", act + "delete-mode", Med, "$LightButtonTextColor") + "," +
 		FireButton("ExitGame", 100, -360, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit", Med, "$LightButtonTextColor") + "]}";
+	kids += "," + VersionWidgetJson();
 	return "{\"type\":\"Panel\",\"name\":\"@PANEL@\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
 }
 
@@ -986,6 +994,9 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool {
 	const std::string rootName = "\"darkestdiablo/SaveSlots\"";
 	if (const size_t at = json.find(rootName); at != std::string::npos) {
 		json.replace(at, rootName.size(), std::string("\"") + PanelNameMark + "\"");
+	}
+	if (const size_t end = json.rfind("]}"); end != std::string::npos) {
+		json.insert(end, "," + VersionWidgetJson());
 	}
 	return PoolSet(context, g_slots, json);
 }
