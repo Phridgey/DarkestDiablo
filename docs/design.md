@@ -90,3 +90,14 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - The town waypoint opens a map of the act's route (see the sketch: Den, Burial, fork x2,
   Tristram, fork x2, Catacombs). The player picks the next stop there.
 - First version: a list panel (`dd-map`). Next: open it from the waypoint, draw it as a tree.
+
+## Fork 2 MF run: Rakanishu and Treehead (decided 2026-11-17)
+- Replaces the Pit as the MF option at the fork after Tristram (Pit / Countess / Malus becomes
+  Rakanishu+Treehead / Countess / Malus).
+- Place: Treehead's usual spot in the Dark Wood, the Tree of Inifuss (Blizzard's `funktree`
+  map piece), on a custom map far smaller than the Dark Wood so players can't wander off.
+- Fight: waves of Fallen and Fallen Shamans, then Rakanishu (superunique row 3) with his pack;
+  then waves of Dark Spearwomen ("lancers", cr_lancer1), then Brutes (brute2) and Quill Rats
+  (quillrat1), then Treehead Woodfist (superunique row 4).
+- Open question: how the player gets prep time before the waves (Burial uses an entry room with
+  stairs; the forest has no door to pair stairs with).
