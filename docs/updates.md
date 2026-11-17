@@ -2,9 +2,48 @@
 
 Players don't clone this repo. They run **DarkestDiabloLauncher.exe**, which sets up the game
 once and then offers **Update** or **Play** every time it opens. This page is for us: what the
-launcher does, what an update is made of, and how to publish one.
+launcher does, where it gets the mod from, and what that means for every change we merge.
 
-## What the launcher does
+The launcher has two channels (setting `channel` in `%APPDATA%\DarkestDiablo\launcher.json`):
+
+- **`main` (the default for now):** builds the newest commit on `main` on the player's PC.
+- **`releases` (later):** downloads published releases as small deltas. See further down.
+
+## The main channel: what it means for us
+
+**Whatever is on `main` is what everyone's launcher builds next.** Update shows up as soon as
+`main` has a new commit. So:
+
+- Only merge to `main` what builds with `tools\build-plugin.cmd` from scratch.
+- Every game file the build reads must be in `tools/vanilla_files.txt` (one piece of a path per
+  line). The launcher extracts exactly those, and again whenever that file changes. A missing
+  entry fails the build on every player's PC with "... is missing".
+- A new file the build writes into `build/darkestdiablo` reaches players only once it is listed
+  in `SHIPPED` in `launcher/ddcore.py`.
+- Never rename or remove `tools/build-plugin.cmd`; the launcher runs it. It may change freely
+  (new steps, tests) as long as it still ends with the built mod in `build/darkestdiablo`.
+- Standard Python modules our build scripts import must be in `launcher/build_stdlib.py`
+  (the launcher .exe carries its own Python). Third-party packages can't be used.
+
+What the launcher does on Update (`launcher/ddmain.py`):
+
+1. Asks GitHub for the newest commit on `main` and downloads that source as a zip (no Git needed).
+2. Puts it in `<game folder>\darkestdiablo-src`, keeping `vanilla/` and `build/` from last time.
+3. Extracts the files in `tools/vanilla_files.txt` from the player's game folder (first time, or
+   when the list or the game build changed), with `tools/extract.cpp` built into the launcher.
+4. Runs `tools\build-plugin.cmd`, with the launcher itself standing in as `python.exe`. The plugin
+   needs Visual Studio's C++ tools; without them the launcher explains how to get them. The
+   output goes to `darkestdiablo-src\build.log`, which the launcher opens if the build fails.
+5. Copies only the changed `SHIPPED` files into `Mods\darkestdiablo` and deletes the ones it put
+   there before that are gone now. Nothing else there is touched (logs, anything the plugin
+   writes), and saves live in `Saved Games\Diablo II Resurrected\mods\darkestdiablo`, which
+   the launcher never touches.
+6. Records the commit in `<game folder>\darkestdiablo-install.json`.
+
+Getting the launcher itself: the Launcher workflow builds the .exe on every push to `main` that
+changes it (Actions, newest run, artifact `DarkestDiabloLauncher`).
+
+## What the launcher does (both channels)
 
 First run:
 1. Finds Diablo II: Resurrected (Windows' list of installed programs, then the usual folders on
@@ -16,11 +55,12 @@ First run:
    where it left off.
 4. D2RLoader comes from Nexus Mods, which needs an account, so the launcher can't download it.
    It opens the page and asks for the downloaded zip, then unpacks it next to `D2R.exe`.
-5. Downloads the newest release into `<game folder>\Mods\darkestdiablo` and writes
-   `<game folder>\darkestdiablo-install.json` (installed version and the file list).
+5. Installs the mod: on the main channel by building it (above); on the releases channel by
+   downloading the newest release into `<game folder>\Mods\darkestdiablo`. Either way it writes
+   `<game folder>\darkestdiablo-install.json` (what is installed and the file list).
 
-Every run after that: looks at the newest GitHub release. If it is newer than the installed one it
-shows **Update to x.y.z** with the download size; otherwise **Play**. Play checks that the
+Every run after that: looks for something newer (a new commit on `main`, or a newer release). If
+there is, it shows **Update**; otherwise **Play**. Play checks that the
 Battle.net app is open and starts `D2RLoader.exe` in the game folder. The first time it reminds the
 player to set D2RLoader's Default mod to `darkestdiablo`.
 
@@ -29,7 +69,7 @@ Settings (folders, an optional GitHub token) are kept in `%APPDATA%\DarkestDiabl
 **Our own setups are left alone.** If `Mods\darkestdiablo` is the link made by `tools\link.cmd`,
 the launcher says "Developer build" and only offers Play. Keep developing exactly as before.
 
-## What a release is made of
+## The releases channel: what a release is made of
 
 A release is a GitHub release tagged `v<version>` (like `v0.2.0`) with these files attached:
 
@@ -62,10 +102,10 @@ D2RLoader), the checksum of every tool in `tools/` and `launcher/`, and of the t
 plugin DLL, the launcher .exe). If two of us see different games on the same version, compare
 these first.
 
-Paths are relative to `Mods\darkestdiablo`, with forward slashes. Only `modinfo.json`,
-`darkestdiablo.mpq/`, `d2rloader/plugins/` and the mod's own settings and data in `d2rloader/`
-(`metadata.json`, `config/`, `camp_data.txt`, `SaveSlots.layout.json`) are shipped; logs and settings the game writes into
-your build stay on your PC.
+Paths are relative to `Mods\darkestdiablo`, with forward slashes. Only what `SHIPPED` in
+`launcher/ddcore.py` lists is shipped (today `modinfo.json`, `darkestdiablo.mpq/`,
+`d2rloader/plugins/` and the mod's own settings and data in `d2rloader/`); logs and settings the
+game writes into your build stay on your PC. The main channel installs the same set.
 
 `delta.json` inside a delta zip:
 
@@ -123,6 +163,10 @@ Rules:
 | Path | What |
 | --- | --- |
 | `launcher/ddcore.py` | Finding D2R, copying the game, D2RLoader, releases, applying updates. No window code. |
+| `launcher/ddmain.py` | The main channel: download `main`, extract game files, run the build, install. |
+| `launcher/build_stdlib.py` | Standard modules bundled for the build scripts the .exe runs. |
+| `tools/extract.cpp`, `tools/extract/`, `tools/build-extract.cmd` | The game file reader (CascLib), bundled in the launcher. |
+| `tools/vanilla_files.txt` | The game files the build reads. |
 | `launcher/darkestdiablo_launcher.py` | The window. Everything is drawn in code: no images, no sound (silent on purpose). |
 | `tools/release.py` | Makes and publishes releases. Shares the manifest code with the launcher. |
 | `tools/build-launcher.cmd` | Builds `build\launcher\DarkestDiabloLauncher.exe` with PyInstaller. |
@@ -133,8 +177,7 @@ Run it from source with `python launcher\darkestdiablo_launcher.py` (Python 3.10
 library only). If the manifest ever needs a field old launchers can't understand, raise
 `MANIFEST_FORMAT` in `ddcore.py`; older launchers then tell players to download the new one.
 
-### While the repo is private
+### The repo is public
 
-GitHub only shows a private repo's releases to people signed in. Until the repo (or a separate
-public repo just for releases, by changing `REPO` in `ddcore.py`) is public, the launcher asks for
-a GitHub token with read access to the repo's contents and keeps it in its settings file.
+Since 17 Nov 2026 the repo is public, so the launcher needs no token. The token prompt only
+appears if GitHub ever refuses the launcher (a private repo again, or a separate private one).

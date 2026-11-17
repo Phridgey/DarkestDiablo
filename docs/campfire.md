@@ -89,9 +89,9 @@ menu), `dd-traveler` (in town: a traveler now).
 
 ## Building
 
-The build changes two of the game's menu layouts and reads item models, so `vanilla/` needs
-`data/global/ui/layouts`, `data/hd/items/items.json`,
-`data/hd/objects/env_wood/rogue_bonfire.json` and `data/hd/objects/chests/bank.json`, extracted the same way as the tables. Nothing of Blizzard's is in the repo.
+The build changes two of the game's menu layouts and reads item and object models from the game.
+All of them are in `tools/vanilla_files.txt`, which the launcher and the README's setup extract.
+Nothing of Blizzard's is in the repo.
 
 ## Tried in the game so far
 
@@ -122,10 +122,6 @@ Did not work, and what was changed:
 - The chest copy wearing the bonfire's model could not be clicked either, so the game seems to
   test the mouse against the model. As a test the copy now wears the chest's own model, in
   the bonfire's flames (not yet tried). If that can be clicked, it gets a model that suits.
-- That chest never showed in the game: a new object added as a new last table row, with its
-  look added to the end of `objects.json`, is not drawn at all. The fire's own row now takes
-  every value of the stash chest's row, and the fire's model file is swapped for the chest
-  in flames (a test, not yet tried). `objects.json` and `objpreset.txt` are no longer changed.
 - Changing save at the Campfire kept showing the first save's heroes: the game keeps a panel
   it has drawn and does not read its layout again. The Campfire and the save slot screen now
   use a fresh spare panel each time their content changes (not yet tried).

@@ -1,0 +1,16 @@
+# Game files the build reads, extracted from your own game copy into vanilla/.
+# One piece of a path per line: every file whose name contains it is extracted.
+# The launcher reads this list, so when your change needs another game file, add it here
+# (it re-extracts by itself when this file changes). By hand: extract <game folder> vanilla @tools/vanilla_files.txt
+data/global/excel/
+data/local/lng/strings/
+data/global/dataversionbuild.txt
+# Room pieces for the hand-made maps (src/maps)
+data/global/tiles/act1/
+data/hd/env/preset/act1/
+# The Campfire (docs/campfire.md): menu layouts and item and object models
+data/global/ui/layouts/
+data/hd/items/items.json
+data/hd/objects/objects.json
+data/hd/objects/env_wood/rogue_bonfire.json
+data/hd/objects/chests/bank.json
