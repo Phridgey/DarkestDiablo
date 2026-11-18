@@ -1,7 +1,7 @@
 """Dodge: a quick dash every class has, modelled on how Path of Exile 2's roll plays.
 
 What we take from PoE2 is only how it behaves (see docs/dodge-roll.md): a fast move of set
-length toward the cursor, no mana cost and no cooldown, usable in town. None of GGG's files,
+length toward the cursor, no mana cost, a 1.5 second cooldown, usable in town. None of GGG's files,
 animations or code are used.
 
 How it is built: the game has no free-form "move here fast" in its tables, only skills whose
@@ -35,6 +35,7 @@ DISTANCE = 7          # Leap's "Range" (min and max equal, so every dodge is the
 MIN_FRAMES = 6        # Leap's "Minimum Airborne Frames" (Leap: 8): the shortest a dodge can take.
 SPEED = 300           # Speed %, read as "Velocity %" by Charge's code and "Leap Speed %" by Leap's (Charge: 150).
 RECOVERY_FRAME = 2    # Charge's "seqinput" (Charge: 8): 75% less recovery.
+COOLDOWN_FRAMES = 38  # Cooldown in frames (25 a second): 38 = 1.52 s, the nearest to Sam's 1.5 s. Meteor uses 30.
 
 STRINGS = {
     "skillname_dodge": "Dodge",
@@ -68,7 +69,7 @@ def patch(t):
     skills.add_copy("skill", "Leap", **{c: charge[c] for c in from_charge}, **{
         "skill": NAME, "*Id": str(next_id), "charclass": "", "skilldesc": DESC,
         "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
-        "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": "", "globaldelay": "",
+        "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": str(COOLDOWN_FRAMES), "globaldelay": "",
         "InTown": "1", "leftskill": "0", "rightskill": "1", "stsoundclass": "",
         "Param1": str(DISTANCE), "Param2": str(DISTANCE),
         "Param3": "0", "Param4": "0", "srvmissilea": "",  # no knockback on landing
