@@ -1,67 +1,15 @@
 """The Campfire outside the plugin: the town bonfire, the camp screen, the stash button.
 
-- Bonfire: the fire's own table row (RogueBonfire) becomes the stash chest in every way the
-  game cares about: every value is copied from the chest's row, only its name stays. So it
-  should be clickable and open the stash. The plugin can't see a click on a world object,
-  only UI messages, so the bonfire borrows the one town object whose window we can put a
-  button on. The fire of Harrogath is the same object and changes with it.
-  What did not work: setting only the "clickable" values on the fire's row, and a new object
-  added as a new last row (the game never showed it; see docs/campfire.md).
+- Bonfire: the fire's own table row (RogueBonfire) takes the stash chest's "use me" values, so
+  clicking the fire opens the stash. The plugin can't see a click on a world object, only UI
+  messages, so the fire borrows the one town object whose window we can put a button on. The
+  fire of Harrogath is the same object and changes with it. The game reads the second copy of
+  the tables (global/excel/base) for our heroes; until tools/build.py patched that copy too,
+  none of the tries showed in game (see docs/campfire.md).
 - Stash window: a Campfire button that opens the plugin's roster panel.
 - Hero screen: new title. It is the Campfire: the game's own figures are moved out of sight and
   the plugin draws the camp's figures (src/plugin/campfire.cpp).
 """
-import copy
-import struct
-
-
-FIRE_PRESET = 2     # objpreset.txt, Act 1: RogueBonfire
-CHEST_PRESET = 102  # objpreset.txt, Act 1: Bank (the stash chest)
-
-
-def add_object_near(ds1, near_id, new_id, dx, dy):
-    """A town map (.ds1) with one more object: preset `new_id`, placed (dx, dy) sub-tiles from
-    the first object with preset `near_id`. Only the object list changes; the rest is kept
-    byte for byte."""
-    i32 = lambda at: struct.unpack_from("<i", ds1, at)[0]
-    version, width, height = i32(0), i32(4) + 1, i32(8) + 1
-    if version != 18:
-        raise ValueError(f"town map version {version}, expected 18")
-    tag_type, at = i32(16), 24
-    for _ in range(i32(20)):                 # names of the tile files
-        at = ds1.index(b"\0", at) + 1
-    walls, floors = i32(at), i32(at + 4)
-    layers = walls * 2 + floors + 1 + (1 if tag_type in (1, 2) else 0)   # + shadow, + tag layer
-    count_at = at + 8 + layers * width * height * 4
-    count = i32(count_at)
-    records = [struct.unpack_from("<5i", ds1, count_at + 4 + n * 20) for n in range(count)]
-    fire = next((r for r in records if r[0] == 2 and r[1] == near_id), None)
-    if fire is None:
-        raise ValueError("no bonfire in this town map")
-    end = count_at + 4 + count * 20
-    new = struct.pack("<5i", 2, new_id, fire[2] + dx, fire[3] + dy, 0)
-    return ds1[:count_at] + struct.pack("<i", count + 1) + ds1[count_at + 4:end] + new + ds1[end:]
-
-
-def swap_fire_and_chest(ds1, fire_id, chest_id, dx, dy):
-    """A town map (.ds1) where a stash chest stands exactly where the bonfire was, and the
-    bonfire object stands (dx, dy) sub-tiles away. Only the object list changes."""
-    moved = add_object_near(ds1, fire_id, fire_id, dx, dy)   # the fire again, a few steps away
-    start = _objects_start(moved)
-    count = struct.unpack_from("<i", moved, start)[0]
-    at = next(start + 4 + n * 20 for n in range(count)
-              if struct.unpack_from("<2i", moved, start + 4 + n * 20) == (2, fire_id))
-    return moved[:at] + struct.pack("<2i", 2, chest_id) + moved[at + 8:]
-
-
-def _objects_start(ds1):
-    """Where the object list of a version 18 town map begins (its count)."""
-    i32 = lambda at: struct.unpack_from("<i", ds1, at)[0]
-    width, height, tag_type, at = i32(4) + 1, i32(8) + 1, i32(16), 24
-    for _ in range(i32(20)):
-        at = ds1.index(b"\0", at) + 1
-    layers = i32(at) * 2 + i32(at + 4) + 1 + (1 if tag_type in (1, 2) else 0)
-    return at + 8 + layers * width * height * 4
 
 
 def strip_physics(node):
@@ -81,50 +29,19 @@ def strip_physics(node):
 
 
 def patch(t):
+    # The fire works like the stash chest: clicking it opens the stash, whose Campfire button
+    # opens the roster. Only the columns that make the chest work are copied; the rest of the
+    # fire's row (flames, light, size, no map mark) stays, so it still looks and lights like the
+    # fire. It keeps its size (3 by 3), so it can be used from the edge of the fire pit.
+    # This runs on both copies of the tables (global/excel and global/excel/base): the game read
+    # only the base copy for our heroes, which is why every earlier try seemed to do nothing.
     objects = t.table("objects")
     chest_row = objects.first("Class", "Bank")
     fire_row = objects.first("Class", "RogueBonfire")
-    for column in objects.columns:
-        # TEST: AutoMap is copied too, so the fire shows the stash mark on the map. If the mark
-        # shows, the game is using this changed row.
-        if column not in ("Class", "Name", "*Description", "*ID"):
-            fire_row[column] = chest_row.get(column, "")
-    fire_row["__width__"] = max(fire_row["__width__"], chest_row["__width__"])
-    # TEST LOOK: the fire's model file is replaced by the stash chest's model standing in the
-    # bonfire's flames. The game seems to test the mouse against the model, and the bonfire's
-    # own model could not be pointed at. If the chest can be clicked here, the next step is a
-    # model that suits the fire. The file keeps its name and place, so the game finds it the
-    # way it always did.
-    chest = t.data("hd/objects/chests/bank.json")
-    fire = t.data("hd/objects/env_wood/rogue_bonfire.json")
-    look = copy.deepcopy(chest)
-    look["name"] = fire["name"]
-    look["entities"] += [copy.deepcopy(e) for e in fire["entities"] if e["name"] == "entity_vfx"]
-    for kind, paths in fire["dependencies"].items():
-        if kind not in ("skeletons", "json"):
-            have = look["dependencies"].setdefault(kind, [])
-            have += [p for p in paths if p not in have]
-    t.add_data("hd/objects/env_wood/rogue_bonfire.json", look)
-    del t.files["hd/objects/chests/bank.json"]  # read only, not shipped
+    for column in ("Selectable0", "Parm0", "Sync", "Left", "OperateFn", "PopulateFn"):
+        fire_row[column] = chest_row.get(column, "")
 
-    # TEST: in the four town maps a real stash chest stands exactly on the fire's spot, and the
-    # fire object (which looks like a chest for now) stands a few steps away. If the chest on the
-    # fire's spot can be clicked, the spot is fine and the fire object itself is the problem.
-    # The game ignored changed town maps shipped under their own names (0.9.9: nothing moved),
-    # while the arenas' maps, which have new names, load fine. So the changed maps get new names
-    # (darkest_town*.ds1, with a copy of the town's HD look under the same new name) and the town's
-    # row in lvlprest.txt points at them.
-    town_row = t.table("lvlprest").first("Name", "Act 1 - Town 1")
-    for n, town in enumerate(("townn1", "towne1", "towns1", "townw1"), start=1):
-        new = f"darkest_{town}"
-        t.add_raw(f"global/tiles/act1/town/{new}.ds1",
-                  swap_fire_and_chest(t.raw(f"global/tiles/act1/town/{town}.ds1"), FIRE_PRESET, CHEST_PRESET, dx=9, dy=4))
-        look_path = f"hd/env/preset/act1/town/{town}.json"
-        t.add_data(f"hd/env/preset/act1/town/{new}.json", copy.deepcopy(t.data(look_path)))
-        del t.files[look_path]  # read only, not shipped
-        town_row[f"File{n}"] = f"Act1/Town/{new}.ds1"
-    # TEST: the fire ring's scenery carries a collision shape. If that shape is what swallows the
-    # mouse, the chest in the fire becomes clickable once the shape is gone.
+    # The fire ring's 3D scenery carries collision shapes that could keep the mouse off the fire.
     prefab_path = "hd/env/model/global/prop/act1/town/prefab/pf_town_campfire01.json"
     prefab = t.data(prefab_path)
     removed = strip_physics(prefab)
