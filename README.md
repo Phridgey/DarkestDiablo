@@ -88,7 +88,8 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
   bigger shared stash per save. The town bonfire opens the stash, which has a Campfire button.
   The build needs the game's menu layouts and a few model files (all in `tools/vanilla_files.txt`).
   Console: `dd-camp`, `dd-slot <1-3>`, `dd-traveler`.
-- **Console** (Ctrl + backtick, with `enable_console = true` in `d2rloader/config/d2rloader.toml`):
+- **Console** (Ctrl + backtick; the launcher sets `enable_console = true` in `d2rloader/config/d2rloader.toml`
+  on every Update and Play, so after the game's first start it is on; type `debug_mode` for cheats):
   `dd` (plugin running?), `dd-tp` (TP scroll), `dd-waves` (restart the waves of the arena you
   stand in), `dd-map` (route map). Handy for testing: `location player` prints your position;
   `cheat mspawn zombie1,3 @ x,y` tests a spawn spot; `goto <level id>`; `god 1`.

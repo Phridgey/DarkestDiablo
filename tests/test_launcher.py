@@ -325,3 +325,28 @@ class VanillaListTests(unittest.TestCase):
     def test_fallback_matches_the_list_file(self):
         lines = [l.split("#", 1)[0].strip() for l in (ROOT / "tools" / "vanilla_files.txt").read_text().splitlines()]
         self.assertEqual([l for l in lines if l], ddmain.DEFAULT_VANILLA)
+
+
+class ConsoleTests(unittest.TestCase):
+    def config(self, game, text):
+        path = Path(game) / "d2rloader" / "config" / "d2rloader.toml"
+        path.parent.mkdir(parents=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_turns_the_console_on(self):
+        with tempfile.TemporaryDirectory() as game:
+            path = self.config(game, "[d2rloader.developer]\n\n# Enable it.\nenable_console = false\n\nassert_dialog = true\n")
+            self.assertTrue(ddcore.enable_console(game))
+            self.assertIn("enable_console = true\n", path.read_text(encoding="utf-8"))
+            self.assertIn("assert_dialog = true", path.read_text(encoding="utf-8"))
+
+    def test_adds_the_setting_when_missing(self):
+        with tempfile.TemporaryDirectory() as game:
+            path = self.config(game, "[d2rloader]\nmod = 1\n")
+            ddcore.enable_console(game)
+            self.assertTrue(path.read_text(encoding="utf-8").endswith("[d2rloader.developer]\nenable_console = true\n"))
+
+    def test_no_config_yet(self):
+        with tempfile.TemporaryDirectory() as game:
+            self.assertFalse(ddcore.enable_console(game))
