@@ -38,6 +38,7 @@ std::atomic<bool>      g_scanning { false };
 uintptr_t              g_heroUnit = 0;
 Pos                    g_fire;
 std::string            g_report = "no scan yet";
+uint64_t               g_scanStarted = 0;  // GetTickCount64 when the running scan began
 
 template <typename T>
 auto Read(uintptr_t address, T& out) -> bool {
@@ -106,7 +107,8 @@ void Scan(std::string name) {
 	const std::size_t length = name.size() + 1;  // with its ending zero
 	ForEachChunk([&](uintptr_t base, const unsigned char* bytes, SIZE_T size) {
 		for (SIZE_T i = 0; i + 16 <= size; i += 8) {
-			if (names.size() < 64 && i + length <= size && std::memcmp(bytes + i, name.c_str(), length) == 0) {
+			if (bytes[i] == static_cast<unsigned char>(name[0]) && names.size() < 64 && i + length <= size &&
+			    std::memcmp(bytes + i, name.c_str(), length) == 0) {
 				names.push_back(base + i);
 			}
 			uint32_t type, row;
@@ -118,16 +120,21 @@ void Scan(std::string name) {
 		}
 	});
 	// Pass 2: the units that point at that PlayerData (players keep it at UnitData).
+	// The names are sorted so each 8 bytes costs one range check and, rarely, a binary search
+	// (comparing every value with every name made this pass take minutes).
 	std::vector<uintptr_t> heroes;
 	if (!names.empty()) {
+		std::sort(names.begin(), names.end());
+		const uintptr_t lowest = names.front(), highest = names.back();
 		ForEachChunk([&](uintptr_t base, const unsigned char* bytes, SIZE_T size) {
 			for (SIZE_T i = 0; i + 8 <= size && heroes.size() < 16; i += 8) {
 				uintptr_t value;
 				std::memcpy(&value, bytes + i, 8);
-				for (const uintptr_t n : names) {
-					if (value == n && base + i >= UnitData && HeroAt(base + i - UnitData).ok) {
-						heroes.push_back(base + i - UnitData);
-					}
+				if (value < lowest || value > highest || !std::binary_search(names.begin(), names.end(), value)) {
+					continue;
+				}
+				if (base + i >= UnitData && HeroAt(base + i - UnitData).ok) {
+					heroes.push_back(base + i - UnitData);
 				}
 			}
 		});
@@ -251,8 +258,18 @@ auto BuildMatches() -> bool {
 }
 
 void StartScan(const std::string& heroName) {
-	if (heroName.empty() || !BuildMatches() || g_scanning.exchange(true)) {
+	if (heroName.empty()) {
+		const std::lock_guard<std::mutex> guard(g_lock);
+		g_report = "no search: the hero's name is unknown";
 		return;
+	}
+	if (!BuildMatches() || g_scanning.exchange(true)) {
+		return;
+	}
+	{
+		const std::lock_guard<std::mutex> guard(g_lock);
+		g_scanStarted = GetTickCount64();
+		g_report = "searching for " + heroName;
 	}
 	std::thread(Scan, heroName).detach();
 }
@@ -274,7 +291,8 @@ auto Fire() -> Pos {
 auto Report() -> std::string {
 	const std::lock_guard<std::mutex> guard(g_lock);
 	const std::string build = BuildFound();
-	return "Darkest Diablo game build " + build + " from " + g_buildFile + (BuildMatches() ? " (frozen build)" : " (other build: reading is off)") + "; " + g_report;
+	return "Darkest Diablo game build " + build + " from " + g_buildFile + (BuildMatches() ? " (frozen build)" : " (other build: reading is off)") + "; " + g_report +
+	       (g_scanning ? " (" + std::to_string((GetTickCount64() - g_scanStarted) / 1000) + " s so far)" : std::string());
 }
 
 }  // namespace GameMemory
