@@ -20,3 +20,12 @@ data/hd/env/preset/act1/town/townw1.json
 # Which 3D model each monster uses, by its Id. Patches that add monster rows map them here
 # (a monster without an entry is invisible).
 data/hd/character/monsters.json
+# Camp heroes (046_camp_heroes.py): each playable class's HD look file
+data/hd/character/player/amazon.json
+data/hd/character/player/assassin.json
+data/hd/character/player/barbarian.json
+data/hd/character/player/druid.json
+data/hd/character/player/necromancer.json
+data/hd/character/player/paladin.json
+data/hd/character/player/sorceress.json
+data/hd/character/player/warlock.json

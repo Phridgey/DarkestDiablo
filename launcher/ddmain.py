@@ -32,7 +32,15 @@ DEFAULT_VANILLA = ["data/global/excel/", "data/local/lng/strings/", "data/global
                    "data/hd/env/preset/act1/town/towne1.json",
                    "data/hd/env/preset/act1/town/towns1.json",
                    "data/hd/env/preset/act1/town/townw1.json",
-                   "data/hd/character/monsters.json"]
+                   "data/hd/character/monsters.json",
+                   "data/hd/character/player/amazon.json",
+                   "data/hd/character/player/assassin.json",
+                   "data/hd/character/player/barbarian.json",
+                   "data/hd/character/player/druid.json",
+                   "data/hd/character/player/necromancer.json",
+                   "data/hd/character/player/paladin.json",
+                   "data/hd/character/player/sorceress.json",
+                   "data/hd/character/player/warlock.json"]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
