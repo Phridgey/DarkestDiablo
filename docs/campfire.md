@@ -126,7 +126,7 @@ Nothing of Blizzard's is in the repo.
   At 1.4 times the size it reached about a hero's length past the stones; 0.11.55 uses 1.15 so it
   ends near the outer edge of the stones (`click_scale` in `040_campfire.py`). Sam: no change at
   all, so the reach comes from the objects.txt box after all (it seems to count once the fire has
-  the extra model part). 0.11.56 cuts the box to 150 x 116 (not yet tried).
+  the extra model part). 0.11.57 cuts the box to 150 x 116 (not yet tried).
 
 Worked (17 Nov 2026): the save slot screen and picking a slot; landing on the Campfire after a
 slot pick and after leaving a game; making a hero there; clicking a hero's class to load it

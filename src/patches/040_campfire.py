@@ -44,7 +44,7 @@ def patch(t):
     # fire's foot) as the click box, like the town portal and the Inifuss tree. That box only
     # counts in the old graphics: in the new ones the game tests the mouse against the fire's 3D
     # model (0.11.52: a 40% bigger box changed nothing in game), see the HD part below.
-    # 0.11.56: the reach Sam saw with 0.11.53/0.11.55 (about 300 screen pixels at his resolution
+    # 0.11.57: the reach Sam saw with 0.11.53/0.11.55 (about 300 screen pixels at his resolution
     # from the fire's middle) matches this box, not the hidden model's size (changing the model
     # from 1.4 to 1.15 changed nothing), so the box is cut to end at the stones' outer edge
     # (about 0.6 of 252 x 196), around the same middle.
