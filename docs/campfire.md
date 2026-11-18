@@ -7,10 +7,11 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 
 ## What the player sees
 
-1. **Save slots ("Delves").** After the title screen three frames stand side by side, Delve 1
-   to 3, in the game's own hero-list frame and fonts. Each lists its living heroes as
+1. **Save slots ("Delves").** After the title screen the hero screen opens with nobody at the
+   fire, darkened, and three cards stand side by side over it, Delve 1 to 3, in the game's own
+   difficulty-card frame and fonts. Each lists its living heroes as
    "level class" and shows the difficulty it plays on, large at the bottom (the hardest one
-   played in that save, which the plugin notes from the game while you play). Its button says
+   played in that save, which the plugin notes from the game while you play). The button under it says
    Continue, or Start New on an empty Delve. A started Delve has a delete icon, which asks twice.
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each

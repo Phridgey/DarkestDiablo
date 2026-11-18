@@ -113,6 +113,7 @@ bool g_slotsOpen = false;
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
 bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
+bool g_emptyFire = false;       // the hero screen is up with nobody at the fire, under the save slots
 bool g_travelerArrives = false; // the fire was used with a traveler waiting: portal and figure are showing
 bool g_travelerMode = false;
 bool g_travelerLater = false;   // "Not now" at the Campfire: the traveler waits until the next game
@@ -473,7 +474,8 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 		}
 	}
 	if (fire) {  // the Campfire reads the camp itself; the menu's list is read again when a hero is loaded
-		if (g_atFire) {
+		if (g_atFire || g_emptyFire) {
+			g_emptyFire = false;
 			RefreshFire(context);
 		} else {
 			g_threads->runOnUiThread(context, GoToFire, nullptr);
@@ -808,6 +810,23 @@ void __cdecl GoToFire(const D2RL::PluginContext* context, void*) noexcept {
 	Camp::Unbench(g_live, g_slot);
 	RegisterFireLayout(context);
 	Dispatch(context, "FrontEndNavigation", "ToCharacterCreate");
+}
+
+// At launch: the hero screen with nobody at the fire, as the save slots' background.
+void __cdecl GoToEmptyFire(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_inGame) {
+		return;
+	}
+	g_emptyFire = true;
+	Dispatch(context, "FrontEndNavigation", "ToCharacterCreate");
+}
+
+void __cdecl ShowEmptyFire(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	Close(context, g_curtainPanel);
+	ShowSlots(context, nullptr);
+	Log(context, "Camp: the save slots, over the empty fire.");
 }
 
 // The game did not start (a window was closed, or Play did nothing): back to the Campfire.
@@ -1290,6 +1309,11 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool {
 			}
 		}
 	}
+	// Over the fire the screen is darkened, not hidden; over the game's own menu it is black.
+	const std::string backdrop = "\"@@BACKDROP@@\"";
+	if (const size_t at = json.find(backdrop); at != std::string::npos) {
+		json.replace(at, backdrop.size(), g_atFire || g_emptyFire ? "[0.0,0.0,0.0,0.45]" : "[0.0,0.0,0.0,1.0]");
+	}
 	const std::string rootName = "\"darkestdiablo/SaveSlots\"";
 	if (const size_t at = json.find(rootName); at != std::string::npos) {
 		json.replace(at, rootName.size(), std::string("\"") + PanelNameMark + "\"");
@@ -1598,6 +1622,9 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				Log(context, "Camp: nobody is waiting to join; the hero screen stays closed.");
 				return true;
 			}
+			if (std::strcmp(command, "ToCharacterSelect") == 0 && g_emptyFire) {
+				return true;  // Back over the empty fire: the save slots stay
+			}
 			if (std::strcmp(command, "ToCharacterSelect") == 0 && g_atFire && g_pendingPlay.empty() && g_slotPicker && g_threads != nullptr) {
 				// Back (or Escape) at the Campfire: the save slots, laid over it. Again closes them.
 				if (g_slotsOpen) {
@@ -1608,11 +1635,12 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				}
 				return true;
 			}
-			if (std::strcmp(command, "ToExit") == 0 && g_atFire && g_threads != nullptr) {
+			if (std::strcmp(command, "ToExit") == 0 && (g_atFire || g_emptyFire) && g_threads != nullptr) {
 				// The hero screen can't close the game; the main menu can. Go there behind a black
 				// screen and press its Exit (see CharacterSelectPanel below).
 				g_exiting = true;
 				g_atFire = false;
+				g_emptyFire = false;
 				g_slotsOpen = false;
 				PoolClose(context, g_slots);
 				PoolClose(context, g_fire);
@@ -1623,6 +1651,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			}
 			if (std::strcmp(command, "ToCharacterCreate") != 0) {
 				g_atFire = false;
+				g_emptyFire = false;
 				PoolClose(context, g_fire);
 			}
 			if (std::strcmp(command, "ToGame") == 0) {
@@ -1635,7 +1664,8 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			if (g_threads != nullptr && (g_wantFire || g_exiting || !g_pendingPlay.empty())) {
 				g_threads->runOnUiThread(context, OpenCurtain, nullptr);  // the menu is only passed through
 			} else if (!g_slotChosen && g_slotPicker && g_threads != nullptr) {
-				g_threads->runOnUiThread(context, ShowSlots, nullptr);  // before the menu can be seen
+				// before the menu can be seen: black, then the slots over the empty fire (or alone)
+				g_threads->runOnUiThread(context, g_fireOn && g_fireReady ? OpenCurtain : ShowSlots, nullptr);
 			}
 			return false;
 		}
@@ -1645,7 +1675,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			} else if (!g_pendingPlay.empty()) {  // a hero was clicked at the Campfire: the list holds it alone
 				Later(context, 400, PressPlay);
 			} else if (!g_slotChosen && g_slotPicker && g_threads != nullptr) {
-				g_threads->runOnUiThread(context, ShowSlots, nullptr);
+				g_threads->runOnUiThread(context, g_fireOn && g_fireReady ? GoToEmptyFire : ShowSlots, nullptr);
 			} else if (g_wantFire && g_threads != nullptr) {
 				g_slotChosen = true;
 				g_wantFire = false;
@@ -1658,7 +1688,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 		if (panelManager && std::strcmp(text, "CharacterCreatePanel") == 0 && std::strcmp(command, "OpenExclusivePanel") == 0) {
 			g_selectedClass = -1;
 			if (g_threads != nullptr) {
-				g_threads->runOnUiThread(context, OpenFire, nullptr);
+				g_threads->runOnUiThread(context, g_emptyFire ? ShowEmptyFire : OpenFire, nullptr);
 			}
 			return false;
 		}
