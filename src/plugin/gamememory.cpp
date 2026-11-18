@@ -42,6 +42,8 @@ uintptr_t              g_heroUnit = 0;
 Pos                    g_fire;
 std::string            g_report = "no scan yet";
 uint64_t               g_scanStarted = 0;  // GetTickCount64 when the running scan began
+std::atomic<uint32_t>  g_scanPass { 0 };   // which pass of the slow search runs (1 or 2)
+std::atomic<uint32_t>  g_scannedMb { 0 };  // megabytes read so far in this pass
 
 // Where the game's unit list sits: a fixed place inside a game module, found once by the slow
 // search and saved next to the plugin (darkestdiablo-unitlist.txt), so later games read it
@@ -265,13 +267,15 @@ void ForEachChunk(F&& chunk) {
 		}
 		const uintptr_t start = reinterpret_cast<uintptr_t>(info.BaseAddress);
 		const uintptr_t end = start + info.RegionSize;
+		// Uncached and write-combined blocks (graphics memory) are skipped: reading them is very slow.
 		if (info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && (info.Protect & (PAGE_READWRITE)) != 0 &&
-		    (info.Protect & PAGE_GUARD) == 0) {
+		    (info.Protect & (PAGE_GUARD | PAGE_NOCACHE | PAGE_WRITECOMBINE)) == 0) {
 			for (uintptr_t block = start; block < end; block += Step) {
 				const SIZE_T want = static_cast<SIZE_T>(std::min<uintptr_t>(Step + Overlap, end - block));
 				SIZE_T got = 0;
 				if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(block), buffer.data(), want, &got) && got >= 16) {
 					chunk(block, buffer.data(), got);
+					g_scannedMb += static_cast<uint32_t>(want >> 20);
 				}
 			}
 		}
@@ -298,6 +302,8 @@ void Scan(std::string name) {
 	}
 	// Pass 1: where the hero's name sits (the start of its PlayerData), and every object unit
 	// of the fire's row.
+	g_scanPass = 1;
+	g_scannedMb = 0;
 	std::vector<uintptr_t> names;
 	std::vector<uintptr_t> fires;
 	const std::size_t length = name.size() + 1;  // with its ending zero
@@ -318,6 +324,10 @@ void Scan(std::string name) {
 	// Pass 2: the units that point at that PlayerData (players keep it at UnitData).
 	// The names are sorted so each 8 bytes costs one range check and, rarely, a binary search
 	// (comparing every value with every name made this pass take minutes).
+	const auto pass1 = GetTickCount64() - started;
+	const uint32_t pass1Mb = g_scannedMb;
+	g_scanPass = 2;
+	g_scannedMb = 0;
 	std::vector<uintptr_t> heroes;
 	if (!names.empty()) {
 		std::sort(names.begin(), names.end());
@@ -367,6 +377,7 @@ void Scan(std::string name) {
 		static_cast<unsigned long long>(GetTickCount64() - started), static_cast<int>(names.size()), static_cast<int>(heroes.size()),
 		heroPos.x, heroPos.y, heroPos.ok ? "ok" : "not found", fireUnits, static_cast<int>(fires.size()), fire.x, fire.y, fire.ok ? "ok" : "not found");
 	std::string report = line;
+	report += "; pass 1 read " + std::to_string(pass1Mb) + " MB in " + std::to_string(pass1) + " ms";
 	if (hero != 0) {
 		report += "; " + FindList(hero, heroPos);
 		if (!fire.ok && !g_list.module.empty()) {
@@ -497,7 +508,8 @@ auto Report() -> std::string {
 	const std::lock_guard<std::mutex> guard(g_lock);
 	const std::string build = BuildFound();
 	return "Darkest Diablo game build " + build + " from " + g_buildFile + (BuildMatches() ? " (frozen build)" : " (other build: reading is off)") + "; " + g_report +
-	       (g_scanning ? " (" + std::to_string((GetTickCount64() - g_scanStarted) / 1000) + " s so far)" : std::string());
+	       (g_scanning ? " (" + std::to_string((GetTickCount64() - g_scanStarted) / 1000) + " s so far, pass " + std::to_string(g_scanPass) +
+	                         ", " + std::to_string(g_scannedMb) + " MB read)" : std::string());
 }
 
 }  // namespace GameMemory
