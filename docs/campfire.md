@@ -21,8 +21,11 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    - every hero dead and nobody waiting: a traveler turns up by himself with up to 3 classes.
    **Retire** asks which hero to bury. A retired hero counts as a death.
 4. **In town.** Each time a hero comes back to town from a stop there is a chance (25%) that
-   "A traveler joins your camp" and offers up to 3 locked classes. The class of the last hero
-   that fell is always one of them, once. The picked class waits at the Campfire as a recruit.
+   a traveler arrives with up to 3 locked classes; a notice says "A traveler waits by your fire".
+   The class of the last hero that fell is always one of them, once. At the Campfire (through the
+   fire, or Save and Exit) only the offered classes stand by the fire; pick one and press Accept:
+   the others leave, the camp's heroes come back and the new class waits with the name box ready.
+   "Not now" keeps the traveler waiting for later.
 5. **The bonfire.** Clicking the Rogue Encampment's bonfire (from any side: it has a bigger click
    box) saves, leaves the game and lands on the Campfire scene, like Save and Exit. To the game the
    fire is a stash chest, the only use we can notice, so the town's real stash chest is gone and

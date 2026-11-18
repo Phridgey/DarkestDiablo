@@ -117,19 +117,11 @@ def save_slots():
 
 
 def traveler():
-    # Three offers side by side: each button at 0.7 size is about 360 wide and 64 tall. A hidden
-    # button still takes clicks, so each place has ONE button (recruit-place-<n>; the plugin knows
-    # which class is offered there) and only the class names on it are stacked and shown by name.
-    scale = 0.7
-    w, h = round(BUTTON_W * scale), round(BUTTON_H * scale)
-    kids = [text("Heading", 78, 50, 1076, 70, "A traveler joins your camp", "$StyleSettingsTitle"),
-            text("Help", 135, 125, 956, 90, "Choose who stays by the fire. They wait at the Campfire as a new hero.")]
-    label = {"fontColor": "$FontColorWhite", "alignment": {"h": "center", "v": "center"}, "pointSize": "$MediumFontSize"}
-    for place, x in enumerate((55, 433, 811)):
-        kids.append(button(f"Offer{place}", x, 225, "", action=f"recruit-place-{place}", scale=scale))
-        for cls in CLASSES:
-            kids.append(text(f"Offer{place}{cls}", x, 225, w, h, cls, label))
-    kids.append(button("NotNow", 433, 320, "Not now", action="traveler-later", scale=scale))
+    # The notice in town when a traveler arrives. The choice itself is made at the Campfire,
+    # which shows only the offered classes (campfire.cpp, traveler mode).
+    kids = [text("Heading", 78, 50, 1076, 70, "A traveler waits by your fire", "$StyleSettingsTitle"),
+            text("Help", 135, 125, 956, 90, "Use the fire to meet them at the Campfire and choose who stays.")]
+    kids.append(button("Ok", 357, 280, "OK", message="PanelManager:ClosePanel:darkestdiablo/Traveler"))
     return panel("Traveler", kids)
 
 

@@ -108,6 +108,7 @@ bool g_slotsOpen = false;
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
 bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
+bool g_travelerMode = false; // a traveler waits: the Campfire shows only the offered classes until one is accepted
 D2RL::Panels::RegistrationHandle g_curtainPanel = D2RL::Panels::InvalidHandle;
 fs::path g_dataDir;         // the mod's d2rloader folder: camp_data.txt, SaveSlots.layout.json
 int g_confirmSlot = 0;      // the save the player is being asked about deleting (0: none)
@@ -594,6 +595,17 @@ auto FireButton(const std::string& name, int x, int y, const std::string& text, 
 		"\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,\"text/style\":\"$StyleFEButtonText\",\"pointSize\":\"$LargeFontSize\",\"textColor\":\"" + color + "\"}}";
 }
 
+// A traveler waits at the Campfire when the camp has heroes and an offer still open (with no
+// heroes, the offer is simply what the hero screen may make).
+auto TravelerWaits() -> bool {
+	return !g_camp.offer.empty() && !g_camp.heroes.empty();
+}
+
+// The classes that may be clicked at the Campfire right now (besides the camp's heroes).
+auto Allowed() -> std::vector<int> {
+	return g_travelerMode ? g_camp.offer : Camp::Creatable(g_camp, g_rng);
+}
+
 // The Fire panel's layout for the camp as it is now: each living hero as a figure in its gear
 // where its class stands, a name plate under it, and the Options, Delete and Exit buttons.
 auto FireLayoutJson() -> std::string {
@@ -627,11 +639,27 @@ auto FireLayoutJson() -> std::string {
 			"\"style\":{\"pointSize\":\"$MediumFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
 		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
-	// The classes that may join right now, in the game's standard look.
-	for (const int c : Camp::Creatable(g_camp, g_rng)) {
+	// The classes that may join right now, and a waiting traveler's offer, in the game's
+	// standard look.
+	std::vector<int> joining = Camp::Creatable(g_camp, g_rng);
+	if (TravelerWaits()) {
+		for (const int c : g_camp.offer) {
+			if (!Camp::State::Has(joining, c)) {
+				joining.push_back(c);
+			}
+		}
+	}
+	for (const int c : joining) {
 		if (g_spots[c].known && g_camp.HeroOf(c) == nullptr) {
 			figure(c, g_spots[c].look.empty() ? "" : "," + g_spots[c].look);
 		}
+	}
+	if (TravelerWaits()) {
+		kids += "{\"type\":\"TextBoxWidget\",\"name\":\"TravelerHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
+			"\"text\":\"A traveler joins your camp. Choose who stays by the fire.\","
+			"\"style\":{\"fontColor\":\"$FontColorGoldYellow\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
+		kids += FireButton("TravelerAccept", -420, 1760, "Accept", act + "traveler-accept", Med, "$LightButtonTextColor") + ",";
+		kids += FireButton("TravelerLater", 60, 1760, "Not now", act + "traveler-not-now", Med, "$LightButtonTextColor") + ",";
 	}
 	kids += "{\"type\":\"TextBoxWidget\",\"name\":\"DeleteHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
 		"\"text\":\"Choose the hero to retire. This can't be undone. Press Retire again to keep everyone.\","
@@ -672,15 +700,26 @@ auto RegisterFireLayout(const D2RL::PluginContext* context) -> bool {
 // Shows the right widgets for where the Campfire is: picking a hero, Delete, or making a hero.
 void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 	const std::string panel = PoolName(g_fire);
-	SetVisible(context, panel.c_str(), "DeleteHint", g_deleteMode);
+	const bool traveler = g_travelerMode;
+	SetVisible(context, panel.c_str(), "DeleteHint", g_deleteMode && !traveler);
 	for (const auto& hero : g_camp.heroes) {
 		const std::string cls = Camp::ClassNames[hero.cls];
-		SetVisible(context, panel.c_str(), ("Plate" + cls).c_str(), !g_deleteMode);
-		SetVisible(context, panel.c_str(), ("Bury" + cls).c_str(), g_deleteMode);
+		SetVisible(context, panel.c_str(), cls.c_str(), !traveler);
+		SetVisible(context, panel.c_str(), ("Plate" + cls).c_str(), !g_deleteMode && !traveler);
+		SetVisible(context, panel.c_str(), ("Bury" + cls).c_str(), g_deleteMode && !traveler);
 	}
+	// While the traveler waits only the offer stands by the fire; after the choice the classes
+	// not taken leave and the one taken stays.
+	for (const int c : g_camp.offer) {
+		SetVisible(context, panel.c_str(), Camp::ClassNames[c], traveler);
+	}
+	SetVisible(context, panel.c_str(), "TravelerHint", traveler);
+	SetVisible(context, panel.c_str(), "TravelerAccept", traveler && Camp::State::Has(g_camp.offer, g_selectedClass));
+	SetVisible(context, panel.c_str(), "TravelerLater", traveler);
+	SetVisible(context, panel.c_str(), "LeftButtons", !traveler);
 	const bool ready = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr;
-	SetVisible(context, panel.c_str(), "EnterIdle", !g_createMode && !ready);
-	SetVisible(context, panel.c_str(), "EnterReady", !g_createMode && ready);
+	SetVisible(context, panel.c_str(), "EnterIdle", !traveler && !g_createMode && !ready);
+	SetVisible(context, panel.c_str(), "EnterReady", !traveler && !g_createMode && ready);
 	// The game's own name box, version picker and Create button.
 	// The game shows its name box again by itself, so each part of it is hidden too.
 	int found = 0;
@@ -692,7 +731,7 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 		lastFound = found;
 		Log(context, "Camp: name box parts reached: %d of 7.", found);
 	}
-	SetVisible(context, "CharacterCreatePanel", "ToGame", !Camp::Creatable(g_camp, g_rng).empty());
+	SetVisible(context, "CharacterCreatePanel", "ToGame", !traveler && !Camp::Creatable(g_camp, g_rng).empty());
 }
 
 void __cdecl ShowFireState(const D2RL::PluginContext* context, void*) noexcept {
@@ -732,7 +771,9 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 		g_atFire = true;
 		g_deleteMode = false;
 		g_createMode = g_camp.heroes.empty();  // a new save has nobody to pick: go straight to making a hero
+		g_travelerMode = TravelerWaits();       // a traveler waits: show only the offer first
 		g_chosenHero = -1;
+		g_selectedClass = -1;
 		ShowDeleteMode(context);
 		Later(context, 300, ShowFireState);  // again once the game's screen has settled
 		Close(context, g_curtainPanel);
@@ -879,16 +920,9 @@ void __cdecl ShowTraveler(const D2RL::PluginContext* context, void*) noexcept {
 		g_camp.offer = Camp::RollOffer(g_camp, g_rng);
 		Camp::SaveState(g_live, g_slot, g_camp);
 	}
+	// A notice only: the choice is made at the Campfire, which the fire leads to.
 	if (g_camp.offer.empty() || !Open(context, g_travelerPanel, "traveler")) {
 		return;
-	}
-	const std::string panel = FullName(TravelerPanel);
-	for (int place = 0; place < Camp::OfferSize; ++place) {
-		SetVisible(context, panel.c_str(), ("Offer" + std::to_string(place)).c_str(), place < static_cast<int>(g_camp.offer.size()));
-		for (int c = 0; c < Camp::ClassCount; ++c) {
-			const bool show = place < static_cast<int>(g_camp.offer.size()) && g_camp.offer[place] == c;
-			SetVisible(context, panel.c_str(), ("Offer" + std::to_string(place) + Camp::ClassNames[c]).c_str(), show);
-		}
 	}
 	Log(context, "Camp: a traveler joins the camp. %s", Describe().c_str());
 }
@@ -1116,6 +1150,37 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 		} else {
 			Log(context, "Camp: %s was not on offer. %s", action, Describe().c_str());
 		}
+	} else if (std::strcmp(action, "traveler-accept") == 0) {
+		const int cls = g_selectedClass;
+		if (g_travelerMode && cls >= 0 && Camp::Recruit(g_camp, cls)) {
+			Camp::SaveState(g_live, g_slot, g_camp);
+			// Hide the classes not taken (the offer is cleared by Recruit, so use the figures).
+			const std::string panel = PoolName(g_fire);
+			for (int c = 0; c < Camp::ClassCount; ++c) {
+				if (c != cls && g_camp.HeroOf(c) == nullptr) {
+					SetVisible(context, panel.c_str(), Camp::ClassNames[c], false);
+				}
+			}
+			g_travelerMode = false;
+			g_createMode = true;  // the new class steps in with the name box ready
+			g_chosenHero = -1;
+			g_pickedClass = cls;
+			ShowDeleteMode(context);
+			Later(context, 100, ShowFireState);
+			Log(context, "Camp: the %s joins the camp as a recruit. %s", Camp::ClassNames[cls], Describe().c_str());
+		} else {
+			Log(context, "Camp: Accept pressed with nothing chosen.");
+		}
+	} else if (std::strcmp(action, "traveler-not-now") == 0) {
+		// The traveler keeps waiting (the offer stays); the camp shows as usual.
+		const std::string panel = PoolName(g_fire);
+		for (const int c : g_camp.offer) {
+			SetVisible(context, panel.c_str(), Camp::ClassNames[c], false);
+		}
+		g_travelerMode = false;
+		g_selectedClass = -1;
+		ShowDeleteMode(context);
+		Log(context, "Camp: the traveler waits for later.");
 	} else if (std::strcmp(action, "traveler-later") == 0) {
 		Close(context, g_travelerPanel);
 		g_camp.offer.clear();
@@ -1365,7 +1430,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				}
 				return false;  // let the figure react
 			}
-			const auto allowed = Camp::Creatable(g_camp, g_rng);
+			const auto allowed = Allowed();
 			if (std::strcmp(command, "Select") == 0 || std::strcmp(command, "Hover") == 0) {
 				if (!Camp::State::Has(allowed, cls)) {
 					return true;
@@ -1380,6 +1445,9 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			} else if (std::strcmp(command, "Unselect") == 0 && cls == g_selectedClass) {
 				g_selectedClass = -1;
 			} else if (std::strcmp(command, "Create") == 0) {
+				if (g_travelerMode) {  // the traveler's choice comes first (Accept)
+					return true;
+				}
 				if (g_atFire && !g_createMode) {  // first press: bring out the name box
 					if (!allowed.empty()) {
 						g_createMode = true;
