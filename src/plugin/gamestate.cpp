@@ -501,7 +501,7 @@ struct Stat { uint16_t param, id; int32_t value; };
 
 // Every (pointer, count) pair in the list's first 0x100 bytes that points at readable stats, as
 // raw 8-byte entries. On our build (0.11.52 log) the hero has two: list + 0x30 (16 stats) and
-// list + 0xA8 (34 stats).
+// list + 0xA8 (34 stats); the second has items and skills added.
 auto StatArrays(const Unit& unit) -> std::vector<std::pair<std::size_t, std::vector<uint64_t>>> {
 	std::vector<std::pair<std::size_t, std::vector<uint64_t>>> found;
 	if (!unit || (unit.kind != Kind::Player && unit.kind != Kind::Monster)) {
@@ -518,7 +518,7 @@ auto StatArrays(const Unit& unit) -> std::vector<std::pair<std::size_t, std::vec
 		if (!Pointer(stats) || count == 0 || count > 512) {
 			continue;
 		}
-		std::vector<uint64_t> raw(static_cast<std::size_t>(count));
+		std::vector<uint64_t> raw(static_cast<std::size_t>(count) * 2);  // up to 16 bytes per stat
 		SIZE_T got = 0;
 		if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(stats), raw.data(), raw.size() * 8, &got) && got == raw.size() * 8) {
 			found.emplace_back(i * 8, std::move(raw));
@@ -527,14 +527,20 @@ auto StatArrays(const Unit& unit) -> std::vector<std::pair<std::size_t, std::vec
 	return found;
 }
 
-// An entry is (param 16 bits, stat 16 bits, value 32 bits) in the map tools' layout; the other
-// order (stat first) is tried too. The layout is right when it gives life (6) no more than
-// maximum life (7), both above zero.
-auto Decode(const std::vector<uint64_t>& raw, bool statFirst) -> std::vector<Stat> {
+// On our build (0.11.53 log) a stat is 16 bytes: the param in the first 4, the stat number in
+// the next 4, then the value (life 0x4900 = 73 in 256ths). The map tools' 8-byte layout (param 16
+// bits, stat 16 bits, value 32 bits) is the fallback. `raw` holds count * 2 words.
+auto Decode(const std::vector<uint64_t>& raw, bool wide) -> std::vector<Stat> {
 	std::vector<Stat> all;
-	for (const uint64_t e : raw) {
-		const uint16_t lo = static_cast<uint16_t>(e), hi = static_cast<uint16_t>(e >> 16);
-		all.push_back({ statFirst ? hi : lo, statFirst ? lo : hi, static_cast<int32_t>(e >> 32) });
+	const std::size_t count = raw.size() / 2;
+	for (std::size_t i = 0; i < count; ++i) {
+		if (wide) {
+			const uint64_t key = raw[i * 2];
+			all.push_back({ static_cast<uint16_t>(key), static_cast<uint16_t>(key >> 32), static_cast<int32_t>(raw[i * 2 + 1]) });
+		} else {
+			const uint64_t e = raw[i];
+			all.push_back({ static_cast<uint16_t>(e), static_cast<uint16_t>(e >> 16), static_cast<int32_t>(e >> 32) });
+		}
 	}
 	return all;
 }
@@ -542,8 +548,8 @@ auto Decode(const std::vector<uint64_t>& raw, bool statFirst) -> std::vector<Sta
 auto StatsOf(const Unit& unit, std::size_t& where) -> std::vector<Stat> {
 	std::vector<Stat> fallback;
 	for (const auto& [at, raw] : StatArrays(unit)) {
-		for (const bool statFirst : { false, true }) {
-			const std::vector<Stat> all = Decode(raw, statFirst);
+		for (const bool wide : { true, false }) {
+			const std::vector<Stat> all = Decode(raw, wide);
 			int life = -1, most = -1;
 			for (const Stat& st : all) {
 				if (st.param == 0 && st.id == LifeStat) {
@@ -583,8 +589,12 @@ auto Life(const Unit& unit) -> int {
 }
 
 auto CharacterLevel(const Unit& unit) -> int {
-	std::size_t where = 0;
-	return StatValue(StatsOf(unit, where), 12);  // itemstatcost.txt: level
+	for (const auto& [at, raw] : StatArrays(unit)) {
+		if (const int level = StatValue(Decode(raw, true), 12); level > 0 && level < 1000) {  // itemstatcost.txt: level
+			return level;
+		}
+	}
+	return -1;
 }
 
 auto StatsReport(const Unit& unit) -> std::string {
@@ -607,7 +617,7 @@ auto StatsReport(const Unit& unit) -> std::string {
 	}
 	for (const auto& [at, raw] : StatArrays(unit)) {
 		text += "; stats at list + " + Hex(at) + " (" + std::to_string(raw.size()) + "):";
-		for (std::size_t i = 0; i < raw.size() && i < 40; ++i) {
+		for (std::size_t i = 0; i < raw.size() && i < 24; ++i) {
 			text += " " + Hex(static_cast<uintptr_t>(raw[i]));
 		}
 	}
