@@ -1692,7 +1692,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 				}
 			}
 			Log(context, "Camp: playing %s.", g_currentHero.empty() ? "an unknown hero (route progress is shared)" : g_currentHero.c_str());
-			Later(context, 4000, ScanTown);  // when the game starts in the Rogue Encampment
+			Later(context, 1000, ScanTown);  // when the game starts in the Rogue Encampment
 			Later(context, 2000, RecordGear);
 			break;
 		}
@@ -1709,7 +1709,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			g_levelId = event->currentValue;
 			Later(context, 1000, RecordGear);
 			if (g_levelId == RogueEncampment) {
-				Later(context, 3000, ScanTown);  // the town's units are loaded by then
+				Later(context, 1000, ScanTown);  // the town's units are loaded by then
 			}
 			if (IsTown(g_levelId) && from > 0 && !IsTown(from) && !g_died && !g_camp.LockedClasses().empty()) {
 				const int roll = std::uniform_int_distribution<int>(1, 100)(g_rng);
