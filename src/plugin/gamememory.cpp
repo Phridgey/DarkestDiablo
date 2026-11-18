@@ -196,25 +196,49 @@ auto FileVersion(const std::wstring& path) -> std::string {
 
 }  // namespace
 
-// The game runs inside D2RLoader.exe, so the process's own file is the loader. The game's
-// version is read from D2R.exe: the loaded module if Windows lists it, else the file next to
-// the loader (both sit in the game folder).
+namespace {
+std::string g_buildFile = "not found";  // which D2R.exe the version came from, for the log
+}
+
+// The game runs inside D2RLoader's process, and asking Windows for the process's own file (or
+// even for the "D2R.exe" module) gave the loader's version (1.3.1.0) in game. So the version is
+// read from the D2R.exe file in the game folder: next to the process's file, or up from this
+// plugin's own folder (Mods\darkestdiablo\... sits inside the game folder).
 auto BuildFound() -> std::string {
 	static std::string found = [] {
+		std::vector<std::wstring> folders;
 		wchar_t path[MAX_PATH] {};
-		if (const HMODULE game = GetModuleHandleW(L"D2R.exe"); game != nullptr && GetModuleFileNameW(game, path, MAX_PATH) != 0) {
-			if (std::string v = FileVersion(path); !v.empty()) {
+		auto addParents = [&](std::wstring p, int levels) {
+			for (int i = 0; i < levels; ++i) {
+				const auto slash = p.find_last_of(L"\\/");
+				if (slash == std::wstring::npos) {
+					return;
+				}
+				p.resize(slash);
+				folders.push_back(p + L"\\");
+			}
+		};
+		if (GetModuleFileNameW(nullptr, path, MAX_PATH) != 0) {
+			addParents(path, 2);
+		}
+		HMODULE self = nullptr;
+		if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		        reinterpret_cast<LPCWSTR>(&BuildFound), &self) && GetModuleFileNameW(self, path, MAX_PATH) != 0) {
+			addParents(path, 6);
+		}
+		for (const auto& folder : folders) {
+			const std::wstring file = folder + L"D2R.exe";
+			if (GetFileAttributesW(file.c_str()) == INVALID_FILE_ATTRIBUTES) {
+				continue;
+			}
+			if (std::string v = FileVersion(file); !v.empty()) {
+				char narrow[MAX_PATH * 2] {};
+				WideCharToMultiByte(CP_UTF8, 0, file.c_str(), -1, narrow, sizeof(narrow), nullptr, nullptr);
+				g_buildFile = narrow;
 				return v;
 			}
 		}
-		if (GetModuleFileNameW(nullptr, path, MAX_PATH) == 0) {
-			return std::string("unknown");
-		}
-		std::wstring folder(path);
-		const auto slash = folder.find_last_of(L"\\/");
-		folder = slash == std::wstring::npos ? std::wstring() : folder.substr(0, slash + 1);
-		std::string v = FileVersion(folder + L"D2R.exe");
-		return v.empty() ? std::string("unknown") : v;
+		return std::string("unknown");
 	}();
 	return found;
 }
@@ -249,7 +273,8 @@ auto Fire() -> Pos {
 
 auto Report() -> std::string {
 	const std::lock_guard<std::mutex> guard(g_lock);
-	return "Darkest Diablo " + std::string("game build ") + BuildFound() + (BuildMatches() ? " (frozen build)" : " (other build: reading is off)") + "; " + g_report;
+	const std::string build = BuildFound();
+	return "Darkest Diablo game build " + build + " from " + g_buildFile + (BuildMatches() ? " (frozen build)" : " (other build: reading is off)") + "; " + g_report;
 }
 
 }  // namespace GameMemory

@@ -9,7 +9,8 @@ Code: `src/plugin/gamememory.h` and `gamememory.cpp`.
 ## Safety
 
 - Only on D2R.exe build 95032 (`D2R_VERSION` 3.4.95032). The game runs inside D2RLoader.exe, so the
-  plugin reads the file version of D2R.exe itself (not of the process), from the game folder,
+  plugin reads the file version of the D2R.exe file in the game folder (found next to the
+  process or up from the plugin's own folder),
   once. Its numbers are 16 bits each, so 95032 is stored as 3.4.29496.0 (95032 - 65536). On any
   other build it reads nothing and logs "reading is off".
 - Reads use Windows' `ReadProcessMemory` on the game's own process. A bad address makes the read
