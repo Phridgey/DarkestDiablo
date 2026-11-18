@@ -14,7 +14,8 @@
 // - Death: the game's "You died" window or a resurrection marks the hero as fallen. A softcore
 //   hero is sent out of the game at once. Back at the menu the files go to the graveyard.
 // - The traveler: a chance each time a hero comes back to town; a panel offers up to 3 classes.
-// - In town, the stash (and so the bonfire) has a Campfire button that opens the roster panel.
+// - In town, using the bonfire (a stash chest to the game) goes to the Campfire; the real stash
+//   chest still opens the stash. The hero's distance to the fire tells them apart (gamememory.h).
 //
 // Console (Ctrl + `): dd-camp, dd-slot <1-3>, dd-traveler.
 
@@ -1037,6 +1038,29 @@ void __cdecl ScanTown(const D2RL::PluginContext* context, void*) noexcept {
 	Later(context, 1000, LogMemoryScan);
 }
 
+// The fire and the town's stash chest both open the stash window. The hero walks up to what
+// was clicked before it opens, so standing within this many sub-tiles of the fire's middle means
+// the fire was used (the pit is about 3 tiles, 15 sub-tiles, across). Unknown positions: the stash.
+constexpr long long FireReach = 20;
+
+auto AtFire(const D2RL::PluginContext* context) -> bool {
+	const GameMemory::Pos hero = GameMemory::Hero();
+	const GameMemory::Pos fire = GameMemory::Fire();
+	if (!hero.ok || !fire.ok) {
+		Log(context, "Camp: stash window in town, positions unknown (hero %s, fire %s): treated as the stash.", hero.ok ? "ok" : "-",
+			fire.ok ? "ok" : "-");
+		if (!GameMemory::Scanning()) {
+			GameMemory::StartScan(CurrentHero());
+		}
+		return false;
+	}
+	const long long dx = hero.x - fire.x, dy = hero.y - fire.y;
+	const bool near = dx * dx + dy * dy <= FireReach * FireReach;
+	Log(context, "Camp: stash window in town, hero at %d,%d, fire at %d,%d (%.1f sub-tiles): %s.", hero.x, hero.y, fire.x, fire.y,
+		std::sqrt(static_cast<double>(dx * dx + dy * dy)), near ? "the fire" : "the stash");
+	return near;
+}
+
 // Where the portal opens: across the fire from the hero, about 4 sub-tiles past the fire's
 // middle. Without positions, at the hero's feet.
 void PlacePortal(const D2RL::PluginContext* context) {
@@ -1546,11 +1570,12 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			}
 			return false;
 		}
-		// In the Rogue Encampment the fire opens the stash window (the stash chest is gone from the
-		// town maps, see 040_campfire.py), which is the only sign of it the plugin gets: using the
-		// fire saves and leaves the game for the Campfire scene, like Save and Exit.
+		// In the Rogue Encampment the fire opens the stash window (040_campfire.py), which is the
+		// only sign of it the plugin gets. The town's own stash chest opens it too, so the hero's
+		// distance to the fire decides: at the fire, using it saves and leaves the game for the
+		// Campfire scene, like Save and Exit; anywhere else the stash opens as usual.
 		if (panelManager && std::strcmp(text, "BankExpansionLayout") == 0 && std::strcmp(command, "OpenPanel") == 0 && g_inGame &&
-		    g_levelId == RogueEncampment && g_threads != nullptr) {
+		    g_levelId == RogueEncampment && g_threads != nullptr && (g_travelerArrives || AtFire(context))) {
 			// The fire is a stash chest to the game; the stash window itself stays shut.
 			if (g_travelerArrives) {
 				return true;

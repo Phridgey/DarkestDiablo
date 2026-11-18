@@ -31,9 +31,10 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    "Not now" keeps the traveler waiting for later.
 5. **The bonfire.** Clicking the Rogue Encampment's bonfire (from any side: it has a bigger click
    box) saves, leaves the game and lands on the Campfire scene, like Save and Exit. To the game the
-   fire is a stash chest, the only use we can notice, so the town's real stash chest is gone and
-   the Rogue Encampment has no stash for now (Sam's choice, 2026-11-18). Elsewhere the stash
-   window has a Campfire button.
+   fire is a stash chest, the only use we can notice. The town's own stash chest is untouched
+   (Sam, 2026-11-18): both open the stash window, and the plugin tells them apart by where the
+   hero stands (read from game memory, `docs/game-memory.md`). Next to the fire it goes to the
+   Campfire; anywhere else the stash opens. If the positions can't be read, the stash opens.
 6. **Death is final.** A fallen hero's files move to the graveyard, with everything it wore and
    carried. Its class locks again. Only the stash carries on.
 7. **The stash.** The game's shared stash, with 7 more pages. Each save has its own.
@@ -143,8 +144,8 @@ Did not work, and what was changed:
   changed town maps showed. Town maps only load under new names (`darkest_town*.ds1`, with the
   town's row in `lvlprest.txt` pointing at them).
 - Now the fire's own row takes only the chest's "use" values and keeps its size (3 by 3), look and
-  light, so it can be used from the edge of the pit; the town's stash chest is removed and the
-  roster opens with the stash (0.11.9, not yet tried).
+  light, so it can be used from the edge of the pit; the town's stash chest was removed
+  (0.11.9). From 0.11.29 the chest is back as it was, and the hero's distance to the fire decides.
 - Changing save at the Campfire kept showing the first save's heroes: the game keeps a panel
   it has drawn and does not read its layout again. The Campfire and the save slot screen now
   use a fresh spare panel each time their content changes (not yet tried).

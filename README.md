@@ -91,7 +91,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 - **The Campfire** (`docs/campfire.md`; built, not yet tried in the game): three save slots, the
   character list staged at the campfire, recruiting on the hero screen (a new save offers every
   class, after that only classes a traveler brought), travelers in town, permanent death, and a
-  bigger shared stash per save. The town bonfire opens the stash, which has a Campfire button.
+  bigger shared stash per save. Using the town bonfire goes to the Campfire.
   The build needs the game's menu layouts and a few model files (all in `tools/vanilla_files.txt`).
   Console: `dd-camp`, `dd-slot <1-3>`, `dd-traveler`.
 - **Dodge** (`docs/dodge-roll.md`; prototype): a free dash of set length toward the cursor that

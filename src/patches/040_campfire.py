@@ -1,19 +1,14 @@
-"""The Campfire outside the plugin: the town bonfire, the camp screen, the stash button.
+"""The Campfire outside the plugin: the town bonfire and the camp screen.
 
 - Bonfire: the fire's own table row (RogueBonfire) takes the stash chest's "use me" values, so
-  clicking the fire opens the stash. The plugin can't see a click on a world object, only UI
-  messages, so the fire borrows the one town object whose window we can put a button on. The
-  fire of Harrogath is the same object and changes with it. The game reads the second copy of
+  clicking the fire opens the stash window. The plugin can't see a click on a world object, only
+  UI messages, so the fire borrows the stash's message and the plugin checks that the hero
+  stands at the fire. The fire of Harrogath is the same object and changes with it. The game reads the second copy of
   the tables (global/excel/base) for our heroes; until tools/build.py patched that copy too,
   none of the tries showed in game (see docs/campfire.md).
-- Stash window: a Campfire button that opens the plugin's roster panel.
 - Hero screen: new title. It is the Campfire: the game's own figures are moved out of sight and
   the plugin draws the camp's figures (src/plugin/campfire.cpp).
 """
-import copy
-import struct
-
-CHEST_PRESET = 102  # objpreset.txt, Act 1: Bank (the stash chest)
 
 
 def strip_physics(node):
@@ -30,24 +25,6 @@ def strip_physics(node):
         for value in node:
             removed += strip_physics(value)
     return removed
-
-
-def without_object(ds1, preset_id):
-    """A town map (.ds1, version 18) without its objects of preset `preset_id`. Only the object
-    list changes; the rest is kept byte for byte. Returns (new map, how many were removed)."""
-    i32 = lambda at: struct.unpack_from("<i", ds1, at)[0]
-    if i32(0) != 18:
-        raise ValueError(f"town map version {i32(0)}, expected 18")
-    width, height, tag_type, at = i32(4) + 1, i32(8) + 1, i32(16), 24
-    for _ in range(i32(20)):                 # names of the tile files
-        at = ds1.index(b"\0", at) + 1
-    layers = i32(at) * 2 + i32(at + 4) + 1 + (1 if tag_type in (1, 2) else 0)   # walls+orients, floors, shadow, tag
-    count_at = at + 8 + layers * width * height * 4
-    count = i32(count_at)
-    records = [ds1[count_at + 4 + n * 20:count_at + 24 + n * 20] for n in range(count)]
-    kept = [r for r in records if struct.unpack_from("<2i", r) != (2, preset_id)]
-    end = count_at + 4 + count * 20
-    return ds1[:count_at] + struct.pack("<i", len(kept)) + b"".join(kept) + ds1[end:], count - len(kept)
 
 
 def patch(t):
@@ -67,22 +44,10 @@ def patch(t):
     # fire's foot) as the click box, like the town portal and the Inifuss tree.
     fire_row.update({"CollisionSubst": "1", "Left": "-90", "Top": "-100", "Width": "180", "Height": "140"})
 
-    # The fire is the camp's stash, so the Rogue Encampment's stash chest is taken out of the
-    # four town maps. The game ignores changed maps shipped under the game's own file names, so
-    # they get new names (darkest_town*.ds1, with a copy of the town's HD look under the same
-    # name) and the town's row in lvlprest.txt points at them. When the stash opens in this town,
-    # the plugin opens the Campfire roster with it (campfire.cpp).
-    town_row = t.table("lvlprest").first("Name", "Act 1 - Town 1")
-    for n, town in enumerate(("townn1", "towne1", "towns1", "townw1"), start=1):
-        new = f"darkest_{town}"
-        ds1, removed = without_object(t.raw(f"global/tiles/act1/town/{town}.ds1"), CHEST_PRESET)
-        if removed != 1:
-            raise ValueError(f"{town}.ds1 has {removed} stash chests, expected 1")
-        t.add_raw(f"global/tiles/act1/town/{new}.ds1", ds1)
-        look_path = f"hd/env/preset/act1/town/{town}.json"
-        t.add_data(f"hd/env/preset/act1/town/{new}.json", copy.deepcopy(t.data(look_path)))
-        del t.files[look_path]  # read only, not shipped
-        town_row[f"File{n}"] = f"Act1/Town/{new}.ds1"
+    # The town's own stash chest stays exactly as it is (Sam: "don't touch the original stash").
+    # Fire and chest both open the stash window, so the plugin tells them apart by where the
+    # hero stands: next to the fire it goes to the Campfire, anywhere else the stash opens as
+    # usual (campfire.cpp, positions read as in docs/game-memory.md).
 
     # The fire ring's 3D scenery carries collision shapes that could keep the mouse off the fire.
     prefab_path = "hd/env/model/global/prop/act1/town/prefab/pf_town_campfire01.json"
@@ -91,21 +56,6 @@ def patch(t):
     print(f"campfire scenery: {removed} collision shape(s) removed")
     if not removed:
         del t.files[prefab_path]  # nothing to change: not shipped
-
-    bank = t.layout("bankexpansionlayouthd")
-    bank["children"].append({
-        "type": "ButtonWidget", "name": "Campfire",
-        "fields": {
-            "rect": {"x": 431, "y": 1420},
-            "filename": "Panel\\Modals\\ModalButton",
-            "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
-            "pressedFrame": 1, "disabledFrame": 2, "hoveredFrame": 3,
-            "textString": "Campfire",
-            "pointSize": "$MediumFontSize",
-            "textColor": "$FontColorWhite",
-            "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/open-campfire",
-        },
-    })
 
     # The hero screen is the Campfire: the plugin draws the camp's heroes on it.
     create = t.layout("charactercreatepanelhd")
