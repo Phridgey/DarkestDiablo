@@ -1,19 +1,19 @@
 """Den of Evil: a fixed hand-made map instead of the random maze.
 
 The map is composed from the game's own cave rooms by tools/compose_map.py from
-src/maps/den_of_evil.json: 2x2 open cave rooms (48x48 tiles), joined the way the Pit joins them.
+src/maps/den_of_evil.json: our own copy of the Pit level 2 room, a round cave (24x24 tiles).
 
 The arena is NOT the real Den (levels.txt Id 8): killing everything there completes the Den
 quest, and Akara then offers a free respec, which the design doesn't allow. So the arena is a
 spare cave level ("Cave 2 Treasure", Id 13, fixed at 1500, 2500) that copies the Den's look and
-name. Corpsefire always drops a Book of Skill instead (the quest's skill point). The real Den
+name. The plugin gives the quest's skill point when the Den is first cleared. The real Den
 can't be reached any more.
 """
 
 ARENA_ID = "13"               # "Act 1 - Cave 2 Treasure", reused
 REAL_DEN_ID = "8"
 MAP_FILE = "Act1/Caves/darkest_den.ds1"
-SIZE_X, SIZE_Y = "48", "48"  # map width - 1, height - 1 (2x2 rooms of 24 tiles)
+SIZE_X, SIZE_Y = "24", "24"  # map width - 1, height - 1 (the Pit level 2 room)
 KEEP = {"Id", "Name", "Layer", "OffsetX", "OffsetY"}
 CORPSEFIRE_TYPE = "dd_corpsefire"  # his own monstats row (see the end of patch())
 CORPSEFIRE_CLASS = 751             # its row number: the first one after the game's 751 monsters
@@ -59,6 +59,12 @@ def patch(t):
     act1["waypoint2"] = den["Name"]
 
     prest = t.table("lvlprest")
+    # Level 13 already has a vanilla preset (the treasure room "Act 1 - Cave Treasure 2", 24x24).
+    # The game uses the first preset that names the level, so with it left in place the arena loaded
+    # that 24-tile room into a 48-tile level and crashed (BC_VERIFY nSizeX == nSizeTileX).
+    for other in prest.rows:
+        if other.get("LevelId") == ARENA_ID:
+            other["LevelId"] = "0"
     template = prest.first("Name", "Act 1 - Cave Den Of Evil N")
     row = dict(template)
     row["Name"] = "Act 1 - Darkest Diablo Den"
@@ -69,24 +75,14 @@ def patch(t):
     row["File1"] = MAP_FILE
     prest.rows.append(row)
 
-    # The Book of Skill is Radament's quest item (Act II quest 15, "questdiffcheck"): the game only
-    # lets it drop while that quest is open, so in Act I it silently dropped nothing. Without the
-    # quest tie it drops wherever a table names it; using it still gives the skill point (pSpell).
+    # The Den's skill point: the plugin gives it when the Den is first cleared ("cheat
+    # skillpoints 1"). A dropped Book of Skill could not be used outside Radament's quest.
+    # Saves made with 0.9.6-0.9.12 hold Books of Skill written with these two columns at 0. They
+    # change how the item is stored in the save, so put back to the game's values the game misreads
+    # those books and crashes loading the hero (BC_ASSERT setItemsTbl). Keep them at 0.
     book = t.table("misc").first("code", "ass")
     book["quest"], book["questdiffcheck"] = "0", "0"
-
-    # Corpsefire always drops a Book of Skill ("ass") on top of his normal loot. Negative Picks
-    # drop every listed item that many times: one more pick for the book, listed first.
-    tcs = t.table("treasureclassex")
     corpsefire = t.table("superuniques").first("Superunique", "Corpsefire")
-    for col in ("TC", "TC(N)", "TC(H)"):
-        base = tcs.first("Treasure Class", corpsefire[col])
-        row = dict(base)
-        row["Treasure Class"] = f"Darkest {corpsefire[col]} Corpsefire"
-        row["Picks"] = str(int(base["Picks"]) - 1)
-        put_first(row, "ass", "1")  # first, so the 6-item drop cap can't cut it
-        tcs.rows.append(row)
-        corpsefire[col] = row["Treasure Class"]
 
     # Corpsefire gets a monster type of his own, a copy of the zombie, so the plugin can tell his
     # death apart: the Den is only cleared once he is dead (like Blood Raven at Burial Grounds).
@@ -109,15 +105,3 @@ def patch(t):
     # D2R finds a monster's 3D model by its Id in this file; without an entry he is invisible.
     models = t.data("hd/character/monsters.json")
     models[CORPSEFIRE_TYPE] = models["zombie1"]
-
-
-def put_first(row, item, prob):
-    """Insert a loot table entry at the top, moving the others down. A monster drops at most 6
-    items per death, and with negative Picks the entries drop in order: an entry listed last
-    after 6 items' worth (2 item picks + 2 picks of 2 potions) never drops at all."""
-    entries = [(row[f"Item{k}"], row[f"Prob{k}"]) for k in range(1, 11) if row.get(f"Item{k}")]
-    entries.insert(0, (item, prob))
-    if len(entries) > 10:
-        raise RuntimeError(f"{row['Treasure Class']}: more than 10 entries")
-    for k in range(1, 11):
-        row[f"Item{k}"], row[f"Prob{k}"] = entries[k - 1] if k <= len(entries) else ("", "")

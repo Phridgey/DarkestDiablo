@@ -172,7 +172,10 @@ def compose(spec):
                 if d["shadow"][s]:
                     m["shadow"][t] = d["shadow"][s]
         monsters = p["piece"].lower() in keep
+        drop = set(spec.get("drop_objects", []))  # e.g. a room's treasure chests
         for o in d["objects"]:
+            if o["type"] == 2 and o["id"] in drop:
+                continue
             if o["type"] == 2 or (monsters and o["type"] == 1):
                 m["objects"].append({**o, "x": o["x"] + ox * 5, "y": o["y"] + oy * 5})
     # Extra objects from the layout, e.g. a waypoint: {"type": 2, "id": <objpreset Index>, "tile": [x, y]}
@@ -180,6 +183,37 @@ def compose(spec):
     for o in spec.get("extra_objects", []):
         tx, ty = o["tile"]
         m["objects"].append({"type": o["type"], "id": o["id"], "x": tx * 5 + 4, "y": ty * 5 + 4, "flags": 0})
+    # "circle": {"radius": R} makes one round open cavern from the stitched rooms: floor inside a
+    # circle of R tiles around the map's centre, solid rock (unwalkable) outside, no walls at all.
+    # build_hd drops every wall and rock model and rings the circle with cave rocks instead.
+    cr = spec.get("circle")
+    if cr:
+        base = m["floors"][0]
+        counts, rock = {}, None
+        for v in base:
+            if not v:
+                continue
+            if ((v >> 20) & 0x3F) == 30:
+                rock = rock or v
+            elif not v & 0x20000:
+                counts[v] = counts.get(v, 0) + 1
+        floor = max(counts, key=counts.get)
+        cx, cy, r = (W - 1) / 2, (H - 1) / 2, cr["radius"]
+        for y in range(H):
+            for x in range(W):
+                i = y * W + x
+                for l in range(len(m["walls"])):
+                    m["walls"][l][i] = m["orients"][l][i] = 0
+                m["shadow"][i] = 0
+                for a in m["floors"][1:]:
+                    a[i] = 0
+                if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
+                    base[i] = floor
+                else:
+                    base[i] = (rock or floor) | 0x20000
+        # The rooms' own objects (torches and such) only where the floor still is.
+        m["objects"] = [o for o in m["objects"]
+                        if (o["x"] / 5 - cx) ** 2 + (o["y"] / 5 - cy) ** 2 <= (r - 1) ** 2]
     # Close the map's outer edges: maze rooms are open where the next room would join. Mark open
     # floor on the border as unwalkable (floor bit 0x20000), so players can't walk off the map.
     if spec.get("close_edges", True):
@@ -194,6 +228,61 @@ def compose(spec):
 
 
 KINDS = ["particles", "models", "skeletons", "animations", "textures", "physics", "json", "variantdata", "objecteffects", "other"]
+
+
+def is_solid_model(e):
+    """A wall, fence, rock or other model with a body: everything that shapes a maze room."""
+    kinds = {k.get("type") for k in e.get("components") or []}
+    return bool(kinds & {"ModelDefinitionComponent", "PhysicsBodyDefinitionComponent"})
+
+
+RING_MODELS = ["data/hd/env/model/act1/caves/act1_caves_rocks/rocks01.model",
+               "data/hd/env/model/act1/caves/act1_caves_rocks/mound01.model",
+               "data/hd/env/model/act1/caves/act1_caves_rocks/mound02.model",
+               "data/hd/env/model/act1/caves/act1_caves_rocks/stalagmite02.model",
+               "data/hd/env/model/act1/caves/act1_caves_rocks/stalagmite03.model",
+               "data/hd/env/model/act1/caves/act1_caves_rocks/stalagmite05.model"]
+
+
+def rock_ring(spec, entities, deps, seen, next_id):
+    """Ring the circle with cave rocks, mounds and stalagmites (HD units: 10 per tile), in three
+    rows from the edge outward, each turned and sized at random (fixed seed: same map every build)."""
+    import math, random
+    rnd = random.Random(1)
+    gw = max(p["x"] for p in spec["pieces"]) + 1
+    gh = max(p["y"] for p in spec["pieces"]) + 1
+    W, H = gw * spec["room"] + 1, gh * spec["room"] + 1
+    cx, cz, r = (W - 1) / 2 * 10, (H - 1) / 2 * 10, spec["circle"]["radius"] * 10
+    # Each model's settings (light, shadow, ground blend) as Blizzard's cave rooms use them.
+    templates = {}
+    for f in sorted((VANILLA / "hd" / "env" / "preset" / "act1" / "caves").glob("*.json")):
+        for e in json.loads(f.read_text(encoding="utf-8-sig")).get("entities") or []:
+            for k in e.get("components") or []:
+                if k.get("type") == "ModelDefinitionComponent" and k.get("filename") in RING_MODELS:
+                    templates.setdefault(k["filename"], k)
+        if len(templates) == len(RING_MODELS):
+            break
+    for path in RING_MODELS:
+        if path not in seen["models"]:
+            seen["models"].add(path)
+            deps["models"].append({"path": path})
+    for row, (dist, step, scale) in enumerate(((5, 9, (1.0, 1.4)), (14, 12, (1.3, 1.8)), (25, 15, (1.6, 2.4)))):
+        rr = r + dist
+        count = int(2 * math.pi * rr / step)
+        for k in range(count):
+            a = 2 * math.pi * (k + rnd.random() * 0.6) / count
+            yaw = rnd.random() * 2 * math.pi
+            sc = rnd.uniform(*scale)
+            model = RING_MODELS[0] if row == 0 and rnd.random() < 0.5 else rnd.choice(RING_MODELS)
+            name = f"ring_{row}_{k}"
+            entities.append({"type": "Entity", "name": name, "id": next_id, "components": [
+                {"type": "TransformDefinitionComponent", "name": f"{name}_Transform",
+                 "position": {"x": cx + rr * math.cos(a), "y": 0.0, "z": cz + rr * math.sin(a)},
+                 "orientation": {"x": 0.0, "y": math.sin(yaw / 2), "z": 0.0, "w": math.cos(yaw / 2)},
+                 "scale": {"x": sc, "y": sc, "z": sc}, "inheritOnlyPosition": False},
+                dict(templates[model], name=f"{name}_Model")]})
+            next_id += 1
+    return next_id
 
 
 def build_hd(spec):
@@ -226,7 +315,10 @@ def build_hd(spec):
                     seen[k].add(d.get("path"))
                     deps[k].append(d)
         for e in hd.get("entities") or []:
-            entities.append(move(e, dx, dz, suffix))
+            c = move(e, dx, dz, suffix)
+            if spec.get("circle") and is_solid_model(c):
+                continue  # the circle gets its own rock ring below
+            entities.append(c)
         ground = move(hd["terrain"], dx, dz, suffix)
         if terrain is None:
             terrain = ground
@@ -234,6 +326,8 @@ def build_hd(spec):
             ground["components"] = [c for c in ground.get("components") or [] if c.get("type") != "TerrainDefinitionComponent"]
             entities.append(ground)
         biome = biome or hd.get("biomeFilename", "")
+    if spec.get("circle"):
+        next_id = rock_ring(spec, entities, deps, seen, next_id)
     # HD look for extra objects: the game draws some objects (waypoints) from a prefab in the map's
     # HD file, not from the object itself. Sub-tile -> HD units: x2, plus the prefab's offset.
     for o in spec.get("extra_objects", []):

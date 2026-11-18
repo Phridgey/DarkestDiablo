@@ -283,21 +283,21 @@ static constexpr uint32_t TreeheadClass   = 752;  // monstats row of dd_treehead
 static constexpr uint32_t RakanishuClass  = 759;  // monstats row of dd_rakanishu, Rakanishu's own type
                                                   // (RAKANISHU_CLASS in src/patches/035_inifuss_loot.py)
 
-// Den of Evil (level 13): 2x2 open cave rooms (src/maps/den_of_evil.json). The waypoint stands in
-// the bottom-left hall at tile 16,41 (about 24x6 open tiles). Fallen come from the hall's west end
-// (5,40) and east end (24,40) in turn, zombies from the pocket north of it (11,31). Shamans appear
-// close to the player (19,40) so they can be killed before they raise many Fallen: in the old small
-// room they raised 220 Fallen from about 21. Spots picked from the map's walkable tiles (the tile
-// sheets' walk flags); test them in game with "cheat mspawn". 43 monsters before Corpsefire.
+// Den of Evil (level 13): our copy of the Pit level 2 room, a round cave, 24x24 tiles
+// (src/maps/den_of_evil.json). The waypoint stands in the north-west (tile 8,8) and the fight
+// comes from the south-east, so the player never has to turn back. Fallen come from the east
+// (17,10) and the south (12,18) in turn, zombies from the south-east (17,15). Shamans appear
+// closest (11,11) so they can be killed before they raise many Fallen. Corpsefire comes last from
+// the far south-east (19,17). Test the spots in game with "cheat mspawn". 43 monsters before Corpsefire.
 static constexpr Wave DenWaves[] = {
-	{ { { "mspawn", "fallen1", 6, { 5, 40 } }, { "mspawn", "zombie1", 3, { 11, 31 } } }, 2, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 24, 40 } }, { "mspawn", "zombie1", 3, { 11, 31 } }, { "mspawn", "fallenshaman1", 1, { 19, 40 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 5, 40 } }, { "mspawn", "zombie1", 3, { 11, 31 } }, { "mspawn", "fallenshaman1", 2, { 19, 40 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 24, 40 } }, { "mspawn", "zombie1", 3, { 11, 31 } }, { "mspawn", "fallenshaman1", 2, { 19, 40 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 3, { 5, 40 } }, { "mspawn", "zombie1", 4, { 11, 31 } }, { "mspawn", "fallenshaman1", 1, { 19, 40 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 6, { 12, 18 } }, { "mspawn", "zombie1", 3, { 17, 15 } } }, 2, AnyClass },
+	{ { { "mspawn", "fallen1", 4, { 17, 10 } }, { "mspawn", "zombie1", 3, { 17, 15 } }, { "mspawn", "fallenshaman1", 1, { 11, 11 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 4, { 12, 18 } }, { "mspawn", "zombie1", 3, { 17, 15 } }, { "mspawn", "fallenshaman1", 2, { 11, 11 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 4, { 17, 10 } }, { "mspawn", "zombie1", 3, { 17, 15 } }, { "mspawn", "fallenshaman1", 2, { 11, 11 } } }, 3, AnyClass },
+	{ { { "mspawn", "fallen1", 3, { 12, 18 } }, { "mspawn", "zombie1", 4, { 17, 15 } }, { "mspawn", "fallenshaman1", 1, { 11, 11 } } }, 3, AnyClass },
 	// Corpsefire + 5 minions, at the hall's east side. The stop is cleared when everything is dead,
 	// Corpsefire included: leftover Fallen used to count the Den clear while he lived.
-	{ { { "monster", "super:40", 6, { 22, 41 } } }, 1, AnyClass, CorpsefireClass },
+	{ { { "monster", "super:40", 6, { 19, 17 } } }, 1, AnyClass, CorpsefireClass },
 };
 
 // Burial Grounds (level 9, a reused cave level; see src/patches/020_burial_grounds.py). The
@@ -415,6 +415,11 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 			const bool counted = progress.RecordClear(*stop);
 			if (counted && !Route::Save(file, progress)) {
 				context->LogWarn("Route: could not save the hero's progress.");
+			}
+			// The Den quest's skill point, once per hero: the Den arena is not the quest level (that
+			// would offer Akara's free respec), and a dropped Book of Skill can't be used in Act I.
+			if (counted && Arenas[index].levelId == DenOfEvilLevelId) {
+				RunConsole(context, "cheat skillpoints 1");
 			}
 			std::snprintf(message, sizeof(message), "Route: %s %s; tier %d of %d is open now.", stop->id,
 				counted ? "counts as cleared" : "was not open for this hero, so it doesn't count", progress.CurrentTier() + 1, Route::TierCount);
