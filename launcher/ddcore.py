@@ -8,7 +8,7 @@ Words used here:
 - Game folder: the frozen copy the launcher makes, wherever the player chose to put it.
 - Mod folder:  <game folder>/Mods/darkestdiablo, the files the launcher installs and updates.
 """
-import hashlib, json, os, shutil, string, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request, zipfile
+import hashlib, json, os, re, shutil, string, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request, zipfile
 from pathlib import Path, PurePosixPath
 
 REPO = "Phridgey/DarkestDiablo"           # where releases come from
@@ -511,8 +511,30 @@ def battlenet_running():
         return True
 
 
+def enable_console(game_dir):
+    """Turns on D2RLoader's developer console (Ctrl + ` in game) in the game folder's
+    d2rloader/config/d2rloader.toml. The loader writes that file on its first start, so before
+    then there is nothing to change; the next Update or Play turns it on. Returns True if the
+    console is on."""
+    path = Path(game_dir) / "d2rloader" / "config" / "d2rloader.toml"
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if re.search(r"(?m)^\s*enable_console\s*=\s*true\b", text):
+        return True
+    new, n = re.subn(r"(?m)^(\s*enable_console\s*=\s*)false\b", r"\1true", text)
+    if n == 0:
+        if re.search(r"(?m)^\[d2rloader\.developer\]", text):
+            new = re.sub(r"(?m)^(\[d2rloader\.developer\][^\n]*\n)", r"\1enable_console = true\n", text, count=1)
+        else:
+            new = text.rstrip("\n") + "\n\n[d2rloader.developer]\nenable_console = true\n"
+    path.write_text(new, encoding="utf-8")
+    return True
+
+
 def play(game_dir):
     exe = Path(game_dir) / "D2RLoader.exe"
     if not exe.is_file():
         raise RuntimeError("D2RLoader.exe is missing from the game folder.")
+    enable_console(game_dir)
     subprocess.Popen([str(exe)], cwd=str(game_dir))

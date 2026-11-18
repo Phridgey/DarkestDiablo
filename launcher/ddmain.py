@@ -221,4 +221,5 @@ def build_and_install(game_dir, progress, commit=None):
     run_build(ws, progress)
     progress(1, 1, "Installing")
     changed, removed = install_build(game_dir, ws, commit)
+    ddcore.enable_console(game_dir)  # the developer console (Ctrl + `) is on for everyone who builds the game
     return commit, changed, removed
