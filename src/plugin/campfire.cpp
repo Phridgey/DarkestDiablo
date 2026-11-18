@@ -849,6 +849,19 @@ void __cdecl ShowEmptyFire(const D2RL::PluginContext* context, void*) noexcept {
 	Log(context, "Camp: the save slots, over the empty fire.");
 }
 
+// Change save at the Campfire: the camp's heroes go (their panel closes) and the save slots
+// show over the empty fire.
+void __cdecl LeaveFireForSlots(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_inGame || !g_atFire || g_slotsOpen) {
+		return;
+	}
+	g_atFire = false;
+	g_emptyFire = true;
+	PoolClose(context, g_fire);
+	ShowEmptyFire(context, nullptr);
+}
+
 // The game did not start (a window was closed, or Play did nothing): back to the Campfire.
 void __cdecl PlayTimedOut(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
@@ -1646,13 +1659,9 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				return true;  // Back over the empty fire: the save slots stay
 			}
 			if (std::strcmp(command, "ToCharacterSelect") == 0 && g_atFire && g_pendingPlay.empty() && g_slotPicker && g_threads != nullptr) {
-				// Back (or Escape) at the Campfire: the save slots, laid over it. Again closes them.
-				if (g_slotsOpen) {
-					g_slotsOpen = false;
-					PoolClose(context, g_slots);
-				} else {
-					g_threads->runOnUiThread(context, ShowSlots, nullptr);
-				}
+				// Change save (or Escape) at the Campfire: the heroes leave the fire and the save
+				// slots are laid over the empty fire (Sam), as at launch.
+				g_threads->runOnUiThread(context, LeaveFireForSlots, nullptr);
 				return true;
 			}
 			if (std::strcmp(command, "ToExit") == 0 && (g_atFire || g_emptyFire) && g_threads != nullptr) {
