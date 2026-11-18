@@ -1,4 +1,4 @@
-# Dodge Roll
+# Dodge
 
 Sam asked (2026-11-17) for a dodge roll like Path of Exile 2's. This page lists how PoE2's roll
 behaves, what Diablo II: Resurrected with a D2RLoader plugin can and cannot copy, and what the
@@ -45,30 +45,34 @@ From public guides (Mobalytics, poe2db, Sportskeeda, the 0.1.0d patch notes):
 
 ## Current version (prototype, `src/patches/050_dodge_roll.py`)
 
-- 0.11.0 used Leap. Sam wanted a different pose and a dash, not a jump.
-- 0.11.2 used Charge: the right look, but it runs to wherever you click. Sam wants a set
-  distance and PoE2's timing (2026-11-18).
-- Now (0.11.4): a skill's movement code and its poses are separate columns, so **Dodge Roll**
-  moves with Leap's code (a fixed distance toward the cursor, set by making its min and max
-  range equal) and shows Charge's poses (the hero's run). Distance, shortest time and speed are
-  at the top of the patch file, set to about PoE2's roll: roughly 3.7 metres in under a second.
-  Unknown: whether Leap's movement and Charge's poses fit together, or look broken.
-- **Dodge Dash** (test only, not for the Barbarian, who has one free slot): plain Charge, to
-  compare against if the mix looks wrong.
+History: 0.11.0 used Leap (wrong pose). 0.11.2 used Charge (right look, but runs to wherever you
+click). 0.11.4 mixed Leap's movement with Charge's poses ("Dodge Roll") next to plain Charge
+("Dodge Dash") to compare. Sam (2026-11-18): one skill named **Dodge**, always the same distance
+(that is very important), Leap's "brains" with Charge's effects, animation and timing, and 75%
+less recovery. So since 0.11.9 Dodge takes:
 
-Both are free (no weapon, damage, cost or cooldown), work in town, and every class gets them
-from level 1 in the same free skill slots as Throw and Kick. Placeholder icons (Charge's
-picture slot), English text in every language.
+- From Leap: the movement. Same distance every time toward the cursor, stopping at walls.
+- From Charge: the poses (the hero's run), the look and sound on screen, the speed (300%, twice
+  Charge's), and it can't be interrupted by hits.
+- Recovery: the hero can act again from frame 2 of the dash instead of Charge's 8.
+- Free (no weapon, damage, cost or cooldown), works in town, every class from level 1.
+
+Not possible yet: **one dodge per click.** The game repeats any skill while its button is held,
+no table setting stops that, and the plugin can't see mouse buttons.
+
+Unknown until tested: Leap's movement runs in the game's rules and Charge's in what the hero's
+screen shows, so the hero might be drawn running toward the cursor and then snap to where Leap
+put them.
 
 ## Test in game
 
 Use a new hero (skills from `charstats.txt` are given when a hero is made).
 
-1. Put Dodge Roll on the right mouse button. Use it in town and in a fight, with a Paladin or
+1. Put Dodge on the right mouse button. Use it in town and in a fight, with a Paladin or
    Barbarian and with one caster (Sorceress or Necromancer).
-2. Does it go the same distance every time, wherever you click? Does it look like a run, or
-   does it stutter, jump or swing? Too slow or too fast compared with PoE2?
-3. Try Dodge Dash the same way to compare the look.
+2. Does it go the same distance every time, wherever you click, and stop at walls? Does it look
+   like a run, or does it stutter, snap, jump or swing? Too slow or too fast?
+3. Can you act again sooner after it than before?
 4. Stand in a pack of melee monsters and next to an archer, and dash through them. Do hits land
    mid-dash?
 5. Any crash or error in `d2rloader/logs/d2rloader.log`.
