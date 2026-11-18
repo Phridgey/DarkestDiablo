@@ -219,11 +219,11 @@ auto BuildFound() -> std::string {
 	return found;
 }
 
+// D2R.exe's version numbers are 16 bits each, so build 95032 is stored as 95032 - 65536 = 29496
+// ("3.4.29496.0"; Windows' own file details show "3.4.95032").
 auto BuildMatches() -> bool {
-	const std::string found = BuildFound();
-	const std::string build = std::to_string(FrozenBuild);
-	return found.size() > build.size() && found.compare(found.size() - build.size(), build.size(), build) == 0 &&
-	       found[found.size() - build.size() - 1] == '.';
+	const std::string raw = "3.4." + std::to_string(FrozenBuild & 0xFFFF) + ".0";
+	return BuildFound() == raw;
 }
 
 void StartScan(const std::string& heroName) {

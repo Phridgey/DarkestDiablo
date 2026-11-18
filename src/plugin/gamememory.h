@@ -15,7 +15,7 @@ struct Pos {
 	bool ok = false;
 };
 
-// True when D2R.exe is build 95032 (D2R_VERSION 3.4.95032). Checked once.
+// True when D2R.exe is build 95032 (D2R_VERSION 3.4.95032; stored as 3.4.29496.0). Checked once.
 auto BuildMatches() -> bool;
 
 // The D2R.exe version found, for the log ("3.4.0.95032", or "unknown").
