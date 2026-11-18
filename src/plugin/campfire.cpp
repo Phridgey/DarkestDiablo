@@ -948,7 +948,18 @@ void __cdecl PressSaveAndExit(const D2RL::PluginContext* context, void*) noexcep
 
 // Save and Exit. The game only acts on ExitGame while its pause menu is open (sent alone it is
 // ignored: 0.11.18), so the stash is closed, the pause menu opened, and Save and Exit pressed.
+// If the game did not leave after all, the hero must not stay behind a black screen.
+void __cdecl LeaveTimedOut(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_inGame && g_levelId >= 0) {
+		Close(context, g_curtainPanel);
+		Log(context, "Camp: the game did not leave; curtain lifted.");
+	}
+}
+
 void __cdecl LeaveGame(const D2RL::PluginContext* context, void*) noexcept {
+	Open(context, g_curtainPanel, "curtain");  // black from here until the Campfire shows (OpenFire)
+	Later(context, 8000, LeaveTimedOut);
 	Dispatch(context, "PanelManager", "ClosePanel", "BankExpansionLayout");
 	Dispatch(context, "PanelManager", "OpenPanel", "PauseLayout");
 	Later(context, 250, PressSaveAndExit);
