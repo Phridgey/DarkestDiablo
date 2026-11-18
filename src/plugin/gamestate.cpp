@@ -15,6 +15,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <utility>
 
 namespace GameState {
 namespace {
@@ -498,44 +499,67 @@ namespace {
 
 struct Stat { uint16_t param, id; int32_t value; };
 
-// The stats array chosen as above; `where` is its pair's distance from the list's start.
-auto StatsOf(const Unit& unit, std::size_t& where) -> std::vector<Stat> {
+// Every (pointer, count) pair in the list's first 0x100 bytes that points at readable stats, as
+// raw 8-byte entries. On our build (0.11.52 log) the hero has two: list + 0x30 (16 stats) and
+// list + 0xA8 (34 stats).
+auto StatArrays(const Unit& unit) -> std::vector<std::pair<std::size_t, std::vector<uint64_t>>> {
+	std::vector<std::pair<std::size_t, std::vector<uint64_t>>> found;
 	if (!unit || (unit.kind != Kind::Player && unit.kind != Kind::Monster)) {
-		return {};
+		return found;
 	}
 	uintptr_t list = 0;
 	uint64_t head[0x100 / 8] {};
 	if (!Get(unit.address + UnitStats, list) || !Pointer(list) || !Get(list, head)) {
-		return {};
+		return found;
 	}
-	std::vector<Stat> fallback;
 	for (std::size_t i = 0; i + 1 < std::size(head); ++i) {
 		const uintptr_t stats = static_cast<uintptr_t>(head[i]);
-		const uint64_t count = head[i + 1] & 0xFFFFFFFFu;
+		const uint64_t count = head[i + 1];
 		if (!Pointer(stats) || count == 0 || count > 512) {
 			continue;
 		}
-		std::vector<Stat> all(static_cast<std::size_t>(count));
+		std::vector<uint64_t> raw(static_cast<std::size_t>(count));
 		SIZE_T got = 0;
-		if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(stats), all.data(), all.size() * sizeof(Stat), &got) ||
-		    got != all.size() * sizeof(Stat)) {
-			continue;
+		if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(stats), raw.data(), raw.size() * 8, &got) && got == raw.size() * 8) {
+			found.emplace_back(i * 8, std::move(raw));
 		}
-		int life = -1, most = -1;
-		for (const Stat& st : all) {
-			if (st.param == 0 && st.id == LifeStat) {
-				life = st.value >> 8;
-			} else if (st.param == 0 && st.id == LifeStat + 1) {
-				most = st.value >> 8;
+	}
+	return found;
+}
+
+// An entry is (param 16 bits, stat 16 bits, value 32 bits) in the map tools' layout; the other
+// order (stat first) is tried too. The layout is right when it gives life (6) no more than
+// maximum life (7), both above zero.
+auto Decode(const std::vector<uint64_t>& raw, bool statFirst) -> std::vector<Stat> {
+	std::vector<Stat> all;
+	for (const uint64_t e : raw) {
+		const uint16_t lo = static_cast<uint16_t>(e), hi = static_cast<uint16_t>(e >> 16);
+		all.push_back({ statFirst ? hi : lo, statFirst ? lo : hi, static_cast<int32_t>(e >> 32) });
+	}
+	return all;
+}
+
+auto StatsOf(const Unit& unit, std::size_t& where) -> std::vector<Stat> {
+	std::vector<Stat> fallback;
+	for (const auto& [at, raw] : StatArrays(unit)) {
+		for (const bool statFirst : { false, true }) {
+			const std::vector<Stat> all = Decode(raw, statFirst);
+			int life = -1, most = -1;
+			for (const Stat& st : all) {
+				if (st.param == 0 && st.id == LifeStat) {
+					life = st.value;
+				} else if (st.param == 0 && st.id == LifeStat + 1) {
+					most = st.value;
+				}
 			}
-		}
-		if (life >= 0 && most >= life) {
-			where = i * 8;
-			return all;
-		}
-		if (life >= 0 && fallback.empty()) {
-			fallback = all;
-			where = i * 8;
+			if (life > 0 && most >= life) {
+				where = at;
+				return all;
+			}
+			if (life > 0 && fallback.empty()) {
+				fallback = all;
+				where = at;
+			}
 		}
 	}
 	return fallback;
@@ -580,6 +604,12 @@ auto StatsReport(const Unit& unit) -> std::string {
 		}
 	} else {
 		text += " unreadable";
+	}
+	for (const auto& [at, raw] : StatArrays(unit)) {
+		text += "; stats at list + " + Hex(at) + " (" + std::to_string(raw.size()) + "):";
+		for (std::size_t i = 0; i < raw.size() && i < 40; ++i) {
+			text += " " + Hex(static_cast<uintptr_t>(raw[i]));
+		}
 	}
 	return text;
 }

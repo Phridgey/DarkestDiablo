@@ -41,9 +41,29 @@ def patch(t):
         fire_row[column] = chest_row.get(column, "")
     # A bigger click box than the fire's own picture, so it can be used from any side of the
     # pit. With CollisionSubst 1 the game uses Left/Top/Width/Height (screen pixels around the
-    # fire's foot) as the click box, like the town portal and the Inifuss tree. 0.11.52: 40% wider
-    # and taller than before (180 x 140), around the same middle (Sam).
+    # fire's foot) as the click box, like the town portal and the Inifuss tree. That box only
+    # counts in the old graphics: in the new ones the game tests the mouse against the fire's 3D
+    # model (0.11.52: a 40% bigger box changed nothing in game), see the HD part below.
     fire_row.update({"CollisionSubst": "1", "Left": "-126", "Top": "-128", "Width": "252", "Height": "196"})
+
+    # New graphics: a hidden copy of the fire's own logs model, 40% bigger, under the real one,
+    # so the mouse finds the fire over a wider area while it looks the same (Sam asked for a 40%
+    # bigger click area). Test (0.11.53): if hidden models can't be clicked, the fallback is
+    # making the visible logs bigger.
+    bonfire_path = "hd/objects/env_wood/rogue_bonfire.json"
+    bonfire = t.data(bonfire_path)
+    torso = next(e for e in bonfire["entities"] if e["name"] == "entity_torso")
+    model = next(c for c in torso["components"] if c["type"] == "ModelDefinitionComponent")
+    bonfire["entities"].append({
+        "type": "Entity", "name": "entity_clickarea", "id": 1585045271,
+        "components": [
+            {"type": "UnitPartComponent", "name": "component_part_clickarea", "part": "torso", "variant": "lit"},
+            dict(model, name="component_model_clickarea", visibleLayers=0, lightMask=0, shadowMask=0),
+            {"type": "TransformDefinitionComponent", "name": "entity_clickarea_TransformDefinition",
+             "position": {"x": 0.0, "y": 0.0, "z": 0.0}, "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+             "scale": {"x": 1.4, "y": 1.4, "z": 1.4}, "inheritOnlyPosition": False},
+        ],
+    })
 
     # The town's own stash chest stays exactly as it is (Sam: "don't touch the original stash").
     # Fire and chest both open the stash window, so the plugin tells them apart by where the

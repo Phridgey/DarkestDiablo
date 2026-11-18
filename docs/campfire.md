@@ -119,6 +119,11 @@ Nothing of Blizzard's is in the repo.
 
 ## Tried in the game so far
 
+- 0.11.52: a 40% bigger click box (objects.txt Left/Top/Width/Height, both table copies)
+  changed nothing in game: in the new graphics the mouse is tested against the fire's 3D
+  model. 0.11.53 adds a hidden copy of the fire's logs model, 40% bigger, to
+  `hd/objects/env_wood/rogue_bonfire.json` (not yet tried).
+
 Worked (17 Nov 2026): the save slot screen and picking a slot; landing on the Campfire after a
 slot pick and after leaving a game; making a hero there; clicking a hero's class to load it
 (bench, main menu, Play); the Options, Delete and Exit buttons showing; noting what a hero wears.

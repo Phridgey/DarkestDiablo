@@ -85,9 +85,10 @@ Taken from the community's long-standing map of the D2R unit structure and check
 
 Checked in town with 0.11.51: the list was found from the game's code in 141 ms (D2RLoader.exe +
 0x2a23910, next at 0x150), mode (5, standing in town), level (the area: 1, Rogue Encampment) and the object
-rows (39 fire, 267 stash chest, 119 waypoint) were right. Life read -1 at the map tools' places
-(0x30, 0x80), so 0.11.52 searches the stat list for it; `dd-units` logs the stat list ("Units: hero
-stats") when it still fails.
+rows (39 fire, 267 stash chest, 119 waypoint) were right. Life and character level read -1:
+the hero's stat list holds two (pointer, count) pairs, at + 0x30 (16 stats) and + 0xA8 (34 stats),
+but no stat 6 in the map tools' entry layout. 0.11.53 also tries the other entry order, and
+`dd-units` logs every stat entry raw ("Units: hero stats") so the layout can be read off.
 
 Positions are world sub-tiles, the same numbers `location player` prints in the console.
 
