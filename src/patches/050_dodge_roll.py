@@ -5,14 +5,15 @@ cursor, no mana cost and no cooldown, usable in town. None of GGG's files, anima
 are used.
 
 How it is built: the game has no free-form "move here fast" in its tables, only skills whose
-movement code is fixed. Sam asked for a dash to the clicked spot instead of Leap's jump, so:
+movement code is fixed. A skill's movement code and its poses are separate columns, so:
 
-- "Dodge Roll" reuses the Paladin's Charge code: the hero runs at high speed to the target.
-  Its pose is the hero's own run, sped up. Changed from Charge: no weapon needed, no damage,
-  no need to click a monster (whether Charge accepts plain ground is the first thing to test).
-- "Dodge Spin" (test only) reuses Whirlwind's code: it always moves to the clicked spot, but
-  the pose is the whirlwind spin. It is the fallback if Charge refuses plain ground. Every class
-  but the Barbarian gets it (the Barbarian has one free skill slot, and has Whirlwind anyway).
+- "Dodge Roll" moves with the Barbarian's Leap code, which can go a fixed distance (its min and
+  max range set equal) toward the cursor, but shows the Paladin's Charge poses (the hero's own
+  run, then Charge's ending). Sam asked for Charge's look, a set distance and PoE2's timing.
+  Whether Leap's code plays nicely with Charge's poses is the first thing to test.
+- "Dodge Dash" (test only) is plain Charge: run pose, but it runs to wherever you click. Kept
+  to compare, in case the mix above looks wrong. Every class but the Barbarian gets it (the
+  Barbarian has one free skill slot).
 
 Every class gets them the way every class gets Throw and Kick: through free "Skill N" slots in
 charstats.txt. Put one on the right mouse button (or a skill hotkey) to use it.
@@ -23,20 +24,22 @@ docs/dodge-roll.md.
 import json
 from pathlib import Path
 
-DASH = "Dodge Roll"
-SPIN = "Dodge Spin"
+ROLL = "Dodge Roll"
+DASH = "Dodge Dash"
 
-# Tuning. D2 runs at 25 frames a second.
-DASH_SPEED = 300      # Charge's "Velocity %" (Charge: 150). Higher = faster dash.
-SPIN_SPEED = 30       # Whirlwind's Param1 (Whirlwind: 30).
+# Tuning. D2 runs at 25 frames a second. PoE2's roll: about 3.7 metres in a bit under a second.
+ROLL_RANGE = 7        # Leap's "Range" (min and max equal, so every roll is the same length). Leap: 8 to 30.
+AIRBORNE_FRAMES = 6   # Leap's "Minimum Airborne Frames" (Leap: 8): the shortest a roll can take.
+ROLL_SPEED = 175      # Leap's "Leap Speed %" (Leap: 175).
+DASH_SPEED = 300      # Charge's "Velocity %" (Charge: 150), for the plain Charge test skill.
 
 STRINGS = {
     "skillname_dodgeroll": "Dodge Roll",
     "skillsd_dodgeroll": "dashes out of danger",
-    "skillld_dodgeroll": "Dash to the target spot",
-    "skillname_dodgespin": "Dodge Spin",
-    "skillsd_dodgespin": "test: spins to a spot",
-    "skillld_dodgespin": "Test version: spin to the target spot",
+    "skillld_dodgeroll": "Dash a short distance toward the cursor",
+    "skillname_dodgedash": "Dodge Dash",
+    "skillsd_dodgedash": "test: dashes to a spot",
+    "skillld_dodgedash": "Test version: dash to the target spot",
 }
 
 # Shared by both: a free movement skill for everyone, with no weapon, cost, damage or cooldown.
@@ -83,18 +86,23 @@ def _skill_desc(desc, source, name, key):
 def patch(t):
     skills = t.table("skills")
     next_id = max(int(r["*Id"]) for r in skills.rows if r["*Id"].isdigit()) + 1
-    skills.add_copy("skill", "Charge", **COMMON, **{
-        "skill": DASH, "*Id": str(next_id), "skilldesc": "dodge roll",
-        "Param1": str(DASH_SPEED), "Param3": "0", "Param4": "0", "Param8": "0",
+    charge = skills.first("skill", "Charge")
+    skills.add_copy("skill", "Leap", **COMMON, **{
+        "skill": ROLL, "*Id": str(next_id), "skilldesc": "dodge roll",
+        "Param1": str(ROLL_RANGE), "Param2": str(ROLL_RANGE),
+        "Param3": "0", "Param4": "0", "srvmissilea": "",  # no knockback on landing
+        "Param5": str(AIRBORNE_FRAMES), "Param7": str(ROLL_SPEED),
+        # Charge's poses on Leap's movement.
+        "anim": charge["anim"], "seqtrans": charge["seqtrans"], "seqnum": charge["seqnum"],
     })
-    skills.add_copy("skill", "Whirlwind", **COMMON, **{
-        "skill": SPIN, "*Id": str(next_id + 1), "skilldesc": "dodge spin",
-        "Param1": str(SPIN_SPEED),
+    skills.add_copy("skill", "Charge", **COMMON, **{
+        "skill": DASH, "*Id": str(next_id + 1), "skilldesc": "dodge dash",
+        "Param1": str(DASH_SPEED), "Param3": "0", "Param4": "0", "Param8": "0",
     })
 
     desc = t.table("skilldesc")
     _skill_desc(desc, "charge", "dodge roll", "dodgeroll")
-    _skill_desc(desc, "whirlwind", "dodge spin", "dodgespin")
+    _skill_desc(desc, "charge", "dodge dash", "dodgedash")
 
     # Every class: the first free "Skill N" slots, like Throw and Kick.
     stats = t.table("charstats")
@@ -102,8 +110,8 @@ def patch(t):
     for row in stats.rows:
         if not row.get("Skill 1"):
             continue  # the "Expansion" divider row
-        for skill in (DASH, SPIN):
-            if skill == SPIN and row["class"] == "Barbarian":
+        for skill in (ROLL, DASH):
+            if skill == DASH and row["class"] == "Barbarian":
                 continue
             free = next((s for s in slots if not row.get(s)), None)
             if free is None:
