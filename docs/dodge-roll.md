@@ -78,9 +78,10 @@ cursor (or the clicked monster); no table setting or plugin service changes the 
 Not possible yet: **one dodge per click.** The game repeats any skill while its button is held,
 no table setting stops that, and the plugin can't see mouse buttons.
 
-Unknown until tested: **whether the slow reaches the hero.** Battle Orders gives the caster
-its state through its own code and the pulse only to others, so the pulse may skip the hero
-who made it. If so, the dodge is fast with no slow, and the next idea is needed.
+Tried and failed: **a slow from a landing pulse** (0.11.58 to 0.11.61). Battle Orders' pulse
+gives its state to friendly units it touches but never to the hero who made it: no green, no
+slow. Since 0.11.65 the slow comes from Berserk's start code instead, which gives the caster the
+skill's own state. Untested: whether Leap's movement still works without Leap's start code.
 
 Known gap: dodging again as soon as the cooldown allows (0.24 s) chains fast dashes, and each
 new dash moves at full speed even while slowed. To rule that out the cooldown would have to be

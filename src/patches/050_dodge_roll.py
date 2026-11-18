@@ -13,11 +13,13 @@ effects, animation and timing" of Charge):
   toward the cursor (min and max range set equal) and stops at walls.
 - From the Paladin's Charge: the poses (the hero's own run), the look and sound on the hero's
   screen ("clt" functions, start sound), its speed, and it can't be interrupted by hits.
-- Fast, then slow (Sam, 2026-11-18): the dash itself is quick, and on landing the hero is
-  slowed for a short time, so a dodge plus its slow never covers ground faster than running.
-  The slow rides on a landing pulse built like Battle Orders' shout (it gives a state to
-  friendly units it touches), carrying a slow that also tints the hero green like poison.
-  Untested: whether the pulse touches the hero who made it.
+- Fast, then slow (Sam, 2026-11-18): the dash itself is quick, and the hero is slowed for a short
+  time, so a dodge plus its slow never covers ground faster than running. The hero glows green
+  like poison while slowed. Leap's code puts no effect on the hero, so the slow comes from the
+  skill's start code: Berserk's ("srvstfunc" 39), which gives the caster the skill's
+  "aurastate" for "auralencalc" frames. Leap's own start code is replaced, so this may break
+  the movement (untested, 0.11.65). Tried before: a Battle Orders-style landing pulse
+  (0.11.58 to 0.11.61) never reached the hero who made it.
 
 Every class gets it the way every class gets Throw and Kick: through a free "Skill N" slot in
 charstats.txt. Put it on the right mouse button (or a skill hotkey) to use it.
@@ -41,17 +43,18 @@ MIN_FRAMES = 8        # Leap's "Minimum Airborne Frames" (Leap's own value): the
 # No travel advantage (Sam, 2026-11-18): a dodge must never cover ground faster than running.
 # Run speed is charstats "RunVelocity" (9 for every class) in the same units as Leap's range
 # (sub-tiles a second; the game shows both as yards by multiplying by 2/3). In the time the dash
-# takes (8 frames) running covers 9 * 8/25 = 2.9, so the dash gains 8 - 2.9 = 5.1. After landing
-# the hero is slowed by SLOW_PERCENT until running slower has given those 5.1 back:
-# 9 * 0.40 * t = 5.1, t = 1.42 s = 36 frames.
+# takes (8 frames) running covers 9 * 8/25 = 2.9, so the dash gains 8 - 2.9 = 5.1. The hero is
+# then slowed by SLOW_PERCENT until running slower has given those 5.1 back:
+# 9 * 0.40 * t = 5.1, t = 1.42 s = 36 frames. The slow starts with the dash (see srvstfunc
+# below), so it lasts the dash's frames plus those.
 RUN_VELOCITY = 9
 SLOW_PERCENT = 40
-SLOW_FRAMES = -(-(DISTANCE * 25 - RUN_VELOCITY * MIN_FRAMES) * 100 // (RUN_VELOCITY * SLOW_PERCENT))
+SLOW_FRAMES = MIN_FRAMES + -(-(DISTANCE * 25 - RUN_VELOCITY * MIN_FRAMES) * 100 // (RUN_VELOCITY * SLOW_PERCENT))
 # Our own state for the slow, so the hero can be tinted green like poison while it lasts
 # (Sam, 2026-11-18). A copy of the game's plain "slowed" state with poison's colours, light
 # and green life globe; poison's damage comes from separate stats, so this one does no harm.
 SLOW_STATE = "dd dodge slow"
-MISSILE = "dd dodge slow"  # the landing pulse that gives the state (copied from Battle Orders')
+BERSERK_START = str(39)  # skills.txt srvstfunc of Berserk
 RECOVERY_FRAME = 2    # Charge's "seqinput" (Charge: 8).
 COOLDOWN_FRAMES = 6   # Cooldown in frames (25 a second): 6 = 0.24 s, the nearest to Sam's 250 ms (was 1.5 s).
 
@@ -93,10 +96,10 @@ def patch(t):
         "Param3": "0", "Param4": "0",  # no knockback on landing
         "Param5": str(MIN_FRAMES), "Param7": str(SPEED), "calc2": str(SPEED),
         "seqinput": str(RECOVERY_FRAME),
-        # The slow after landing: Leap's code fires srvmissilea where the hero lands (Leap's own
-        # is its knockback), and our pulse gives friends it touches auratargetstate with these
-        # stats for auralencalc frames, the way Battle Orders does.
-        "srvmissilea": MISSILE, "aurastate": "", "auratargetstate": SLOW_STATE,
+        "srvmissilea": "",  # no knockback on landing
+        # The slow: Berserk's start code gives the caster aurastate, with these stats, for
+        # auralencalc frames. Leap's do code ("srvdofunc" 77) still moves the hero.
+        "srvstfunc": BERSERK_START, "aurastate": SLOW_STATE, "auratargetstate": "",
         "auralencalc": str(SLOW_FRAMES), "aurastat1": "velocitypercent",
         "aurastatcalc1": str(-SLOW_PERCENT),
     })
@@ -116,22 +119,6 @@ def patch(t):
         states.add_copy("state", "slowed", **{
             "state": SLOW_STATE, "*ID": str(state_id),
             **{c: poison[c] for c in ("green", "colorpri", "colorshift", "light-r", "light-g", "light-b")},
-        })
-
-    try:
-        missiles = t.table("missiles")
-    except FileNotFoundError:
-        missiles = None  # a table copy without its own missiles.txt uses the main one
-    if missiles is not None:
-        if missiles.find("Missile", MISSILE):
-            raise RuntimeError(f"missile {MISSILE!r} already exists; names must be unique")
-        missile_id = max(int(r["*ID"]) for r in missiles.rows if r["*ID"].isdigit()) + 1
-        # Battle Orders' shout (hits friends and gives them the skill's state), but invisible,
-        # silent, short-lived and hero-sized.
-        missiles.add_copy("Missile", "battleorders", **{
-            "Missile": MISSILE, "*ID": str(missile_id), "CelFile": "null", "TravelSound": "",
-            "Vel": "0", "MaxVel": "0", "Accel": "0", "Range": "4", "AnimLen": "1", "Trans": "0",
-            "Red": "0", "Green": "0", "Blue": "0", "NumDirections": "1", "Size": "2",
         })
 
     desc = t.table("skilldesc")
