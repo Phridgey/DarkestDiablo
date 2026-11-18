@@ -20,11 +20,13 @@
 
 #include "campfire.h"
 #include "camp.h"
+#include "gamememory.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>
 #include <chrono>
+#include <cmath>
 #include <cstdarg>
 #include <cstring>
 #include <ctime>
@@ -1001,17 +1003,90 @@ void __cdecl TravelerStepsOut(const D2RL::PluginContext* context, void*) noexcep
 	}
 }
 
+// The hero playing now: while a game runs the other heroes are set aside, so the save folder
+// holds only this one (and a hero just made).
+auto CurrentHero() -> std::string {
+	const auto names = Camp::HeroNames(g_live);
+	return names.size() == 1 ? names.front() : PlayedHero();
+}
+
+void __cdecl LogMemoryScan(const D2RL::PluginContext* context, void*) noexcept {
+	if (GameMemory::Scanning()) {
+		Later(context, 1000, LogMemoryScan);
+		return;
+	}
+	Log(context, "Camp: %s", GameMemory::Report().c_str());
+}
+
+// In the Rogue Encampment: find the hero and the fire in memory (read only, gamememory.h).
+void __cdecl ScanTown(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (!g_inGame || g_levelId != RogueEncampment) {
+		return;
+	}
+	if (!GameMemory::BuildMatches()) {
+		Log(context, "Camp: game build %s is not the frozen build; positions are not read.", GameMemory::BuildFound().c_str());
+		return;
+	}
+	GameMemory::StartScan(CurrentHero());
+	Later(context, 1000, LogMemoryScan);
+}
+
+// Where the portal opens: across the fire from the hero, about 4 sub-tiles past the fire's
+// middle. Without positions, at the hero's feet.
+void PlacePortal(const D2RL::PluginContext* context) {
+	const GameMemory::Pos hero = GameMemory::Hero();
+	const GameMemory::Pos fire = GameMemory::Fire();
+	if (!hero.ok || !fire.ok) {
+		Log(context, "Camp: positions unknown (hero %s, fire %s); the portal opens where the hero stands.", hero.ok ? "ok" : "-", fire.ok ? "ok" : "-");
+		RunConsole(context, "location player");
+		return;
+	}
+	double dx = fire.x - hero.x, dy = fire.y - hero.y;
+	const double length = std::sqrt(dx * dx + dy * dy);
+	if (length < 0.5) {
+		dx = 1.0, dy = 1.0;
+	} else {
+		dx /= length, dy /= length;
+	}
+	const int x = fire.x + static_cast<int>(std::lround(dx * 4.0));
+	const int y = fire.y + static_cast<int>(std::lround(dy * 4.0));
+	char command[64];
+	std::snprintf(command, sizeof(command), "location %d,%d", x, y);
+	Log(context, "Camp: hero at %d,%d, fire at %d,%d; portal at %d,%d.", hero.x, hero.y, fire.x, fire.y, x, y);
+	RunConsole(context, command);
+}
+
 void __cdecl TravelerPortal(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
 	if (!g_inGame || !g_travelerArrives) {
 		return;
 	}
-	RunConsole(context, "location player");
+	PlacePortal(context);
 	RunConsole(context, "cheat ospawn 189");  // objects.txt row 189: CainPortal
 	Later(context, 1200, TravelerStepsOut);
 }
 
 // ---- Console ------------------------------------------------------------------------------
+
+// dd-where: the positions the plugin reads, to compare with "location player" (test).
+auto WhereCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	const GameMemory::Pos hero = GameMemory::Hero();
+	const GameMemory::Pos fire = GameMemory::Fire();
+	char line[160];
+	std::snprintf(line, sizeof(line), "Hero %d,%d (%s). Fire %d,%d (%s).", hero.x, hero.y, hero.ok ? "read" : "not found", fire.x, fire.y, fire.ok ? "read" : "not found");
+	command->plugin->WriteConsoleMessage(line);
+	command->plugin->WriteConsoleMessage(GameMemory::Report().c_str());
+	Log(command->plugin, "Camp: dd-where: %s %s", line, GameMemory::Report().c_str());
+	if (std::strcmp(command->args == nullptr ? "" : command->args, "scan") == 0) {
+		GameMemory::StartScan(CurrentHero());
+		command->plugin->WriteConsoleMessage("Scanning again; type dd-where in a few seconds.");
+	}
+	return D2RL::ConsoleCommandResult::Handled;
+}
 
 auto CampCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
 	if (command == nullptr || command->plugin == nullptr) {
@@ -1354,7 +1429,8 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 	}
 	return context->RegisterConsoleCommand("dd-camp", CampCommand, "Show the camp of the loaded save; in town, open the Campfire panel.") &&
 		context->RegisterConsoleCommand("dd-slot", SlotCommand, "Load save slot 1, 2 or 3 (main menu only).") &&
-		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).");
+		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).") &&
+		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).");
 }
 
 auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const char* command, const char* text) noexcept -> bool {
@@ -1566,6 +1642,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			Camp::Unbench(g_live, g_slot);
 			g_travelerLater = false;  // a traveler sent away with "Not now" waits by the fire again
 			Reconcile(context, false);  // a hero that was just made joins the camp here
+			Later(context, 4000, ScanTown);  // when the game starts in the Rogue Encampment
 			Later(context, 2000, RecordGear);
 			break;
 		case Kind::PlayerLevelChanged:
@@ -1580,6 +1657,9 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			const int from = event->previousValue;
 			g_levelId = event->currentValue;
 			Later(context, 1000, RecordGear);
+			if (g_levelId == RogueEncampment) {
+				Later(context, 3000, ScanTown);  // the town's units are loaded by then
+			}
 			if (IsTown(g_levelId) && from > 0 && !IsTown(from) && !g_died && !g_camp.LockedClasses().empty()) {
 				const int roll = std::uniform_int_distribution<int>(1, 100)(g_rng);
 				Log(context, "Camp: back in town; traveler roll %d (needs %d or less).", roll, g_travelerChance);

@@ -13,8 +13,8 @@ FetchContent_MakeAvailable(D2RLPluginSDK)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")  # no extra runtime DLLs
 
-add_library(darkestdiablo SHARED darkestdiablo_plugin.cpp campfire.cpp devtools.cpp darkestdiablo_plugin.rc)
-target_link_libraries(darkestdiablo PRIVATE D2RLPlugin::D2RLPlugin shell32 ole32)
+add_library(darkestdiablo SHARED darkestdiablo_plugin.cpp campfire.cpp devtools.cpp gamememory.cpp darkestdiablo_plugin.rc)
+target_link_libraries(darkestdiablo PRIVATE D2RLPlugin::D2RLPlugin shell32 ole32 version)
 set_target_properties(darkestdiablo PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/../../build/plugin
   RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/../../build/plugin
