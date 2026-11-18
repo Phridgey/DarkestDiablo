@@ -7,8 +7,12 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 
 ## What the player sees
 
-1. **Save slots.** After the title screen a window asks for Save 1, 2 or 3, each with a line
-   saying who is by its fire. A save that has been started has a Delete button, which asks twice.
+1. **Save slots ("Delves").** After the title screen the hero screen opens with nobody at the
+   fire, darkened, and three cards stand side by side over it, Delve 1 to 3, in the game's own
+   difficulty-card frame and fonts. Each lists its living heroes as
+   "level class" and shows the difficulty it plays on, large at the bottom (the hardest one
+   played in that save, which the plugin notes from the game while you play). The button under it says
+   Continue, or Start New on an empty Delve. A started Delve has a delete icon, which asks twice.
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
    with a name plate. Clicking a hero (or its plate) picks it and turns Enter red; Enter loads
@@ -21,14 +25,32 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    - every hero dead and nobody waiting: a traveler turns up by himself with up to 3 classes.
    **Retire** asks which hero to bury. A retired hero counts as a death.
 4. **In town.** Each time a hero comes back to town from a stop there is a chance (25%) that
-   "A traveler joins your camp" and offers up to 3 locked classes. The class of the last hero
-   that fell is always one of them, once. The picked class waits at the Campfire as a recruit.
-5. **The bonfire.** Clicking the Rogue Encampment's bonfire opens the camp stash. The stash
-   window has a Campfire button: it shows who is by the fire and has "Go to the fire", which
-   saves, leaves the game and lands on the Campfire to pick another hero.
+   a traveler arrives with up to 3 locked classes; a notice says "A traveler waits by your fire".
+   The class of the last hero that fell is always one of them, once. Using the fire then opens
+   Cain's portal where the hero stands (`location player`, `cheat ospawn 189`), the hooded
+   traveler (a still, silent figure with Nihlathak's hooded look, `cheat mspawn ddtraveler`, 045_traveler.py) steps out, and 3 s later the hero goes to
+   the Campfire. The town lands somewhere new every game, so this can only happen once the hero
+   is at the fire. At the Campfire (through the fire, or Save and Exit) only the offered classes stand by the fire; pick one and press Accept:
+   the others leave, the camp's heroes come back and the new class waits with the name box ready.
+   "Not now" keeps the traveler waiting for later.
+5. **The bonfire.** Clicking the Rogue Encampment's bonfire (from any side: it has a bigger click
+   box) saves, leaves the game and lands on the Campfire scene, like Save and Exit. To the game the
+   fire is a stash chest, the only use we can notice. The town's own stash chest is untouched
+   (Sam, 2026-11-18): both open the stash window, and the plugin tells them apart by where the
+   hero stands (read from game memory, `docs/game-memory.md`). The hero walks up to what was
+   clicked, so if it stands nearer the fire than the stash chest it goes to the Campfire, and
+   otherwise the stash opens. (The chest is only about 14 steps from the fire, so 0.11.42's
+   "within 20 steps of the fire" sent the chest to the Campfire too.) If the chest can't be
+   found, only a hero right at the pit's edge counts as the fire; if the positions can't be
+   read, the stash opens.
 6. **Death is final.** A fallen hero's files move to the graveyard, with everything it wore and
    carried. Its class locks again. Only the stash carries on.
 7. **The stash.** The game's shared stash, with 7 more pages. Each save has its own.
+8. **Heroes by the fire.** In the Rogue Encampment the save's other heroes rest around the fire,
+   each in its class's own body and the armor weight (light, medium, heavy) of the body armor it
+   last wore. They can't be clicked and don't talk. Exact item looks and weapons can't be shown:
+   they are monster figures (`046_camp_heroes.py`) wearing the class's look file, placed by the
+   plugin once the fire's position is known (`docs/game-memory.md`).
 
 ## Choices the engine forced
 
@@ -51,11 +73,13 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
   the fire" makes that two clicks, but it can't be instant.
 - **The bonfire can't call the plugin.** The plugin SDK reports UI messages, not clicks on
   world objects. The bonfire therefore opens the one town window we can add a button to, the
-  stash, and the Campfire button is there. That also means the stash chest shows the button.
+  stash. The plugin opens the roster whenever the stash opens in the Rogue Encampment, where
+  the fire is the only stash.
 - **Text on our panels is fixed.** A plugin can show and hide widgets but not change their
-  text. The traveler and roster panels hold a ready-made button for every case and show the
-  right ones. The roster shows classes, not hero names and levels. The slot screen's summary
-  lines are made once at launch.
+  text. Panels hold a ready-made label for every case and show the right ones. A hidden button
+  still takes clicks, so labels are stacked but buttons never are: the traveler has one button
+  per place and the plugin looks up which class is offered there. The slot screen's text
+  (heroes, difficulty, button words) is written into its layout by the plugin each time it opens.
 - **No "player died" event.** The plugin watches for the game's "You died" window and for a
   resurrection. A softcore hero that comes back is sent out of the game at once and buried.
   Hardcore heroes are also caught by the dead mark in their save.
@@ -122,6 +146,19 @@ Did not work, and what was changed:
 - The chest copy wearing the bonfire's model could not be clicked either, so the game seems to
   test the mouse against the model. As a test the copy now wears the chest's own model, in
   the bonfire's flames (not yet tried). If that can be clicked, it gets a model that suits.
+- With the fire's own row made a full copy of the chest's row and the chest's model in the
+  flames, the chest showed but still could not be clicked. Two more tests are in (not yet
+  tried): a second, ordinary stash chest a few steps from the fire, added to the four town
+  maps; and the fire ring's scenery without its collision shape, in case that shape swallows
+  the mouse.
+- None of the bonfire tries ever reached the game: it reads a second copy of its tables,
+  `global/excel/base`, which the build did not change. Once `tools/build.py` patched both copies
+  (0.11.7), the chest in the fire could be used, though not reached inside the pit, and the
+  changed town maps showed. Town maps only load under new names (`darkest_town*.ds1`, with the
+  town's row in `lvlprest.txt` pointing at them).
+- Now the fire's own row takes only the chest's "use" values and keeps its size (3 by 3), look and
+  light, so it can be used from the edge of the pit; the town's stash chest was removed
+  (0.11.9). From 0.11.29 the chest is back as it was, and the hero's distance to the fire decides.
 - Changing save at the Campfire kept showing the first save's heroes: the game keeps a panel
   it has drawn and does not read its layout again. The Campfire and the save slot screen now
   use a fresh spare panel each time their content changes (not yet tried).

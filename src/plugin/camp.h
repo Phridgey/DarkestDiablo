@@ -27,6 +27,7 @@
 #include <fstream>
 #include <random>
 #include <sstream>
+#include <utility>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -69,6 +70,7 @@ struct Hero {
 
 struct State {
 	bool              started = false;
+	int               difficulty = 0;  // the hardest difficulty played in this save: 0 Normal, 1 Nightmare, 2 Hell
 	std::vector<Hero> heroes;    // alive
 	std::vector<int>  recruits;  // unlocked, no hero made yet
 	std::vector<int>  fallen;    // classes whose hero died and has not been recruited again; newest first
@@ -188,13 +190,16 @@ inline void MarkFallen(State& state, const std::string& name) {
 }
 
 // ---- camp.txt ----------------------------------------------------------------------------
-// One fact per line: "started 1", "hero <Class> <level> <name>", "recruit <Class>",
+// One fact per line: "started 1", "difficulty <0-2>", "hero <Class> <level> <name>", "recruit <Class>",
 // "fallen <Class>", "offer <Class>", "gear <Class> <spot>:<code> ..." (after its hero line).
 // Unknown lines are ignored.
 
 inline auto Serialize(const State& state) -> std::string {
 	std::ostringstream out;
 	out << "version 1\n" << "started " << (state.started ? 1 : 0) << "\n";
+	if (state.difficulty > 0) {
+		out << "difficulty " << state.difficulty << "\n";
+	}
 	for (const auto& hero : state.heroes) {
 		out << "hero " << ClassNames[hero.cls] << " " << hero.level << " " << hero.name << "\n";
 	}
@@ -219,6 +224,8 @@ inline auto Parse(const std::string& text) -> State {
 		words >> key >> value;
 		if (key == "started") {
 			state.started = value == "1";
+		} else if (key == "difficulty") {
+			state.difficulty = std::clamp(std::atoi(value.c_str()), 0, 2);
 		} else if (key == "hero") {
 			Hero hero;
 			hero.cls = ClassFromName(value);
@@ -286,6 +293,26 @@ inline auto SaveState(const fs::path& live, int slot, const State& state) -> boo
 inline auto ActiveSlot(const fs::path& live) -> int {
 	const int slot = std::atoi(ReadFile(live / "camp" / "active.txt").c_str());
 	return slot >= 1 && slot <= SlotCount ? slot : 1;
+}
+
+inline constexpr const char* DifficultyNames[3] = { "Normal", "Nightmare", "Hell" };
+
+// The words written into one Delve on the save slot screen (tools/camp_layouts.py), as
+// (mark, text) pairs: HERO1-8 "<level> <Class>", RECRUITS, DIFF and its colour, BUTTON.
+inline auto DelveText(const State& state) -> std::vector<std::pair<std::string, std::string>> {
+	std::vector<std::pair<std::string, std::string>> out;
+	for (size_t i = 0; i < ClassCount; ++i) {
+		out.emplace_back("HERO" + std::to_string(i + 1),
+			state.started && i < state.heroes.size()
+				? std::to_string(state.heroes[i].level) + " " + ClassNames[state.heroes[i].cls] : std::string());
+	}
+	const size_t waiting = state.started ? state.recruits.size() : 0;
+	out.emplace_back("RECRUITS", waiting == 0 ? std::string() : std::to_string(waiting) + (waiting == 1 ? " recruit waiting" : " recruits waiting"));
+	const int d = std::clamp(state.difficulty, 0, 2);
+	out.emplace_back("DIFFCOLOR", d == 2 ? "$FontColorRed" : d == 1 ? "$FontColorGoldYellow" : "$LightButtonTextColor");
+	out.emplace_back("DIFF", state.started ? DifficultyNames[d] : "");
+	out.emplace_back("BUTTON", state.started ? "Continue" : "Start New");
+	return out;
 }
 
 // One line for the save-slot screen, e.g. "Paladin 12, Sorceress 1 - 1 recruit waiting".
