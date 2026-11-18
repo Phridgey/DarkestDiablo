@@ -1327,12 +1327,14 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			}
 			return false;
 		}
-		// In the Rogue Encampment the fire is the camp's stash (the stash chest is gone from the
-		// town maps, see 040_campfire.py): opening it brings up the Campfire roster too.
+		// In the Rogue Encampment the fire opens the stash window (the stash chest is gone from the
+		// town maps, see 040_campfire.py), which is the only sign of it the plugin gets: using the
+		// fire saves and leaves the game for the Campfire scene, like Save and Exit.
 		if (panelManager && std::strcmp(text, "BankExpansionLayout") == 0 && std::strcmp(command, "OpenPanel") == 0 && g_inGame &&
 		    g_levelId == RogueEncampment && g_threads != nullptr) {
-			g_threads->runOnUiThread(context, ShowCamp, nullptr);
-			Log(context, "Camp: the fire was used: stash and Campfire open.");
+			RecordGear(context, nullptr);
+			g_threads->runOnUiThread(context, LeaveGame, nullptr);
+			Log(context, "Camp: the fire was used: saving and going to the Campfire.");
 			return false;
 		}
 		if (std::strcmp(target, "PausePanelMessage") == 0 && std::strcmp(command, "ExitGame") == 0) {

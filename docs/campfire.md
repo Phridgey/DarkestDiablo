@@ -23,10 +23,11 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 4. **In town.** Each time a hero comes back to town from a stop there is a chance (25%) that
    "A traveler joins your camp" and offers up to 3 locked classes. The class of the last hero
    that fell is always one of them, once. The picked class waits at the Campfire as a recruit.
-5. **The bonfire.** The Rogue Encampment's bonfire is the camp's stash: its stash chest is gone.
-   Clicking the fire (from any side: it has a bigger click box) opens the stash and a small
-   window at the top with "Rest at the Campfire", which saves, leaves the game and lands on the
-   Campfire scene to pick another hero. Elsewhere the stash window has a Campfire button.
+5. **The bonfire.** Clicking the Rogue Encampment's bonfire (from any side: it has a bigger click
+   box) saves, leaves the game and lands on the Campfire scene, like Save and Exit. To the game the
+   fire is a stash chest, the only use we can notice, so the town's real stash chest is gone and
+   the Rogue Encampment has no stash for now (Sam's choice, 2026-11-18). Elsewhere the stash
+   window has a Campfire button.
 6. **Death is final.** A fallen hero's files move to the graveyard, with everything it wore and
    carried. Its class locks again. Only the stash carries on.
 7. **The stash.** The game's shared stash, with 7 more pages. Each save has its own.
