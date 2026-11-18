@@ -212,17 +212,22 @@ auto FindList(uintptr_t hero, Pos heroPos) -> std::string {
 			break;
 		}
 		const uintptr_t start = reinterpret_cast<uintptr_t>(info.BaseAddress), end = start + info.RegionSize;
-		if (info.State == MEM_COMMIT && info.Type == MEM_IMAGE && (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY)) != 0 &&
-		    (info.Protect & PAGE_GUARD) == 0) {
-			std::vector<uintptr_t> words(info.RegionSize / 8);
+		// Game modules first; the loader may also have placed the game's code in plain memory, so
+		// private blocks are searched too (the list there can't be saved for the next game yet).
+		if (info.State == MEM_COMMIT && (info.Type == MEM_IMAGE || info.Type == MEM_PRIVATE) &&
+		    (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY)) != 0 && (info.Protect & (PAGE_GUARD | PAGE_NOCACHE | PAGE_WRITECOMBINE)) == 0) {
+			constexpr std::size_t Words = 512 * 1024;  // read 4 MB at a time
+			std::vector<uintptr_t> words(Words);
+			for (uintptr_t block = start; block < end; block += Words * 8) {
 			SIZE_T got = 0;
-			ReadProcessMemory(GetCurrentProcess(), info.BaseAddress, words.data(), words.size() * 8, &got);
+			const SIZE_T want = static_cast<SIZE_T>(std::min<uintptr_t>(Words * 8, end - block));
+			ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(block), words.data(), want, &got);
 			for (std::size_t i = 0; i < got / 8; ++i) {
 				if (words[i] != hero) {
 					continue;
 				}
 				++hits;
-				const uintptr_t base = start + i * 8 - (id % Buckets) * 8;
+				const uintptr_t base = block + i * 8 - (id % Buckets) * 8;
 				for (const std::size_t next : NextTries) {
 					int objects = 0, wrong = 0;
 					ForEachListed(base, TypeObject, next, [&](uintptr_t unit) {
@@ -234,7 +239,13 @@ auto FindList(uintptr_t hero, Pos heroPos) -> std::string {
 					}
 					wchar_t path[MAX_PATH] {};
 					const auto module = reinterpret_cast<uintptr_t>(info.AllocationBase);
-					GetModuleFileNameW(reinterpret_cast<HMODULE>(info.AllocationBase), path, MAX_PATH);
+					if (info.Type != MEM_IMAGE || GetModuleFileNameW(reinterpret_cast<HMODULE>(info.AllocationBase), path, MAX_PATH) == 0) {
+						char line[256];
+						std::snprintf(line, sizeof(line), "unit list found in plain memory at block 0x%llx + 0x%llx (next at 0x%llx), %d objects; not saved",
+							static_cast<unsigned long long>(module), static_cast<unsigned long long>(base - module),
+							static_cast<unsigned long long>(next), objects);
+						return line;
+					}
 					std::wstring leaf(path);
 					const auto slash = leaf.find_last_of(L"\\/");
 					leaf = slash == std::wstring::npos ? leaf : leaf.substr(slash + 1);
@@ -247,6 +258,7 @@ auto FindList(uintptr_t hero, Pos heroPos) -> std::string {
 						fire.ok ? "found" : "not found");
 					return line;
 				}
+			}
 			}
 		}
 		at = end > at ? end : at + 0x1000;
@@ -333,7 +345,7 @@ void Scan(std::string name) {
 		std::sort(names.begin(), names.end());
 		const uintptr_t lowest = names.front(), highest = names.back();
 		ForEachChunk([&](uintptr_t base, const unsigned char* bytes, SIZE_T size) {
-			for (SIZE_T i = 0; i + 8 <= size && heroes.size() < 16; i += 8) {
+			for (SIZE_T i = 0; i + 8 <= size && heroes.size() < 64; i += 8) {
 				uintptr_t value;
 				std::memcpy(&value, bytes + i, 8);
 				if (value < lowest || value > highest || !std::binary_search(names.begin(), names.end(), value)) {
@@ -345,41 +357,63 @@ void Scan(std::string name) {
 			}
 		});
 	}
-	// The hero: the first unit whose position reads. The fire: the fire unit nearest to it.
-	uintptr_t hero = 0;
-	Pos heroPos;
-	for (const uintptr_t h : heroes) {
-		heroPos = HeroAt(h);
-		if (heroPos.ok) {
-			hero = h;
-			break;
+	// Several units point at the hero's data (copies the game keeps for other uses). The hero is
+	// the one standing nearest a town fire; the fire is that fire.
+	std::vector<Pos> firePos;
+	for (const uintptr_t f : fires) {
+		if (const Pos p = FireAt(f); p.ok) {
+			firePos.push_back(p);
 		}
 	}
-	Pos fire;
+	uintptr_t hero = 0;
+	Pos heroPos, fire;
 	long long best = -1;
-	int fireUnits = 0;
-	for (const uintptr_t f : fires) {
-		const Pos p = FireAt(f);
+	std::string seen;
+	for (const uintptr_t h : heroes) {
+		const Pos p = HeroAt(h);
 		if (!p.ok) {
 			continue;
 		}
-		++fireUnits;
-		const long long dx = p.x - heroPos.x, dy = p.y - heroPos.y;
-		const long long d = dx * dx + dy * dy;
-		if (heroPos.ok && d < 200 * 200 && (best < 0 || d < best)) {
-			best = d;
-			fire = p;
+		seen += (seen.empty() ? "" : " ") + std::to_string(p.x) + "," + std::to_string(p.y);
+		if (hero == 0) {
+			hero = h, heroPos = p;  // with no fire near anyone: the first that reads
 		}
+		for (const Pos& f : firePos) {
+			const long long dx = f.x - p.x, dy = f.y - p.y;
+			if (dx * dx + dy * dy < 200 * 200 && (best < 0 || dx * dx + dy * dy < best)) {
+				best = dx * dx + dy * dy;
+				hero = h, heroPos = p, fire = f;
+			}
+		}
+	}
+	std::string fireSeen;
+	for (std::size_t i = 0; i < firePos.size() && i < 6; ++i) {
+		fireSeen += (fireSeen.empty() ? "" : " ") + std::to_string(firePos[i].x) + "," + std::to_string(firePos[i].y);
 	}
 	char line[512];
 	std::snprintf(line, sizeof(line),
-		"memory scan %llu ms: name found %d time(s), hero units %d, hero at %d,%d (%s); fire units %d of %d candidates, fire at %d,%d (%s)",
+		"memory scan %llu ms: name found %d time(s), hero units %d (at %s), hero at %d,%d (%s); fire units %d of %d candidates (at %s), fire at %d,%d (%s)",
 		static_cast<unsigned long long>(GetTickCount64() - started), static_cast<int>(names.size()), static_cast<int>(heroes.size()),
-		heroPos.x, heroPos.y, heroPos.ok ? "ok" : "not found", fireUnits, static_cast<int>(fires.size()), fire.x, fire.y, fire.ok ? "ok" : "not found");
+		seen.c_str(), heroPos.x, heroPos.y, heroPos.ok ? "ok" : "not found", static_cast<int>(firePos.size()), static_cast<int>(fires.size()),
+		fireSeen.c_str(), fire.x, fire.y, fire.ok ? "ok" : "not found");
 	std::string report = line;
 	report += "; pass 1 read " + std::to_string(pass1Mb) + " MB in " + std::to_string(pass1) + " ms";
 	if (hero != 0) {
-		report += "; " + FindList(hero, heroPos);
+		// The unit list holds the real hero; try the chosen one first, then the others.
+		std::string found = FindList(hero, heroPos);
+		for (const uintptr_t h : heroes) {
+			if (h != hero && found.rfind("unit list found", 0) != 0) {
+				if (const Pos p = HeroAt(h); p.ok) {
+					std::string other = FindList(h, p);
+					if (other.rfind("unit list found", 0) == 0) {
+						hero = h, heroPos = p;
+						found = other + " (from another copy of the hero)";
+						fire = Pos {};
+					}
+				}
+			}
+		}
+		report += "; " + found;
 		if (!fire.ok && !g_list.module.empty()) {
 			if (const HMODULE module = GetModuleHandleW(g_list.module.c_str())) {
 				fire = ListedFire(reinterpret_cast<uintptr_t>(module) + g_list.offset, g_list.next, heroPos);
