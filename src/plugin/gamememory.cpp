@@ -101,11 +101,19 @@ auto ListFile() -> std::wstring {
 	return (slash == std::wstring::npos ? std::wstring() : file.substr(0, slash + 1)) + L"darkestdiablo-unitlist.txt";
 }
 
+// Where the slow search found the unit list on our own PCs (frozen build, D2RLoader 1.3.1-beta).
+// Used until this PC has saved its own, so a fresh install reads positions at once instead of
+// depending on the slow search's first run. If it is wrong here, the slow search runs as before.
+constexpr wchar_t     KnownListModule[] = L"D2RLoader.exe";
+constexpr uintptr_t   KnownListOffset   = 0x2a23910;
+constexpr std::size_t KnownListNext     = 0x150;
+
 void LoadList() {
 	if (g_listLoaded) {
 		return;
 	}
 	g_listLoaded = true;
+	g_list = { KnownListModule, KnownListOffset, KnownListNext };
 	FILE* in = _wfopen(ListFile().c_str(), L"r");
 	if (in == nullptr) {
 		return;

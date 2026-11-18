@@ -44,6 +44,12 @@ to the plugin. From then on each search reads the list directly (a few milliseco
 is the player unit whose player data starts with the hero's name, the fire is the nearest
 object unit of row 39 and the stash chest the row 267 unit nearest the fire. If the saved place stops working, the slow search runs and finds it again.
 
+Until a PC has saved its own file, the plugin starts from the place found on our PCs
+(`D2RLoader.exe` + 0x2a23910, next unit at 0x150, frozen build with D2RLoader 1.3.1-beta). The
+launcher never ships `darkestdiablo-unitlist.txt`, so without this a fresh install depended on
+the slow search working on the first town visit; when it does not, the fire opens the stash and
+no heroes rest by it (the likely cause on Fabrizio's launcher install, 0.11.49).
+
 ## Unit layout used
 
 Taken from the community's long-standing map of the D2R unit structure and checked in game.
