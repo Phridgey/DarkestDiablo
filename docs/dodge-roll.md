@@ -45,30 +45,30 @@ From public guides (Mobalytics, poe2db, Sportskeeda, the 0.1.0d patch notes):
 
 ## Current version (prototype, `src/patches/050_dodge_roll.py`)
 
-First try (0.11.0) used Leap. Sam asked for a different pose and a dash to the clicked spot
-instead of a jump (2026-11-18), so it now has two test skills every class gets from level 1, in
-the same free skill slots as Throw and Kick:
+- 0.11.0 used Leap. Sam wanted a different pose and a dash, not a jump.
+- 0.11.2 used Charge: the right look, but it runs to wherever you click. Sam wants a set
+  distance and PoE2's timing (2026-11-18).
+- Now (0.11.4): a skill's movement code and its poses are separate columns, so **Dodge Roll**
+  moves with Leap's code (a fixed distance toward the cursor, set by making its min and max
+  range equal) and shows Charge's poses (the hero's run). Distance, shortest time and speed are
+  at the top of the patch file, set to about PoE2's roll: roughly 3.7 metres in under a second.
+  Unknown: whether Leap's movement and Charge's poses fit together, or look broken.
+- **Dodge Dash** (test only, not for the Barbarian, who has one free slot): plain Charge, to
+  compare against if the mix looks wrong.
 
-- **Dodge Roll**: the Paladin's Charge code with no weapon, damage, cost or cooldown, and twice
-  Charge's speed. The pose is the hero's own run, faster. Unknown: whether Charge accepts a
-  click on plain ground (in the normal game it charges at monsters), and whether it swings at
-  the end.
-- **Dodge Spin** (test only, not for the Barbarian, who has one free slot and Whirlwind
-  already): Whirlwind's code, no weapon or damage. It surely moves to the clicked spot, but the
-  pose is the spin. It stays only if Charge refuses plain ground.
-- Placeholder icons (Charge's and Whirlwind's picture slots), English text in every language.
-
-The tuning values are at the top of the patch file. Neither skill can go a fixed distance: both
-go to where you click.
+Both are free (no weapon, damage, cost or cooldown), work in town, and every class gets them
+from level 1 in the same free skill slots as Throw and Kick. Placeholder icons (Charge's
+picture slot), English text in every language.
 
 ## Test in game
 
 Use a new hero (skills from `charstats.txt` are given when a hero is made).
 
-1. Put Dodge Roll on the right mouse button. Click plain ground in town and in a fight, with a
-   Paladin or Barbarian and with one caster (Sorceress or Necromancer).
-2. Does it dash to the spot? Does it swing at the end? Too slow or too fast?
-3. If it refuses plain ground, try Dodge Spin the same way.
+1. Put Dodge Roll on the right mouse button. Use it in town and in a fight, with a Paladin or
+   Barbarian and with one caster (Sorceress or Necromancer).
+2. Does it go the same distance every time, wherever you click? Does it look like a run, or
+   does it stutter, jump or swing? Too slow or too fast compared with PoE2?
+3. Try Dodge Dash the same way to compare the look.
 4. Stand in a pack of melee monsters and next to an archer, and dash through them. Do hits land
    mid-dash?
 5. Any crash or error in `d2rloader/logs/d2rloader.log`.
