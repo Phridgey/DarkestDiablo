@@ -41,7 +41,7 @@ SPEED = 300           # Speed %, read as "Velocity %" by Charge's code and "Leap
 # frame RECOVERY_FRAME, so a dodge never gets anywhere sooner than running would.
 RUN_VELOCITY = 9
 RECOVERY_FRAME = -(-DISTANCE * 25 // RUN_VELOCITY)  # rounded up: 20. Was 2 (Charge: 8).
-COOLDOWN_FRAMES = 38  # Cooldown in frames (25 a second): 38 = 1.52 s, the nearest to Sam's 1.5 s. Meteor uses 30.
+COOLDOWN_FRAMES = 6   # Cooldown in frames (25 a second): 6 = 0.24 s, the nearest to Sam's 250 ms (was 1.5 s).
 
 STRINGS = {
     "skillname_dodge": "Dodge",
