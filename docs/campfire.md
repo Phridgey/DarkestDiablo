@@ -123,6 +123,8 @@ Nothing of Blizzard's is in the repo.
   changed nothing in game: in the new graphics the mouse is tested against the fire's 3D
   model. 0.11.53 adds a hidden copy of the fire's logs model, 40% bigger, to
   `hd/objects/env_wood/rogue_bonfire.json`. Sam: "much better". Hidden models do take clicks.
+  At 1.4 times the size it reached about a hero's length past the stones; 0.11.55 uses 1.15 so it
+  ends near the outer edge of the stones (`click_scale` in `040_campfire.py`).
 
 Worked (17 Nov 2026): the save slot screen and picking a slot; landing on the Campfire after a
 slot pick and after leaving a game; making a hero there; clicking a hero's class to load it

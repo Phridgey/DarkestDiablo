@@ -46,10 +46,11 @@ def patch(t):
     # model (0.11.52: a 40% bigger box changed nothing in game), see the HD part below.
     fire_row.update({"CollisionSubst": "1", "Left": "-126", "Top": "-128", "Width": "252", "Height": "196"})
 
-    # New graphics: a hidden copy of the fire's own logs model, 40% bigger, under the real one,
-    # so the mouse finds the fire over a wider area while it looks the same (Sam asked for a 40%
-    # bigger click area). Test (0.11.53): if hidden models can't be clicked, the fallback is
-    # making the visible logs bigger.
+    # New graphics: a hidden copy of the fire's own model, bigger, under the real one, so the
+    # mouse finds the fire over a wider area while it looks the same. Hidden models do take clicks
+    # (0.11.53). At 1.4 times the size the click area reached about a hero's length past the
+    # stones; Sam wants it to end at the outer edge of the stones (0.11.55: 1.15).
+    click_scale = 1.15
     bonfire_path = "hd/objects/env_wood/rogue_bonfire.json"
     bonfire = t.data(bonfire_path)
     torso = next(e for e in bonfire["entities"] if e["name"] == "entity_torso")
@@ -61,7 +62,7 @@ def patch(t):
             dict(model, name="component_model_clickarea", visibleLayers=0, lightMask=0, shadowMask=0),
             {"type": "TransformDefinitionComponent", "name": "entity_clickarea_TransformDefinition",
              "position": {"x": 0.0, "y": 0.0, "z": 0.0}, "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
-             "scale": {"x": 1.4, "y": 1.4, "z": 1.4}, "inheritOnlyPosition": False},
+             "scale": {"x": click_scale, "y": click_scale, "z": click_scale}, "inheritOnlyPosition": False},
         ],
     })
 
