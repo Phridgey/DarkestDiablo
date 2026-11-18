@@ -8,8 +8,9 @@ Code: `src/plugin/gamememory.h` and `gamememory.cpp`.
 
 ## Safety
 
-- Only on D2R.exe build 95032 (`D2R_VERSION` 3.4.95032). The plugin reads the file version of
-  D2R.exe once; on any other build it reads nothing and logs "reading is off".
+- Only on D2R.exe build 95032 (`D2R_VERSION` 3.4.95032). The game runs inside D2RLoader.exe, so the
+  plugin reads the file version of D2R.exe itself (not of the process), from the game folder,
+  once; on any other build it reads nothing and logs "reading is off".
 - Reads use Windows' `ReadProcessMemory` on the game's own process. A bad address makes the read
   fail (it returns false) instead of crashing the game.
 - Only readable, writable, private memory blocks are searched. Nothing is ever written.

@@ -172,25 +172,49 @@ void Scan(std::string name) {
 
 }  // namespace
 
+namespace {
+
+// The file version of one file ("3.4.0.95032"), or "" when it can't be read.
+auto FileVersion(const std::wstring& path) -> std::string {
+	DWORD ignored = 0;
+	const DWORD size = GetFileVersionInfoSizeW(path.c_str(), &ignored);
+	if (size == 0) {
+		return {};
+	}
+	std::vector<unsigned char> data(size);
+	VS_FIXEDFILEINFO* info = nullptr;
+	UINT infoSize = 0;
+	if (!GetFileVersionInfoW(path.c_str(), 0, size, data.data()) ||
+	    !VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &infoSize) || info == nullptr) {
+		return {};
+	}
+	char text[64];
+	std::snprintf(text, sizeof(text), "%u.%u.%u.%u", HIWORD(info->dwFileVersionMS), LOWORD(info->dwFileVersionMS),
+		HIWORD(info->dwFileVersionLS), LOWORD(info->dwFileVersionLS));
+	return text;
+}
+
+}  // namespace
+
+// The game runs inside D2RLoader.exe, so the process's own file is the loader. The game's
+// version is read from D2R.exe: the loaded module if Windows lists it, else the file next to
+// the loader (both sit in the game folder).
 auto BuildFound() -> std::string {
 	static std::string found = [] {
 		wchar_t path[MAX_PATH] {};
+		if (const HMODULE game = GetModuleHandleW(L"D2R.exe"); game != nullptr && GetModuleFileNameW(game, path, MAX_PATH) != 0) {
+			if (std::string v = FileVersion(path); !v.empty()) {
+				return v;
+			}
+		}
 		if (GetModuleFileNameW(nullptr, path, MAX_PATH) == 0) {
 			return std::string("unknown");
 		}
-		DWORD ignored = 0;
-		const DWORD size = GetFileVersionInfoSizeW(path, &ignored);
-		std::vector<unsigned char> data(size);
-		VS_FIXEDFILEINFO* info = nullptr;
-		UINT infoSize = 0;
-		if (size == 0 || !GetFileVersionInfoW(path, 0, size, data.data()) ||
-		    !VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &infoSize) || info == nullptr) {
-			return std::string("unknown");
-		}
-		char text[64];
-		std::snprintf(text, sizeof(text), "%u.%u.%u.%u", HIWORD(info->dwFileVersionMS), LOWORD(info->dwFileVersionMS),
-			HIWORD(info->dwFileVersionLS), LOWORD(info->dwFileVersionLS));
-		return std::string(text);
+		std::wstring folder(path);
+		const auto slash = folder.find_last_of(L"\\/");
+		folder = slash == std::wstring::npos ? std::wstring() : folder.substr(0, slash + 1);
+		std::string v = FileVersion(folder + L"D2R.exe");
+		return v.empty() ? std::string("unknown") : v;
 	}();
 	return found;
 }
