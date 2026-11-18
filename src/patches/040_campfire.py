@@ -41,8 +41,9 @@ def patch(t):
         fire_row[column] = chest_row.get(column, "")
     # A bigger click box than the fire's own picture, so it can be used from any side of the
     # pit. With CollisionSubst 1 the game uses Left/Top/Width/Height (screen pixels around the
-    # fire's foot) as the click box, like the town portal and the Inifuss tree.
-    fire_row.update({"CollisionSubst": "1", "Left": "-90", "Top": "-100", "Width": "180", "Height": "140"})
+    # fire's foot) as the click box, like the town portal and the Inifuss tree. 0.11.52: 40% wider
+    # and taller than before (180 x 140), around the same middle (Sam).
+    fire_row.update({"CollisionSubst": "1", "Left": "-126", "Top": "-128", "Width": "252", "Height": "196"})
 
     # The town's own stash chest stays exactly as it is (Sam: "don't touch the original stash").
     # Fire and chest both open the stash window, so the plugin tells them apart by where the
