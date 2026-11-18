@@ -80,6 +80,8 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
     top of the player's magic find), and Treehead always drops one extra set or unique.
     See `src/patches/030_inifuss.py` and `035_inifuss_loot.py`.
 - **No keys** drop anywhere (`src/patches/005_no_keys.py`).
+- **Bigger inventory:** every hero's bag is 10x5 instead of 10x4 (`src/patches/055_inventory_row.py`).
+  The panel's background gets its extra row at build time from the game's own picture.
 - **Route map**: every waypoint opens it instead of Blizzard's list (outside town it has
   "Return to town"); `dd-map` opens it anywhere. It draws Act I as a tree, and each hero unlocks
   it in order (`src/plugin/route.h`): Den, Blood Raven, fork 1 (2 picks, the same one twice

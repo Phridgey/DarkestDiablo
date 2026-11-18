@@ -8,7 +8,8 @@ Usage: python tools/build.py
    loads a vanilla table (e.g. "levels") and returns a Table you can change in place.
    Only tables a patch touched are written to the build.
    t.layout(name) does the same for a game menu layout (e.g. "mainmenupanelhd"): it returns the
-   parsed JSON, to change in place.
+   parsed JSON, to change in place. t.game_file(path) reads any other game file as bytes, and
+   t.add_file(path, bytes) ships one (e.g. a picture made from the game's own).
 4. Writes the Campfire's own panels (tools/camp_layouts.py) and copies src/d2rloader/ (the mod's
    D2RLoader settings) next to the data.
 """
@@ -125,6 +126,7 @@ class Tables:
         self.loaded = {}
         self.layouts = {}
         self.files = {}
+        self.binary = {}  # game files that aren't JSON (pictures), as bytes, by path under data/
         self.loot_lines = []  # facts for the plugin's own drops, written to d2rloader/loot_data.txt
 
     def layout(self, name, change=True):
@@ -149,6 +151,17 @@ class Tables:
                 raise FileNotFoundError(f"{src} is missing. Extract data/{path} from the game (see README.md).")
             self.files[path] = loads_lenient(src.read_text(encoding="utf-8-sig"))
         return self.files[path]
+
+    def game_file(self, path):
+        """A vanilla file of any kind by its path under data/, as bytes. Read only."""
+        src = VANILLA / path
+        if not src.exists():
+            raise FileNotFoundError(f"{src} is missing. Extract data/{path} from the game (see README.md).")
+        return src.read_bytes()
+
+    def add_file(self, path, content):
+        """Ship a file in the mod at this path under data/, as bytes (e.g. a picture)."""
+        self.binary[path] = content
 
     def add_data(self, path, content):
         """Ship a new JSON file in the mod at this path under data/."""
@@ -260,6 +273,12 @@ def main():
         target = OUT / "data" / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(content, indent=1), encoding="utf-8")
+        print(f"wrote: data/{path}")
+
+    for path, content in t.binary.items():
+        target = OUT / "data" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
         print(f"wrote: data/{path}")
 
     # The Campfire's own panels, and the mod's D2RLoader settings (more shared stash pages).

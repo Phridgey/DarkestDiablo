@@ -17,3 +17,5 @@ data/hd/objects/chests/bank.json
 # Which 3D model each monster uses, by its Id. Patches that add monster rows map them here
 # (a monster without an entry is invisible).
 data/hd/character/monsters.json
+# One more inventory row (src/patches/055_inventory_row.py): the inventory panel's background picture
+data/hd/global/ui/panel/inventory/background
