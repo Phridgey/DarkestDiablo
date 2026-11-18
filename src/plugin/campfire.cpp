@@ -22,18 +22,22 @@
 #include "campfire.h"
 #include "camp.h"
 #include "gamememory.h"
+#include "gamestate.h"
 #include "route.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <exception>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 namespace Campfire {
@@ -1256,6 +1260,90 @@ auto WhereCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
+// dd-units: what the live game-state reader sees (gamestate.h). With no words: how many units of
+// each kind are loaded, the hero, and the nearest objects. "dd-units <kind> [row]" lists the
+// nearest units of one kind (players, monsters, objects, missiles, items, tiles), "dd-units find"
+// looks for the unit list again. Everything also goes to the plugin log.
+auto UnitsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	try {
+		const auto say = [&](const std::string& line) {
+			command->plugin->WriteConsoleMessage(line.c_str());
+			Log(command->plugin, "Units: %s", line.c_str());
+		};
+		std::string word, rowText;
+		{
+			std::istringstream args(command->args == nullptr ? "" : command->args);
+			args >> word >> rowText;
+		}
+		if (word == "find") {
+			GameState::Find();
+		}
+		if (!GameState::Ready()) {
+			say(GameState::Status());
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		std::string playing;
+		{
+			const Lock lock(g_mutex);
+			playing = CurrentHero();
+		}
+		GameState::Unit hero = GameState::Player(playing);
+		if (!hero) {
+			hero = GameState::Player();
+		}
+		const auto describe = [&](const GameState::Unit& u) {
+			char line[200];
+			const long long dx = u.x - hero.x, dy = u.y - hero.y;
+			std::snprintf(line, sizeof(line), "%s row %u #%u mode %u at %d,%d (%.0f away)%s", GameState::KindName(u.kind), u.row, u.id, u.mode,
+				u.x, u.y, std::sqrt(static_cast<double>(dx * dx + dy * dy)), u.placed ? "" : " not placed");
+			std::string text = line;
+			if (u.kind == GameState::Kind::Player) {
+				text += " " + u.name;
+			}
+			if (u.kind == GameState::Kind::Monster || u.kind == GameState::Kind::Player) {
+				text += " life " + std::to_string(GameState::Life(u)) + (u.Alive() ? "" : " dead");
+			}
+			return text;
+		};
+		static constexpr const char* Words[] = { "players", "monsters", "objects", "missiles", "items", "tiles" };
+		int kind = -1;
+		for (int k = 0; k < 6; ++k) {
+			if (word == Words[k] || word + "s" == Words[k]) {
+				kind = k;
+			}
+		}
+		if (kind < 0) {
+			say(GameState::Status());
+			std::string counts;
+			for (int k = 0; k < 6; ++k) {
+				counts += (k ? ", " : "") + std::to_string(GameState::Units(static_cast<GameState::Kind>(k)).size()) + " " + Words[k];
+			}
+			say("Loaded now: " + counts + ".");
+			say(hero ? "Hero: " + describe(hero) + ", level " + std::to_string(GameState::Level(hero)) : std::string("Hero: not found."));
+			const GameState::Unit fire = GameState::Nearest(GameState::Kind::Object, 39, hero.x, hero.y);
+			say(fire ? "Nearest town fire (objects row 39): " + describe(fire) : std::string("No town fire (objects row 39) loaded."));
+			word = "objects", kind = 2;
+		}
+		auto units = rowText.empty() ? GameState::Units(static_cast<GameState::Kind>(kind))
+		                             : GameState::Units(static_cast<GameState::Kind>(kind), static_cast<uint32_t>(std::strtoul(rowText.c_str(), nullptr, 10)));
+		std::sort(units.begin(), units.end(), [&](const GameState::Unit& a, const GameState::Unit& b) {
+			const long long da = (a.x - hero.x) * 1LL * (a.x - hero.x) + (a.y - hero.y) * 1LL * (a.y - hero.y);
+			const long long db = (b.x - hero.x) * 1LL * (b.x - hero.x) + (b.y - hero.y) * 1LL * (b.y - hero.y);
+			return a.placed != b.placed ? a.placed : da < db;
+		});
+		say(std::to_string(units.size()) + " " + Words[kind] + (rowText.empty() ? "" : " of row " + rowText) + "; nearest first:");
+		for (std::size_t i = 0; i < units.size() && i < 10; ++i) {
+			say("  " + describe(units[i]));
+		}
+	} catch (...) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	return D2RL::ConsoleCommandResult::Handled;
+}
+
 auto CampCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
@@ -1608,7 +1696,8 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 	return context->RegisterConsoleCommand("dd-camp", CampCommand, "Show the camp of the loaded save; in town, open the Campfire panel.") &&
 		context->RegisterConsoleCommand("dd-slot", SlotCommand, "Load save slot 1, 2 or 3 (main menu only).") &&
 		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).") &&
-		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).");
+		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).") &&
+		context->RegisterConsoleCommand("dd-units", UnitsCommand, "List the units the game has loaded: 'dd-units', 'dd-units objects 39', 'dd-units monsters', 'dd-units find' (test).");
 }
 
 auto RouteProgressFile() noexcept -> std::filesystem::path {
