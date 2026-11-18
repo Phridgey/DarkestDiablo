@@ -56,7 +56,7 @@ less recovery. So since 0.11.9 Dodge takes:
   Charge's), and it can't be interrupted by hits.
 - Recovery and travel speed: recovery cut to frame 2 (0.11.9). 0.11.15 added a pause until
   frame 20 so dodging is no faster than running; Sam didn't want to stand still, and the game
-  can't force walking or a slow, so since 0.11.20 the dash itself lasts 20 frames (0.8 s, the
+  can't force walking or a slow, so since 0.11.24 the dash itself lasts 20 frames (0.8 s, the
   time running its distance takes) and recovery is back at frame 2.
 - Free (no weapon, damage or cost), works in town, every class from level 1.
 - Cooldown: 1.5 s in 0.11.13, then 250 ms (Sam, 0.11.19): 6 frames = 0.24 s (the game counts 25 frames a second).
