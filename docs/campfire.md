@@ -33,8 +33,12 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    box) saves, leaves the game and lands on the Campfire scene, like Save and Exit. To the game the
    fire is a stash chest, the only use we can notice. The town's own stash chest is untouched
    (Sam, 2026-11-18): both open the stash window, and the plugin tells them apart by where the
-   hero stands (read from game memory, `docs/game-memory.md`). Next to the fire it goes to the
-   Campfire; anywhere else the stash opens. If the positions can't be read, the stash opens.
+   hero stands (read from game memory, `docs/game-memory.md`). The hero walks up to what was
+   clicked, so if it stands nearer the fire than the stash chest it goes to the Campfire, and
+   otherwise the stash opens. (The chest is only about 14 steps from the fire, so 0.11.42's
+   "within 20 steps of the fire" sent the chest to the Campfire too.) If the chest can't be
+   found, only a hero right at the pit's edge counts as the fire; if the positions can't be
+   read, the stash opens.
 6. **Death is final.** A fallen hero's files move to the graveyard, with everything it wore and
    carried. Its class locks again. Only the stash carries on.
 7. **The stash.** The game's shared stash, with 7 more pages. Each save has its own.

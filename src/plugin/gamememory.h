@@ -34,6 +34,9 @@ auto Hero() -> Pos;
 // The town fire's position (found by the last scan; it never moves).
 auto Fire() -> Pos;
 
+// The town's stash chest nearest the fire (objects.txt row 267), found with the fire.
+auto Stash() -> Pos;
+
 // A few lines about the last scan for the plugin log.
 auto Report() -> std::string;
 

@@ -1113,9 +1113,12 @@ void __cdecl ScanTown(const D2RL::PluginContext* context, void*) noexcept {
 }
 
 // The fire and the town's stash chest both open the stash window. The hero walks up to what
-// was clicked before it opens, so standing within this many sub-tiles of the fire's middle means
-// the fire was used (the pit is about 3 tiles, 15 sub-tiles, across). Unknown positions: the stash.
-constexpr long long FireReach = 20;
+// was clicked before it opens, so whichever of the two the hero stands nearer was used. The
+// chest is only about 14 sub-tiles from the fire's middle, so a plain distance cutoff is not
+// enough (0.11.42 counted the chest as the fire). If the chest wasn't found, only a hero right
+// at the pit's edge (the fire is used from about 6 sub-tiles) counts as the fire.
+// Unknown positions: the stash.
+constexpr long long FireReach = 9;
 
 auto AtFire(const D2RL::PluginContext* context) -> bool {
 	const GameMemory::Pos hero = GameMemory::Hero();
@@ -1128,10 +1131,22 @@ auto AtFire(const D2RL::PluginContext* context) -> bool {
 		}
 		return false;
 	}
-	const long long dx = hero.x - fire.x, dy = hero.y - fire.y;
-	const bool atFire = dx * dx + dy * dy <= FireReach * FireReach;
-	Log(context, "Camp: stash window in town, hero at %d,%d, fire at %d,%d (%.1f sub-tiles): %s.", hero.x, hero.y, fire.x, fire.y,
-		std::sqrt(static_cast<double>(dx * dx + dy * dy)), atFire ? "the fire" : "the stash");
+	const GameMemory::Pos stash = GameMemory::Stash();
+	const long long fx = hero.x - fire.x, fy = hero.y - fire.y;
+	const long long toFire = fx * fx + fy * fy;
+	bool atFire = false;
+	if (stash.ok) {
+		const long long sx = hero.x - stash.x, sy = hero.y - stash.y;
+		const long long toStash = sx * sx + sy * sy;
+		atFire = toFire < toStash;
+		Log(context, "Camp: stash window in town, hero at %d,%d: %.1f sub-tiles from the fire (%d,%d), %.1f from the stash chest (%d,%d): %s.",
+			hero.x, hero.y, std::sqrt(static_cast<double>(toFire)), fire.x, fire.y, std::sqrt(static_cast<double>(toStash)), stash.x, stash.y,
+			atFire ? "the fire" : "the stash");
+	} else {
+		atFire = toFire <= FireReach * FireReach;
+		Log(context, "Camp: stash window in town, hero at %d,%d, fire at %d,%d (%.1f sub-tiles), stash chest not found: %s.", hero.x, hero.y,
+			fire.x, fire.y, std::sqrt(static_cast<double>(toFire)), atFire ? "the fire" : "the stash");
+	}
 	return atFire;
 }
 
