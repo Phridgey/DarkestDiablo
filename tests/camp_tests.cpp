@@ -2,6 +2,7 @@
 //   g++ -std=c++20 -I src/plugin tests/camp_tests.cpp -o build/camp_tests && build/camp_tests
 // tools\build-plugin.cmd builds and runs them too.
 #include "camp.h"
+#include "route.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -259,6 +260,68 @@ static void ReconcileFollowsTheSaveFiles() {
 	CHECK(Parse(Serialize(two)).HeroNamed("Kara")->gear == "4:ktr 3:lea");
 }
 
+// ---- The route rules (src/plugin/route.h) --------------------------------------------------
+
+static void RouteUnlocksTierByTier() {
+	Route::Progress p;
+	const auto& den = *Route::StopById("den");
+	const auto& burial = *Route::StopById("burial");
+	const auto& inifuss = *Route::StopById("inifuss");
+	const auto& crypt = *Route::StopById("crypt");
+	CHECK(p.CurrentTier() == 0);
+	CHECK(p.CanEnter(den));
+	CHECK(!p.CanEnter(burial));                   // can't skip ahead
+	CHECK(!p.CanEnter(inifuss));
+	CHECK(p.RecordClear(den));
+	CHECK(!p.CanEnter(den));                      // a main-line stop is cleared once, then locks
+	CHECK(!p.RecordClear(den));                   // ... and a stray clear doesn't count
+	CHECK(p.Clears(den) == 1);
+	CHECK(p.CanEnter(burial));
+	CHECK(p.RecordClear(burial));
+	CHECK(p.CurrentTier() == 2);                  // fork 1
+	CHECK(p.CanEnter(inifuss));
+	CHECK(!p.CanEnter(crypt));                    // not built yet: never enterable
+}
+
+static void ForkGivesTwoPicksSameOneAllowed() {
+	Route::Progress p;
+	p.clears["den"] = 1;
+	p.clears["burial"] = 1;
+	const auto& inifuss = *Route::StopById("inifuss");
+	CHECK(p.RecordClear(inifuss));
+	CHECK(p.CanEnter(inifuss));                   // the same option a second time: its replay
+	CHECK(p.RecordClear(inifuss));
+	CHECK(p.Clears(inifuss) == 2);
+	CHECK(!p.CanEnter(inifuss));                  // two picks: the fork locks
+	CHECK(p.CurrentTier() == 3);                  // Tristram is next
+	CHECK(!p.RecordClear(inifuss));
+}
+
+static void RouteProgressRoundTripAndBadLines() {
+	const fs::path dir = TempDir("route");
+	const fs::path file = Route::ProgressFile(dir, 2, "Kara");
+	CHECK(file == dir / "camp" / "slot2" / "progress" / "Kara.txt");
+	Route::Progress p;
+	p.clears["den"] = 1;
+	p.clears["inifuss"] = 2;
+	CHECK(Route::Save(file, p));
+	CHECK(Route::Load(file).clears == p.clears);
+	WriteFile(file, "clear den 1\nclear nowhere 3\nclear burial -2\nnonsense\n");
+	const auto loaded = Route::Load(file);
+	CHECK(loaded.clears.size() == 1 && loaded.Clears(*Route::StopById("den")) == 1);
+	CHECK(Route::Load(dir / "missing.txt").CurrentTier() == 0);   // no file: a fresh hero
+}
+
+static void EveryBuiltStopIsFoundByItsLevels() {
+	for (const auto& stop : Route::Stops) {
+		if (stop.travelLevel >= 0) {
+			CHECK(Route::StopByTravelLevel(stop.travelLevel) == &stop);
+			CHECK(Route::StopByArenaLevel(stop.arenaLevel) == &stop);
+		}
+	}
+	CHECK(Route::StopByArenaLevel(1) == nullptr);   // town is not a stop
+}
+
 // The start of a real save of this game build (version 105): an Assassin of level 4.
 static void ReadsThisGameBuildsSaves() {
 	const fs::path dir = fs::temp_directory_path() / "camp_tests_v105";
@@ -274,6 +337,10 @@ static void ReadsThisGameBuildsSaves() {
 }
 
 int main() {
+	RouteUnlocksTierByTier();
+	ForkGivesTwoPicksSameOneAllowed();
+	RouteProgressRoundTripAndBadLines();
+	EveryBuiltStopIsFoundByItsLevels();
 	ReadsThisGameBuildsSaves();
 	NewCampOffersEveryClassThenLocksTheRest();
 	TravelerOffersThreeLockedClasses();

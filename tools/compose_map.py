@@ -133,6 +133,13 @@ def compose(spec):
         d = ds1_parse(f.read_bytes())
         if len(spec["pieces"]) > 1 and (d["width"] != room + 1 or d["height"] != room + 1):
             sys.exit(f"{p['piece']} is {d['width']}x{d['height']}, expected {room + 1}x{room + 1}")
+        holes = sum(1 for v in d["floors"][0] if v == 0) if d["floors"] else 0
+        if len(spec["pieces"]) > 1 and holes > (d["width"] * d["height"]) // 10:
+            # In a stitched map every room must be complete. "Theme" rooms are partial overlays;
+            # stitched in as a room they leave cells with no tile inside the map, and the game
+            # crashed loading the level (BC_VERIFY: hTile). A single room with empty edges is fine.
+            sys.exit(f"{p['piece']} has no floor in {holes} of {d['width'] * d['height']} cells (a partial "
+                     "overlay room, e.g. a 'theme' room); use a complete room.")
         placed.append((p, d))
     gw = max(p["x"] for p, _ in placed) + 1
     gh = max(p["y"] for p, _ in placed) + 1

@@ -60,25 +60,31 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
   SDK (D2RLoader/PluginSDK issue #9). Act I slots: 1 = Den of Evil arena (was Cold Plains),
   2 = Burial Grounds entry (was Stony Field), 3 = Tree of Inifuss entry (was Dark Wood). The waypoint menu comes from `actinfo.txt` in 3.x.
 - **Arenas** (plugin, `Arenas` table): arriving starts the waves, wave 1 after 1 s, then one every
-  10 s whatever is still alive. When the last wave has spawned and everything is dead (the boss
-  included, any kill order), a Town Portal scroll goes into the inventory.
-  - **Den of Evil:** one small chamber (`src/maps/den_of_evil.json`) on a spare cave level (13),
-    not the real Den, so the Den quest (and Akara's free respec) never happens. Fallen, zombies
-    and shamans, then Corpsefire and his pack. Corpsefire always drops a Book of Skill instead
-    (the quest's skill point).
+  10 s whatever is still alive. When the last wave has spawned and everything is dead (every
+  boss included, any kill order), a Town Portal scroll goes into the inventory. Entering a stop
+  the hero may not enter (cleared, e.g. back through that portal) starts no waves.
+  - **Den of Evil:** a wide cave of 2x2 open cave rooms (`src/maps/den_of_evil.json`) on a spare
+    cave level (13), not the real Den, so the Den quest (and Akara's free respec) never happens.
+    The fight is in the bottom-left hall: Fallen from both ends, zombies from the north, shamans
+    close by, then Corpsefire and his pack. Corpsefire always drops a Book of Skill (the quest's
+    skill point); the arena waits for him to die.
   - **Burial Grounds:** you arrive by waypoint in a small crypt room, prep, and take the stairs
     up. You come out at the graveyard's crypt door; the waves come at the plaza by the hanging
     tree: zombies and skeletons, then Blood Raven with zombies. Built on two unused cave levels
     (9 = arena, 10 = entry room), because outdoor levels are placed somewhere new every game.
     See `src/patches/020_burial_grounds.py`.
-  - **Tree of Inifuss** (fork 2 MF run): same setup (11 = arena, 12 = entry room). The stairs
+  - **Tree of Inifuss** (fork 1 MF run): same setup (11 = arena, 12 = entry room). The stairs
     come out of a cave mouth beside the tree. Eight waves: Fallen and shamans, then Rakanishu,
-    then lancers, then brutes and quill rats, then Treehead Woodfist.
-    See `src/patches/030_inifuss.py`.
-- **Route map**: clicking a waypoint in town opens it instead of Blizzard's list (waypoints
-  outside town still show Blizzard's list, so you can always get home); `dd-map` opens it
-  anywhere. It lists the Act I stops. Den, Burial Grounds and Inifuss are
-  clickable and send you there; the rest are greyed out. The layout exists twice: built into
+    then lancers, then brutes and quill rats, then Treehead Woodfist. Won only when both
+    Rakanishu and Treehead are dead. Every drop is 1.4 times as likely to be magic or better (on
+    top of the player's magic find), and Treehead always drops one extra set or unique.
+    See `src/patches/030_inifuss.py` and `035_inifuss_loot.py`.
+- **No keys** drop anywhere (`src/patches/005_no_keys.py`).
+- **Route map**: every waypoint opens it instead of Blizzard's list (outside town it has
+  "Return to town"); `dd-map` opens it anywhere. It draws Act I as a tree, and each hero unlocks
+  it in order (`src/plugin/route.h`): Den, Blood Raven, fork 1 (2 picks, the same one twice
+  allowed), Tristram, fork 2, Andariel. Only the current tier is white and clickable. Progress is
+  kept per hero in the save folder (`camp/slot<N>/progress/<hero>.txt`). The layout exists twice: built into
   the plugin, which is the copy the game uses, and as a mod file
   (`src/data/data/global/ui/layouts/darkestdiablo/RouteMaphd.json`). Change both and rebuild the
   plugin; `tests/test_route_map.py` fails when they differ.
@@ -90,7 +96,8 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
   Console: `dd-camp`, `dd-slot <1-3>`, `dd-traveler`.
 - **Dodge** (`docs/dodge-roll.md`; prototype): a free dash of set length toward the cursor that
   every class has from level 1 (Leap's movement, Charge's look, sound and speed).
-- **Console** (Ctrl + backtick, with `enable_console = true` in `d2rloader/config/d2rloader.toml`):
+- **Console** (Ctrl + backtick; the launcher sets `enable_console = true` in `d2rloader/config/d2rloader.toml`
+  on every Update and Play, so after the game's first start it is on; type `debug_mode` for cheats):
   `dd` (plugin running?), `dd-tp` (TP scroll), `dd-waves` (restart the waves of the arena you
   stand in), `dd-map` (route map). Handy for testing: `location player` prints your position;
   `cheat mspawn zombie1,3 @ x,y` tests a spawn spot; `goto <level id>`; `god 1`.

@@ -17,3 +17,6 @@ data/hd/env/preset/act1/town/townn1.json
 data/hd/env/preset/act1/town/towne1.json
 data/hd/env/preset/act1/town/towns1.json
 data/hd/env/preset/act1/town/townw1.json
+# Which 3D model each monster uses, by its Id. Patches that add monster rows map them here
+# (a monster without an entry is invisible).
+data/hd/character/monsters.json

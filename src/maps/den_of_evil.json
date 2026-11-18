@@ -2,13 +2,28 @@
   "name": "darkest_den",
   "folder": "act1/caves",
   "room": 24,
-  "comment": "Den of Evil arena: one small chamber, Blizzard's cave room caveecrow (about half the size of the old Den chamber). The player arrives by waypoint on the west side; the plugin spawns the waves and Corpsefire to the east. Rooms are 24x24 tiles.",
+  "comment": "Den of Evil arena: a wide cave of 2x2 Blizzard cave rooms (48x48 tiles), the layout with the most open ground of 81 tried (cavese2, cavesw2, cavene2, cavenw2), the way the Pit joins open rooms. The waypoint stands in the bottom-left hall (about 24x6 open tiles); the plugin spawns the waves around it and Corpsefire. Rooms are 24x24 tiles. Theme rooms (caveswtheme1) are partial overlays with no floor in most cells; one crashed the game (BC_VERIFY hTile).",
   "keep_monsters": [],
   "pieces": [
     {
       "x": 0,
       "y": 0,
-      "piece": "act1/caves/caveecrow"
+      "piece": "act1/caves/cavese2"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "piece": "act1/caves/cavesw2"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act1/caves/cavene2"
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "piece": "act1/caves/cavenw2"
     }
   ],
   "close_edges": true,
@@ -17,8 +32,8 @@
       "type": 2,
       "id": 52,
       "tile": [
-        11,
-        10
+        16,
+        41
       ],
       "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
       "hd_prefab": {

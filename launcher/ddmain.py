@@ -31,7 +31,8 @@ DEFAULT_VANILLA = ["data/global/excel/", "data/local/lng/strings/", "data/global
                    "data/hd/env/preset/act1/town/townn1.json",
                    "data/hd/env/preset/act1/town/towne1.json",
                    "data/hd/env/preset/act1/town/towns1.json",
-                   "data/hd/env/preset/act1/town/townw1.json"]
+                   "data/hd/env/preset/act1/town/townw1.json",
+                   "data/hd/character/monsters.json"]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -224,4 +225,5 @@ def build_and_install(game_dir, progress, commit=None):
     run_build(ws, progress)
     progress(1, 1, "Installing")
     changed, removed = install_build(game_dir, ws, commit)
+    ddcore.enable_console(game_dir)  # the developer console (Ctrl + `) is on for everyone who builds the game
     return commit, changed, removed
