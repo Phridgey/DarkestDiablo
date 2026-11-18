@@ -58,7 +58,7 @@ less recovery. So since 0.11.9 Dodge takes:
   can act again only from frame 20 (0.8 s), the time running the same distance takes (distance
   7 / run speed 9 a second). The dash itself stays fast.
 - Free (no weapon, damage or cost), works in town, every class from level 1.
-- Cooldown (Sam, 0.11.13): 1.5 seconds (38 frames; the game counts 25 frames a second).
+- Cooldown: 1.5 s in 0.11.13, then 250 ms (Sam, 0.11.19): 6 frames = 0.24 s (the game counts 25 frames a second).
 
 In the tables the skill is called `DD Dodge` (skilldesc `dd dodge`): the Amazon already has a
 skill named Dodge, and a repeated name crashed the game at start (0.11.10: "Cannot load
