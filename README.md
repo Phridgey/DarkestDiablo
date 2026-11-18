@@ -113,7 +113,12 @@ To check the plugin is running: D2RLoader's log (`d2rloader\logs\d2rloader.log` 
 folder) lists "Darkest Diablo ... [mod]" under plugins, and the plugin's own log
 (`build\darkestdiablo\d2rloader\logs\darkestdiablo.log`) says "Darkest Diablo plugin <version> loaded."
 
-## Later
-- Move the game copy to E:. A straight copy of the D: frozen copy crashes at startup on E:
-  (D2RLoader.exe, C++ exception in KERNELBASE, right after the string tables load). Next try:
-  a fresh install or a fresh frozen copy made directly on E:.
+## Known problem: keep the game copy on the same drive as your normal install
+A game copy on another drive than your normal D2R install closes by itself at startup, with no
+crash report (Fabrizio's PC: install on D:, copies on E:). Tried on 2026-11-17: a straight copy
+of the working D: copy, and a fresh copy made by the launcher. It stays the same with the working
+copy's game data, D2RLoader files and settings, and even the same mod through the same link; only
+the drive differs. Battle.net's `.product.db` in every copy names the normal install's folder, so
+Blizzard's own code may refuse to run elsewhere. Working around that would mean getting around
+Blizzard's protection, which we never do (`CLAUDE.md`). So in the launcher, put the game folder
+on the drive where D2R is installed.
