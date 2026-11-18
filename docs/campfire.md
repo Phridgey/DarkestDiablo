@@ -7,8 +7,11 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 
 ## What the player sees
 
-1. **Save slots.** After the title screen a window asks for Save 1, 2 or 3, each with a line
-   saying who is by its fire. A save that has been started has a Delete button, which asks twice.
+1. **Save slots ("Delves").** After the title screen three frames stand side by side, Delve 1
+   to 3, in the game's own hero-list frame and fonts. Each lists its living heroes as
+   "level class" and shows the difficulty it plays on, large at the bottom (the hardest one
+   played in that save, which the plugin notes from the game while you play). Its button says
+   Continue, or Start New on an empty Delve. A started Delve has a delete icon, which asks twice.
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
    with a name plate. Clicking a hero (or its plate) picks it and turns Enter red; Enter loads
@@ -74,8 +77,8 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 - **Text on our panels is fixed.** A plugin can show and hide widgets but not change their
   text. Panels hold a ready-made label for every case and show the right ones. A hidden button
   still takes clicks, so labels are stacked but buttons never are: the traveler has one button
-  per place and the plugin looks up which class is offered there. The slot screen's summary
-  lines are made once at launch.
+  per place and the plugin looks up which class is offered there. The slot screen's text
+  (heroes, difficulty, button words) is written into its layout by the plugin each time it opens.
 - **No "player died" event.** The plugin watches for the game's "You died" window and for a
   resurrection. A softcore hero that comes back is sent out of the game at once and buried.
   Hardcore heroes are also caught by the dead mark in their save.

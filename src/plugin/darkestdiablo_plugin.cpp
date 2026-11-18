@@ -482,6 +482,7 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 	if (context == nullptr || event == nullptr) {
 		return;
 	}
+	Campfire::NoteDifficulty(context, event->difficulty);
 	const int index = g_arena.load();
 	if (index < 0 || event->levelId != Arenas[index].levelId || g_wave.load() < 1 || g_portalDropped.load()) {
 		return;

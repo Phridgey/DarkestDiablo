@@ -9,7 +9,7 @@
 namespace Campfire {
 
 // The mod version, shown in the log, the console and the corner of the menus. One place only.
-inline constexpr char Version[] = "0.11.43";
+inline constexpr char Version[] = "0.11.44";
 
 // Call once from D2RLoaderLoadPlugin. Returns false only if a console command could not be added;
 // missing optional services just switch parts of the Campfire off (see the log).
@@ -21,6 +21,10 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 // Give GameJoined, LocalPlayerReady, LevelChanged, PlayerLevelChanged, PlayerResurrected and
 // GameLeft to this.
 void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::GameplayEvent* event) noexcept;
+
+// The game's difficulty (0 Normal, 1 Nightmare, 2 Hell) as seen in game, e.g. from a monster's
+// death. The save remembers the hardest one played, for the save slot screen.
+void NoteDifficulty(const D2RL::PluginContext* context, uint32_t difficulty) noexcept;
 
 // The route progress file (route.h) of the hero in the current game. A game not started from the
 // Campfire uses "_unknown". Empty when the save folder isn't known.

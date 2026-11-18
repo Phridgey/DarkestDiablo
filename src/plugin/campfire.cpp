@@ -383,15 +383,13 @@ void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 		const std::string n = std::to_string(slot);
 		const bool started = slot == g_slot ? g_camp.started : Camp::LoadState(g_live, slot).started;
 		SetVisible(context, panel.c_str(), ("Slot" + n).c_str(), !asking);
-		SetVisible(context, panel.c_str(), ("Slot" + n + "Summary").c_str(), !asking);
-		SetVisible(context, panel.c_str(), ("Slot" + n + "Last").c_str(), !asking && slot == g_slot);
+		SetVisible(context, panel.c_str(), ("Delve" + n).c_str(), !asking);
+		SetVisible(context, panel.c_str(), ("Slot" + n + "Last").c_str(), !asking && started && slot == g_slot);
 		SetVisible(context, panel.c_str(), ("Slot" + n + "Delete").c_str(), !asking && started);
 		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), g_confirmSlot == slot && g_confirmStep == 1);
 		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), g_confirmSlot == slot && g_confirmStep == 2);
 	}
-	for (const char* part : { "Heading", "Sub", "Exit" }) {
-		SetVisible(context, panel.c_str(), part, !asking);
-	}
+	SetVisible(context, panel.c_str(), "Exit", !asking);
 	// The answer buttons are shared by the three saves (a hidden button still takes clicks).
 	SetVisible(context, panel.c_str(), "AskYes", g_confirmStep == 1);
 	SetVisible(context, panel.c_str(), "AskNo", g_confirmStep == 1);
@@ -430,7 +428,7 @@ void __cdecl CheckMenuReloaded(const D2RL::PluginContext* context, void*) noexce
 		SetVisible(context, panel.c_str(), "RestartNotice", true);
 		for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
 			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot)).c_str(), false);
-			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Summary").c_str(), false);
+			SetVisible(context, panel.c_str(), ("Delve" + std::to_string(slot)).c_str(), false);
 			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Last").c_str(), false);
 			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Delete").c_str(), false);
 		}
@@ -1284,10 +1282,12 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool {
 		return false;
 	}
 	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
-		const std::string mark = "SLOT" + std::to_string(slot) + "SUMMARY";
 		const Camp::State camp = slot == g_slot ? g_camp : Camp::LoadState(g_live, slot);
-		if (const size_t at = json.find(mark); at != std::string::npos) {
-			json.replace(at, mark.size(), Camp::Summary(camp));
+		for (const auto& [mark, value] : Camp::DelveText(camp)) {
+			const std::string full = "@@S" + std::to_string(slot) + mark + "@@";
+			for (size_t at = json.find(full); at != std::string::npos; at = json.find(full, at + value.size())) {
+				json.replace(at, full.size(), value);
+			}
 		}
 	}
 	const std::string rootName = "\"darkestdiablo/SaveSlots\"";
@@ -1386,9 +1386,12 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 			Log(context, "Camp: asking once more before deleting save %d.", g_confirmSlot);
 			ShowSlotWidgets(context);
 		}
+	} else if (g_confirmSlot != 0 && StartsWith(action, "slot-")) {
+		// a hidden button under the question still takes clicks: ignore it
 	} else if (StartsWith(action, "slot-delete-")) {
 		const int slot = std::atoi(action + 12);
-		if (slot >= 1 && slot <= Camp::SlotCount) {
+		const bool started = slot == g_slot ? g_camp.started : slot >= 1 && slot <= Camp::SlotCount && Camp::LoadState(g_live, slot).started;
+		if (slot >= 1 && slot <= Camp::SlotCount && started) {
 			g_confirmSlot = slot;
 			g_confirmStep = 1;
 			ShowSlotWidgets(context);
@@ -1747,7 +1750,26 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 	return false;
 }
 
+void NoteDifficulty(const D2RL::PluginContext* context, uint32_t difficulty) noexcept {
+	try {
+		const Lock lock(g_mutex);
+		const int d = static_cast<int>(difficulty);
+		if (g_live.empty() || !g_inGame || d <= g_camp.difficulty || d > 2) {
+			return;
+		}
+		g_camp.difficulty = d;
+		Log(context, "Camp: save %d now plays on %s.", g_slot, Camp::DifficultyNames[d]);
+		if (!Camp::SaveState(g_live, g_slot, g_camp)) {
+			context->LogWarn("Camp: could not write camp.txt.");
+		}
+	} catch (...) {
+	}
+}
+
 void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::GameplayEvent* event) noexcept {
+	if (event->difficulty > 0 && event->kind != D2RL::Lifecycle::GameplayEventKind::GameJoined) {
+		NoteDifficulty(context, event->difficulty);  // fields an event doesn't use are 0, so only a higher one counts
+	}
 	try {
 		const Lock lock(g_mutex);
 		if (g_live.empty()) {
