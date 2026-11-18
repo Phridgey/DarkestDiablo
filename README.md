@@ -80,6 +80,8 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
     top of the player's magic find), and Treehead always drops one extra set or unique.
     See `src/patches/030_inifuss.py` and `035_inifuss_loot.py`.
 - **No keys** drop anywhere (`src/patches/005_no_keys.py`).
+- **Bigger inventory:** every hero's bag is 10x5 instead of 10x4 (`src/patches/055_inventory_row.py`).
+  The panel's background gets its extra row at build time from the game's own picture.
 - **Route map**: every waypoint opens it instead of Blizzard's list (outside town it has
   "Return to town"); `dd-map` opens it anywhere. It draws Act I as a tree, and each hero unlocks
   it in order (`src/plugin/route.h`): Den, Blood Raven, fork 1 (2 picks, the same one twice
@@ -91,9 +93,11 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
 - **The Campfire** (`docs/campfire.md`; built, not yet tried in the game): three save slots, the
   character list staged at the campfire, recruiting on the hero screen (a new save offers every
   class, after that only classes a traveler brought), travelers in town, permanent death, and a
-  bigger shared stash per save. The town bonfire opens the stash, which has a Campfire button.
+  bigger shared stash per save. Using the town bonfire goes to the Campfire.
   The build needs the game's menu layouts and a few model files (all in `tools/vanilla_files.txt`).
   Console: `dd-camp`, `dd-slot <1-3>`, `dd-traveler`.
+- **Dodge** (`docs/dodge-roll.md`; prototype): a free dash of set length toward the cursor that
+  every class has from level 1 (Leap's movement, Charge's look, sound and speed).
 - **Console** (Ctrl + backtick; the launcher sets `enable_console = true` in `d2rloader/config/d2rloader.toml`
   on every Update and Play, so after the game's first start it is on; type `debug_mode` for cheats):
   `dd` (plugin running?), `dd-tp` (TP scroll), `dd-waves` (restart the waves of the arena you

@@ -117,30 +117,23 @@ def save_slots():
 
 
 def traveler():
-    # Three offers side by side: each button at 0.7 size is about 360 wide.
-    scale = 0.7
-    kids = [text("Heading", 78, 50, 1076, 70, "A traveler joins your camp", "$StyleSettingsTitle"),
-            text("Help", 135, 125, 956, 90, "Choose who stays by the fire. They wait at the Campfire as a new hero.")]
-    for place, x in enumerate((55, 433, 811)):
-        for cls in CLASSES:
-            kids.append(button(f"Offer{place}{cls}", x, 225, cls, action=f"recruit-{cls}", scale=scale))
-    kids.append(button("NotNow", 433, 320, "Not now", action="traveler-later", scale=scale))
+    # The notice in town when a traveler arrives. The choice itself is made at the Campfire,
+    # which shows only the offered classes (campfire.cpp, traveler mode).
+    kids = [text("Heading", 78, 50, 1076, 70, "A traveler waits by your fire", "$StyleSettingsTitle"),
+            text("Help", 135, 125, 956, 90, "Use the fire to meet them at the Campfire and choose who stays.")]
+    kids.append(button("Ok", 357, 280, "OK", message="PanelManager:ClosePanel:darkestdiablo/Traveler"))
     return panel("Traveler", kids)
 
 
 def campfire():
-    # Eight classes in two rows of four: each button at 0.56 size is about 287 wide and 52 tall.
-    scale = 0.56
+    # Opens with the stash when the fire is used: a small window at the top of the screen, clear
+    # of the stash and the inventory, that takes the hero back to the Campfire scene.
+    scale = 0.7
     kids = [text("Heading", 78, 40, 1076, 70, "The Campfire", "$StyleSettingsTitle"),
-            text("Help", 135, 105, 956, 60, "By the fire, waiting to join (new), or not in camp (grey).")]
-    for i, cls in enumerate(CLASSES):
-        x, y = 30 + (i % 4) * 293, 185 + (i // 4) * 62
-        kids.append(button(f"Hero{cls}", x, y, cls, scale=scale))
-        kids.append(button(f"Recruit{cls}", x, y, f"{cls} (new)", color="$FontColorGoldYellow", scale=scale))
-        kids.append(button(f"Locked{cls}", x, y, cls, disabled=True, color="$FontColorLightGray", scale=scale))
-    kids.append(button("ToCampfire", 255, 325, "Go to the fire", action="to-campfire", scale=0.7))
-    kids.append(button("Close", 625, 325, "@d2r:strClose", message="PanelManager:ClosePanel:darkestdiablo/Campfire", scale=0.7))
-    return panel("Campfire", kids)
+            text("Help", 135, 115, 956, 90, "Rest by the fire to save and return to the Campfire, where your heroes wait.")]
+    kids.append(button("ToCampfire", 255, 300, "Rest at the Campfire", action="to-campfire", scale=scale))
+    kids.append(button("Close", 625, 300, "@d2r:strClose", message="PanelManager:ClosePanel:darkestdiablo/Campfire", scale=scale))
+    return panel("Campfire", kids, frame_y=-1000)
 
 
 LAYOUTS = {"Traveler": traveler, "Campfire": campfire}  # save_slots goes out as a template (tools/build.py)

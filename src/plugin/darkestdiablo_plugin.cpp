@@ -9,6 +9,7 @@
 //     dd-tp        drop a Town Portal scroll now (for testing)
 //     dd-waves     restart the waves of the arena you stand in
 //     dd-map       open or close the route map
+//     gm           open the GM tools window: cheats for testing (devtools.cpp, docs/gm-tools.md)
 // - Route map: clicking a waypoint in town opens the route map instead of Blizzard's list.
 // - Waypoints: when the player is ready in a game, the plugin runs D2RLoader's "cheat waypoints"
 //   command, so a new character can reach the Den by waypoint on first load.
@@ -19,6 +20,7 @@
 #include <D2RLPlugin/api.h>
 #include <D2RLPlugin/core_exports.h>
 #include "campfire.h"
+#include "devtools.h"
 #include "route.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -649,7 +651,7 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		std::snprintf(message, sizeof(message), "UI message: %s:%s:%s", target, command, text);
 		context->LogInfo(message);
 	}
-	if (Campfire::OnUiMessage(context, target, command, text)) {
+	if (DevTools::OnUiMessage(context, target, command, text) || Campfire::OnUiMessage(context, target, command, text)) {
 		return Action::Consume;
 	}
 	// Every waypoint asks for Blizzard's list ("PanelManager:OpenPanel:WaypointsPanelExpansion").
@@ -705,6 +707,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		return;
 	}
 	Campfire::OnGameplayEvent(context, event);
+	DevTools::OnGameplayEvent(context, event);
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
 	if (event->kind == Kind::LevelChanged) {
 		g_levelId = event->currentValue;
@@ -891,7 +894,10 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	}
 
 	context->LogInfo((std::string("Darkest Diablo plugin ") + Campfire::Version + " loaded.").c_str());
-	return Campfire::Load(context) &&
+	// The GM window's event list. A new event needs one line here (or a RegisterEvent call of its
+	// own before DevTools::Load); the window and "gm event <id>" pick it up by themselves.
+	DevTools::RegisterEvent({ .id = "traveler", .label = "A traveler joins the camp", .console = "dd-traveler" });
+	return Campfire::Load(context) && DevTools::Load(context) &&
 		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&

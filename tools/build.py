@@ -8,7 +8,8 @@ Usage: python tools/build.py
    loads a vanilla table (e.g. "levels") and returns a Table you can change in place.
    Only tables a patch touched are written to the build.
    t.layout(name) does the same for a game menu layout (e.g. "mainmenupanelhd"): it returns the
-   parsed JSON, to change in place.
+   parsed JSON, to change in place. t.game_file(path) reads any other game file as bytes, and
+   t.add_file(path, bytes) ships one (e.g. a picture made from the game's own).
 4. Writes the Campfire's own panels (tools/camp_layouts.py) and copies src/d2rloader/ (the mod's
    D2RLoader settings) next to the data.
 """
@@ -121,10 +122,13 @@ def find_widget(node, name):
 
 
 class Tables:
-    def __init__(self):
+    def __init__(self, excel=EXCEL):
+        self.excel = excel  # global/excel, or global/excel/base (see run_patches_on_base)
         self.loaded = {}
         self.layouts = {}
         self.files = {}
+        self.raws = {}
+        self.binary = {}  # game files that aren't JSON (pictures), as bytes, by path under data/
         self.loot_lines = []  # facts for the plugin's own drops, written to d2rloader/loot_data.txt
 
     def layout(self, name, change=True):
@@ -150,13 +154,34 @@ class Tables:
             self.files[path] = loads_lenient(src.read_text(encoding="utf-8-sig"))
         return self.files[path]
 
+    def raw(self, path):
+        """A vanilla file of any kind by its path under data/, as bytes. Read only."""
+        src = VANILLA / path
+        if not src.exists():
+            raise FileNotFoundError(f"{src} is missing. Add data/{path} to tools/vanilla_files.txt and extract it.")
+        return src.read_bytes()
+
+    def add_raw(self, path, content):
+        """Ship a file of any kind (bytes) in the mod at this path under data/."""
+        self.raws[path] = bytes(content)
+    def game_file(self, path):
+        """A vanilla file of any kind by its path under data/, as bytes. Read only."""
+        src = VANILLA / path
+        if not src.exists():
+            raise FileNotFoundError(f"{src} is missing. Extract data/{path} from the game (see README.md).")
+        return src.read_bytes()
+
+    def add_file(self, path, content):
+        """Ship a file in the mod at this path under data/, as bytes (e.g. a picture)."""
+        self.binary[path] = content
+
     def add_data(self, path, content):
         """Ship a new JSON file in the mod at this path under data/."""
         self.files[path] = content
 
     def table(self, name):
         if name not in self.loaded:
-            src = VANILLA / EXCEL / f"{name}.txt"
+            src = VANILLA / self.excel / f"{name}.txt"
             if not src.exists():
                 raise FileNotFoundError(f"{src} is missing. Extract the vanilla files first.")
             self.loaded[name] = Table(src)
@@ -208,6 +233,28 @@ def write_camp_data(t, target):
     print(f"wrote: d2rloader/camp_data.txt ({len(lines)} lines)")
 
 
+def run_patches_on_base(patches):
+    """The game has a second copy of its tables in global/excel/base (the rules without the
+    Warlock expansion). Heroes that use those rules never see changes made only to
+    global/excel, so every patch runs again on that copy. Only its tables are kept: menus and
+    other files were already written by the first run. A patch that doesn't fit the base copy
+    is reported and undone, so it can't break the build."""
+    if not (VANILLA / EXCEL / "base").is_dir():
+        return
+    import copy
+    base = Tables(EXCEL / "base")
+    for name, mod in patches:
+        before = copy.deepcopy(base.loaded)
+        try:
+            mod.patch(base)
+        except Exception as error:  # noqa: BLE001 - report every kind of mismatch
+            base.loaded = before  # undo the half-applied patch
+            print(f"note: {name} skipped for global/excel/base ({type(error).__name__}: {error})")
+    for name, table in base.loaded.items():
+        table.save(OUT / "data" / EXCEL / "base" / f"{name}.txt")
+        print(f"wrote: data/global/excel/base/{name}.txt")
+
+
 def main():
     if not VANILLA.exists():
         sys.exit("vanilla/ is missing. Extract the game's tables first (see README.md).")
@@ -240,15 +287,18 @@ def main():
         shutil.copytree(ROOT / "build" / "maps" / "data", OUT / "data", dirs_exist_ok=True)
 
     t = Tables()
+    patches = []
     for p in sorted((ROOT / "src" / "patches").glob("*.py")):
         spec = importlib.util.spec_from_file_location(p.stem, p)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.patch(t)
+        patches.append((p.name, mod))
         print(f"patched: {p.name}")
     for name, table in t.loaded.items():
         table.save(OUT / "data" / EXCEL / f"{name}.txt")
         print(f"wrote: data/global/excel/{name}.txt")
+    run_patches_on_base(patches)
 
     for name, layout in t.layouts.items():
         target = OUT / "data" / "global" / "ui" / "layouts" / f"{name}.json"
@@ -260,6 +310,18 @@ def main():
         target = OUT / "data" / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(content, indent=1), encoding="utf-8")
+        print(f"wrote: data/{path}")
+
+    for path, content in t.raws.items():
+        target = OUT / "data" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        print(f"wrote: data/{path}")
+
+    for path, content in t.binary.items():
+        target = OUT / "data" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
         print(f"wrote: data/{path}")
 
     # The Campfire's own panels, and the mod's D2RLoader settings (more shared stash pages).
