@@ -87,6 +87,7 @@ bool g_slotChosen    = false;   // the slot screen was answered this launch
 bool g_awaitingMenu  = false;   // asked the menu to load again after a slot change
 bool g_inGame        = false;
 int  g_levelId       = -1;
+constexpr int RogueEncampment = 1;  // levels.txt Id
 int  g_selectedClass = -1;      // on the hero screen
 int  g_pendingClass  = -1;      // Create was pressed for this class; its save has not been seen yet
 int  g_pickedClass   = -1;      // the class last clicked on the hero screen: pressing Enter in the name box makes a hero without a Create message
@@ -1321,6 +1322,14 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			if (g_threads != nullptr) {
 				g_threads->runOnUiThread(context, OpenFire, nullptr);
 			}
+			return false;
+		}
+		// In the Rogue Encampment the fire is the camp's stash (the stash chest is gone from the
+		// town maps, see 040_campfire.py): opening it brings up the Campfire roster too.
+		if (panelManager && std::strcmp(text, "BankExpansionLayout") == 0 && std::strcmp(command, "OpenPanel") == 0 && g_inGame &&
+		    g_levelId == RogueEncampment && g_threads != nullptr) {
+			g_threads->runOnUiThread(context, ShowCamp, nullptr);
+			Log(context, "Camp: the fire was used: stash and Campfire open.");
 			return false;
 		}
 		if (std::strcmp(target, "PausePanelMessage") == 0 && std::strcmp(command, "ExitGame") == 0) {

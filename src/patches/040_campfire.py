@@ -10,6 +10,10 @@
 - Hero screen: new title. It is the Campfire: the game's own figures are moved out of sight and
   the plugin draws the camp's figures (src/plugin/campfire.cpp).
 """
+import copy
+import struct
+
+CHEST_PRESET = 102  # objpreset.txt, Act 1: Bank (the stash chest)
 
 
 def strip_physics(node):
@@ -28,6 +32,24 @@ def strip_physics(node):
     return removed
 
 
+def without_object(ds1, preset_id):
+    """A town map (.ds1, version 18) without its objects of preset `preset_id`. Only the object
+    list changes; the rest is kept byte for byte. Returns (new map, how many were removed)."""
+    i32 = lambda at: struct.unpack_from("<i", ds1, at)[0]
+    if i32(0) != 18:
+        raise ValueError(f"town map version {i32(0)}, expected 18")
+    width, height, tag_type, at = i32(4) + 1, i32(8) + 1, i32(16), 24
+    for _ in range(i32(20)):                 # names of the tile files
+        at = ds1.index(b"\0", at) + 1
+    layers = i32(at) * 2 + i32(at + 4) + 1 + (1 if tag_type in (1, 2) else 0)   # walls+orients, floors, shadow, tag
+    count_at = at + 8 + layers * width * height * 4
+    count = i32(count_at)
+    records = [ds1[count_at + 4 + n * 20:count_at + 24 + n * 20] for n in range(count)]
+    kept = [r for r in records if struct.unpack_from("<2i", r) != (2, preset_id)]
+    end = count_at + 4 + count * 20
+    return ds1[:count_at] + struct.pack("<i", len(kept)) + b"".join(kept) + ds1[end:], count - len(kept)
+
+
 def patch(t):
     # The fire works like the stash chest: clicking it opens the stash, whose Campfire button
     # opens the roster. Only the columns that make the chest work are copied; the rest of the
@@ -40,6 +62,23 @@ def patch(t):
     fire_row = objects.first("Class", "RogueBonfire")
     for column in ("Selectable0", "Parm0", "Sync", "Left", "OperateFn", "PopulateFn"):
         fire_row[column] = chest_row.get(column, "")
+
+    # The fire is the camp's stash, so the Rogue Encampment's stash chest is taken out of the
+    # four town maps. The game ignores changed maps shipped under the game's own file names, so
+    # they get new names (darkest_town*.ds1, with a copy of the town's HD look under the same
+    # name) and the town's row in lvlprest.txt points at them. When the stash opens in this town,
+    # the plugin opens the Campfire roster with it (campfire.cpp).
+    town_row = t.table("lvlprest").first("Name", "Act 1 - Town 1")
+    for n, town in enumerate(("townn1", "towne1", "towns1", "townw1"), start=1):
+        new = f"darkest_{town}"
+        ds1, removed = without_object(t.raw(f"global/tiles/act1/town/{town}.ds1"), CHEST_PRESET)
+        if removed != 1:
+            raise ValueError(f"{town}.ds1 has {removed} stash chests, expected 1")
+        t.add_raw(f"global/tiles/act1/town/{new}.ds1", ds1)
+        look_path = f"hd/env/preset/act1/town/{town}.json"
+        t.add_data(f"hd/env/preset/act1/town/{new}.json", copy.deepcopy(t.data(look_path)))
+        del t.files[look_path]  # read only, not shipped
+        town_row[f"File{n}"] = f"Act1/Town/{new}.ds1"
 
     # The fire ring's 3D scenery carries collision shapes that could keep the mouse off the fire.
     prefab_path = "hd/env/model/global/prop/act1/town/prefab/pf_town_campfire01.json"
