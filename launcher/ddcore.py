@@ -243,7 +243,9 @@ def version_key(v):
 SHIPPED = ("modinfo.json", f"{MOD_NAME}.mpq/", "d2rloader/plugins/",
            # The Campfire: the mod's loader settings (more stash pages) and what the plugin reads.
            "d2rloader/metadata.json", "d2rloader/config/", "d2rloader/camp_data.txt",
-           "d2rloader/SaveSlots.layout.json")
+           "d2rloader/SaveSlots.layout.json",
+           # The plugin's own drops (guaranteed set/unique items).
+           "d2rloader/loot_data.txt")
 
 
 def collect_build(build_dir):

@@ -88,6 +88,19 @@ Plain, jargon-free language in docs and commit messages.
   each line. `cheat killmonster` kills one monster next to the player (handy to test clears).
 - `ExecuteConsoleCommand` returns true when the command was accepted, not when it worked; check
   the in-game console for errors.
+- A new monster row (a copy with its own Id) is invisible until `data/hd/character/monsters.json`
+  maps its Id to a model (`t.data("hd/character/monsters.json")[new] = models[old]`).
+- A monster drops at most 6 items per death. With negative Picks the entries drop in order, so a
+  guaranteed drop must be listed first; Corpsefire's book and Treehead's bonus, listed last, never
+  dropped. Quest items (Book of Skill: `quest`, `questdiffcheck` in misc.txt) only drop while their
+  quest is open; clear those fields to drop them anywhere.
+- Copying a whole levels.txt row also copies `Quest`. With Quest = 1 the game counts the level's
+  monsters for a quest, and an arena (which starts empty) completes it after a few kills.
+- Creating a Unique with `createItem` and `RandomQualityRecord` crashed the game right after it
+  succeeded. Give guaranteed set/unique items through a loot table instead.
+- Cave walls are floor tiles (walls hide in the tile sheets' walk flags, `.dt1`), so a room's
+  open space can't be read from the `.ds1` alone. Act I cave rooms are all 24x24 with at most an
+  8x8 open square; the Pit's wide areas are open rooms joined edge to edge.
 - A plugin can show, hide and find widgets (WidgetService) but not change their text. For text
   that varies, make one widget per case and show the right one (`tools/camp_layouts.py`).
 - The plugin hears the menus too: `FrontEndNavigation:ToFrontEnd` comes before the main menu

@@ -20,6 +20,7 @@
 
 #include "campfire.h"
 #include "camp.h"
+#include "route.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -98,6 +99,7 @@ bool        g_fireReady   = false;  // the Fire panel's layout is registered
 bool        g_wantFire    = false;  // when the main menu has loaded, go on to the Campfire
 bool        g_deleteMode  = false;  // Delete was pressed: the next hero clicked is buried
 std::string g_pendingPlay;          // the hero to load once the main menu is up
+std::string g_currentHero;          // the hero in the current game ("" when unknown or at the menu)
 std::string g_gearNow;              // what the hero in the current game wears (see RecordGear)
 
 struct Spot { int x = 0, y = 0, w = 0, h = 0; std::string px, py, pz, yaw, look; bool known = false; };
@@ -1216,6 +1218,18 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).");
 }
 
+auto RouteProgressFile() noexcept -> std::filesystem::path {
+	try {
+		const Lock lock(g_mutex);
+		if (g_live.empty()) {
+			return {};
+		}
+		return Route::ProgressFile(g_live, g_slot, g_currentHero.empty() ? "_unknown" : g_currentHero);
+	} catch (...) {
+		return {};
+	}
+}
+
 auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const char* command, const char* text) noexcept -> bool {
 	try {
 		const Lock lock(g_mutex);
@@ -1389,6 +1403,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			g_died = false;
 			g_reachedLevel = 0;
 			g_joinTime = fs::file_time_type::clock::now();
+			g_currentHero = g_pendingPlay;  // a hero clicked at the Campfire; a new hero is named below
 			g_pendingPlay.clear();
 			g_wantFire = false;
 			g_gearNow.clear();
@@ -1396,12 +1411,20 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			PoolClose(context, g_fire);
 			Close(context, g_curtainPanel);
 			break;
-		case Kind::LocalPlayerReady:
+		case Kind::LocalPlayerReady: {
 			g_inGame = true;
 			Camp::Unbench(g_live, g_slot);
+			const int made = g_pendingClass;
 			Reconcile(context, false);  // a hero that was just made joins the camp here
+			if (g_currentHero.empty() && made >= 0) {
+				if (const Camp::Hero* hero = g_camp.HeroOf(made)) {
+					g_currentHero = hero->name;
+				}
+			}
+			Log(context, "Camp: playing %s.", g_currentHero.empty() ? "an unknown hero (route progress is shared)" : g_currentHero.c_str());
 			Later(context, 2000, RecordGear);
 			break;
+		}
 		case Kind::PlayerLevelChanged:
 			g_reachedLevel = event->currentValue;
 			break;

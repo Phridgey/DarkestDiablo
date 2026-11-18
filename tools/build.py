@@ -125,6 +125,7 @@ class Tables:
         self.loaded = {}
         self.layouts = {}
         self.files = {}
+        self.loot_lines = []  # facts for the plugin's own drops, written to d2rloader/loot_data.txt
 
     def layout(self, name, change=True):
         """A vanilla menu layout as parsed JSON. With change=False it is only read, not shipped."""
@@ -276,6 +277,11 @@ def main():
     if loader.exists():
         shutil.copytree(loader, OUT.parent / "d2rloader", dirs_exist_ok=True)
     write_camp_data(t, OUT.parent / "d2rloader" / "camp_data.txt")
+    # Drops the plugin makes itself (src/patches/035_inifuss_loot.py), one fact per line:
+    #   "drop <level id> <monster class> <item level normal> <nightmare> <hell>"  a guaranteed set or unique
+    #   "unique <item code> <level>" / "set <item code> <level>"                  the candidates
+    (OUT.parent / "d2rloader" / "loot_data.txt").write_text("\n".join(t.loot_lines) + "\n", encoding="utf-8")
+    print(f"wrote: d2rloader/loot_data.txt ({len(t.loot_lines)} lines)")
 
     # The D2RLoader plugin (built by tools/build-plugin.cmd) goes in the mod's own plugin folder.
     plugin = ROOT / "build" / "plugin" / "darkestdiablo.dll"

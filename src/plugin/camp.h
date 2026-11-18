@@ -524,9 +524,15 @@ inline auto HeroNames(const fs::path& live) -> std::vector<std::string> {
 	return out;
 }
 
-// Moves every file of hero `name` out of the live folder into the graveyard.
+// Moves every file of hero `name` out of the live folder into the graveyard, with the hero's
+// route progress (route.h), so a later hero of the same name starts the act afresh.
 inline auto Bury(const fs::path& live, int slot, const std::string& name, std::string& error) -> bool {
-	const std::vector<fs::path> files = HeroFiles(live, name);
+	std::vector<fs::path> files = HeroFiles(live, name);
+	std::error_code ec;
+	const fs::path progress = SlotDir(live, slot) / "progress" / (name + ".txt");
+	if (fs::exists(progress, ec)) {
+		files.push_back(progress);
+	}
 	char stamp[32] {};
 	const std::time_t now = std::time(nullptr);
 	std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));

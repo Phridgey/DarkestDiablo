@@ -30,7 +30,7 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 ## Act I
 1. **Den of Evil** — forced quest. Akara gives a skill point back in town.
 2. **Blood Raven** — forced quest. Unlocks the mercenary.
-3. Fork (2 picks): **Blood Raven again** (MF) · **Mausoleum** (crafting hunt) · **Crypt** (XP grind)
+3. Fork (2 picks): **Rakanishu & Treehead** (MF, at the Tree of Inifuss) · **Mausoleum** (crafting hunt) · **Crypt** (XP grind)
 4. **Tristram** — forced. Quest + MF: rescue Cain, unlock identify.
 5. Fork (2 picks): **Pit** (MF) · **Countess** (crafting hunt, +2 bonus runes) ·
    **Horadric Malus** (XP grind; finishing earns an imbue)
@@ -96,9 +96,9 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 - First version: a list panel, opened by the town waypoint (or `dd-map`). Waypoints outside
   town keep Blizzard's list, so the player is never stranded. Next: draw it as a tree.
 
-## Fork 2 MF run: Rakanishu and Treehead (decided 2026-11-17)
-- Replaces the Pit as the MF option at the fork after Tristram (Pit / Countess / Malus becomes
-  Rakanishu+Treehead / Countess / Malus).
+## Fork 1 MF run: Rakanishu and Treehead (decided 2026-11-17, moved to fork 1 the same day)
+- The MF option at the fork after Blood Raven, replacing "Blood Raven again" (Rakanishu+Treehead /
+  Mausoleum / Crypt). The fork after Tristram keeps the Pit as its MF run.
 - Place: Treehead's usual spot in the Dark Wood, the Tree of Inifuss (Blizzard's `funktree`
   map piece), on a custom map far smaller than the Dark Wood so players can't wander off.
 - Fight: waves of Fallen and Fallen Shamans, then Rakanishu (superunique row 3) with his pack;
