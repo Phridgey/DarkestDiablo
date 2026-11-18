@@ -689,9 +689,11 @@ auto FireLayoutJson() -> std::string {
 		kids += enter("EnterIdle", false) + "," + enter("EnterReady", true) + ",";
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
-		FireButton("Options", 100, -640, "@d2r:OptionsHD", "PanelManager:OpenPanel:SettingsPanel", Med, "$LightButtonTextColor") + "," +
-		FireButton("Delete", 100, -500, "Retire", act + "delete-mode", Med, "$LightButtonTextColor") + "," +
-		FireButton("ExitGame", 100, -360, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit", Med, "$LightButtonTextColor") + "]}";
+		FireButton("Options", 100, -500, "@d2r:OptionsHD", "PanelManager:OpenPanel:SettingsPanel", Med, "$LightButtonTextColor") + "," +
+		FireButton("Delete", 100, -360, "Retire", act + "delete-mode", Med, "$LightButtonTextColor") + "]}";
+	// Exit Game in the top left corner (Sam), away from the buttons used while at the fire.
+	kids += ",{\"type\":\"Widget\",\"name\":\"ExitCorner\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":0.0}},\"children\":[" +
+		FireButton("ExitGame", 100, 60, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit", Med, "$LightButtonTextColor") + "]}";
 	kids += "," + VersionWidgetJson();
 	return "{\"type\":\"Panel\",\"name\":\"@PANEL@\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
 }
@@ -724,6 +726,7 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 	SetVisible(context, panel.c_str(), "TravelerAccept", traveler && Camp::State::Has(g_camp.offer, g_selectedClass));
 	SetVisible(context, panel.c_str(), "TravelerLater", traveler);
 	SetVisible(context, panel.c_str(), "LeftButtons", !traveler);
+	SetVisible(context, panel.c_str(), "ExitCorner", !traveler);
 	const bool ready = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr;
 	SetVisible(context, panel.c_str(), "EnterIdle", !traveler && !g_createMode && !ready);
 	SetVisible(context, panel.c_str(), "EnterReady", !traveler && !g_createMode && ready);
