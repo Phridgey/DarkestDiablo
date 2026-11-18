@@ -1016,12 +1016,86 @@ auto CurrentHero() -> std::string {
 	return names.size() == 1 ? names.front() : PlayedHero();
 }
 
+// ---- Camp heroes by the town fire ---------------------------------------------------------
+// The save's other heroes rest around the Rogue Encampment's fire as figures (046_camp_heroes.py:
+// a monster row per class and armor weight that wears the class's own body). They only stand
+// there; the game drops them when the hero leaves the game. Placed once per game, after the
+// position search found the fire.
+
+bool g_campHeroesPlaced = false;
+std::vector<std::string> g_campHeroQueue;  // console commands still to run, oldest first
+
+// Spots around the fire's middle, in sub-tiles: a ring with room for all 7 other classes.
+constexpr int CampRing[][2] = { { 9, 0 }, { 0, 9 }, { -9, 0 }, { 0, -9 }, { 7, 7 }, { -7, -7 }, { 7, -7 }, { -7, 7 } };
+
+// "lit", "med" or "hvy": how heavy the body armor the hero last wore is (camp_data.txt).
+auto ArmorWeight(const std::string& gear) -> const char* {
+	static const char* const names[] = { "lit", "med", "hvy" };
+	std::istringstream words(gear);
+	std::string word;
+	while (words >> word) {
+		const size_t colon = word.find(':');
+		const ItemLook* look = colon == std::string::npos ? nullptr : LookOf(word.substr(colon + 1));
+		if (look != nullptr && look->kind == 'b') {
+			const int torso = std::atoi(look->value.c_str());
+			return names[std::clamp(torso, 0, 2)];
+		}
+	}
+	return names[0];
+}
+
+void __cdecl RunCampHeroQueue(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_campHeroQueue.empty() || !g_inGame || g_levelId != RogueEncampment) {
+		g_campHeroQueue.clear();
+		return;
+	}
+	RunConsole(context, g_campHeroQueue.front().c_str());
+	g_campHeroQueue.erase(g_campHeroQueue.begin());
+	if (!g_campHeroQueue.empty()) {
+		Later(context, 150, RunCampHeroQueue);
+	}
+}
+
+void PlaceCampHeroes(const D2RL::PluginContext* context) {
+	if (g_campHeroesPlaced || !g_inGame || g_levelId != RogueEncampment) {
+		return;
+	}
+	const GameMemory::Pos fire = GameMemory::Fire();
+	if (!fire.ok) {
+		return;
+	}
+	g_campHeroesPlaced = true;
+	const std::string playing = CurrentHero();
+	int n = 0;
+	std::string names;
+	for (const auto& hero : g_camp.heroes) {
+		if (hero.name == playing || hero.cls < 0 || n >= static_cast<int>(std::size(CampRing))) {
+			continue;
+		}
+		std::string cls = Camp::ClassNames[hero.cls];
+		std::transform(cls.begin(), cls.end(), cls.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		g_campHeroQueue.push_back("location " + std::to_string(fire.x + CampRing[n][0]) + "," + std::to_string(fire.y + CampRing[n][1]));
+		g_campHeroQueue.push_back("cheat mspawn ddhero_" + cls + "_" + ArmorWeight(hero.gear));
+		names += (names.empty() ? "" : ", ") + hero.name;
+		++n;
+	}
+	if (n == 0) {
+		return;
+	}
+	g_campHeroQueue.push_back("location player");
+	Log(context, "Camp: %d other hero(es) rest by the fire: %s.", n, names.c_str());
+	Later(context, 50, RunCampHeroQueue);
+}
+
 void __cdecl LogMemoryScan(const D2RL::PluginContext* context, void*) noexcept {
 	if (GameMemory::Scanning()) {
 		Later(context, 1000, LogMemoryScan);
 		return;
 	}
 	Log(context, "Camp: %s", GameMemory::Report().c_str());
+	const Lock lock(g_mutex);
+	PlaceCampHeroes(context);
 }
 
 // In the Rogue Encampment: find the hero and the fire in memory (read only, gamememory.h).
@@ -1684,6 +1758,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			g_inGame = true;
 			Camp::Unbench(g_live, g_slot);
 			g_travelerLater = false;  // a traveler sent away with "Not now" waits by the fire again
+			g_campHeroesPlaced = false;
 			const int made = g_pendingClass;
 			Reconcile(context, false);  // a hero that was just made joins the camp here
 			if (g_currentHero.empty() && made >= 0) {

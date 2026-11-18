@@ -38,6 +38,11 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 6. **Death is final.** A fallen hero's files move to the graveyard, with everything it wore and
    carried. Its class locks again. Only the stash carries on.
 7. **The stash.** The game's shared stash, with 7 more pages. Each save has its own.
+8. **Heroes by the fire.** In the Rogue Encampment the save's other heroes rest around the fire,
+   each in its class's own body and the armor weight (light, medium, heavy) of the body armor it
+   last wore. They can't be clicked and don't talk. Exact item looks and weapons can't be shown:
+   they are monster figures (`046_camp_heroes.py`) wearing the class's look file, placed by the
+   plugin once the fire's position is known (`docs/game-memory.md`).
 
 ## Choices the engine forced
 
