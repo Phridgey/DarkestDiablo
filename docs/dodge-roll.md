@@ -58,7 +58,7 @@ less recovery. So since 0.11.9 Dodge takes:
   frame 20 so dodging is no faster than running; Sam didn't want to stand still, and the game
   can't force walking or a slow, so since 0.11.24 the dash itself lasts 20 frames (0.8 s, the
   time running its distance takes) and recovery is back at frame 2.
-- Fast, then slow (Sam, 2026-11-18, 0.11.57): the dash is quick again (8 frames, 0.32 s), and on
+- Fast, then slow (Sam, 2026-11-18, 0.11.58): the dash is quick again (8 frames, 0.32 s), and on
   landing the hero gets the game's own "slowed" state with 40% less movement speed for 29
   frames (1.16 s). That gives back exactly the ground the dash gained over running (see the
   numbers in the patch). The game has no "slow the caster" setting for Leap, so the slow rides on
