@@ -27,6 +27,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
@@ -113,6 +114,9 @@ bool g_slotsOpen = false;
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
 bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
+int  g_hoveredHero = -1;    // the class under the mouse at the Campfire (from the game's Hover messages)
+int  g_clickedHero = -1;    // the hero under the mouse when the left button went down (see WatchFireClicks)
+std::atomic<bool> g_watchingClicks { false };
 bool g_emptyFire = false;       // the hero screen is up with nobody at the fire, under the save slots
 bool g_travelerArrives = false; // the fire was used with a traveler waiting: portal and figure are showing
 bool g_travelerMode = false;
@@ -643,10 +647,16 @@ auto FireLayoutJson() -> std::string {
 		const int plateX = s.x + (s.w - 300) / 2;
 		// The name plate: a dark framed plaque with the name in gold and "Level N Class" under it.
 		const int plaqueX = s.x + (s.w - 380) / 2;
+		// The picked hero's plate glows red behind its frame, like the Enter button (Sam).
+		kids += "{\"type\":\"RectangleWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - 18) +
+			",\"y\":1432,\"width\":416,\"height\":164},\"color\":[0.85,0.05,0.02,0.55]}},";
 		kids += "{\"type\":\"NineTileImageWidget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\","
 			"\"backgroundColor\":[0.0,0.0,0.0,0.8],\"tileScale\":1.0,\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":1450,\"width\":380,\"height\":128}},\"children\":["
-			"{\"type\":\"TextBoxWidget\",\"name\":\"Name\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
+			"{\"type\":\"TextBoxWidget\",\"name\":\"Name" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
 			"\"style\":{\"pointSize\":\"$ExtraLargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorGoldYellow\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
+			// The same name in white, shown instead of the gold one while this hero is picked.
+			"{\"type\":\"TextBoxWidget\",\"name\":\"NameLit" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
+			"\"style\":{\"pointSize\":\"$ExtraLargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorWhite\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
 			"{\"type\":\"TextBoxWidget\",\"name\":\"Rank\",\"fields\":{\"rect\":{\"x\":0,\"y\":72,\"width\":380,\"height\":44},\"text\":\"Level " + std::to_string(hero.level) + " " + cls + "\","
 			"\"style\":{\"pointSize\":\"$MediumFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
 		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
@@ -713,8 +723,12 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 	SetVisible(context, panel.c_str(), "DeleteHint", g_deleteMode && !traveler);
 	for (const auto& hero : g_camp.heroes) {
 		const std::string cls = Camp::ClassNames[hero.cls];
+		const bool picked = hero.cls == g_chosenHero && !g_deleteMode && !traveler && !g_createMode;
 		SetVisible(context, panel.c_str(), cls.c_str(), !traveler);
 		SetVisible(context, panel.c_str(), ("Plate" + cls).c_str(), !g_deleteMode && !traveler);
+		SetVisible(context, panel.c_str(), ("Glow" + cls).c_str(), picked);
+		SetVisible(context, panel.c_str(), ("Name" + cls).c_str(), !picked);
+		SetVisible(context, panel.c_str(), ("NameLit" + cls).c_str(), picked);
 		SetVisible(context, panel.c_str(), ("Bury" + cls).c_str(), g_deleteMode && !traveler);
 	}
 	// While the traveler waits only the offer stands by the fire; after the choice the classes
@@ -771,6 +785,64 @@ void __cdecl ExitTimedOut(const D2RL::PluginContext* context, void*) noexcept {
 	}
 }
 
+// A click on a hero while another hero plays its long "step forward" animation: the game
+// ignores it and sends no Select at all (Sam's test, 0.11.63 log), but Sam wants the click to
+// change the pick. Runs a little after the click: if the game did not pick the hero by itself,
+// the plugin picks it (Enter, name plate) and asks the game to select its figure too.
+void __cdecl ConfirmFireClick(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	const int cls = g_clickedHero;
+	g_clickedHero = -1;
+	if (!g_atFire || g_deleteMode || g_createMode || g_travelerMode || cls < 0 || cls == g_chosenHero || g_camp.HeroOf(cls) == nullptr) {
+		return;
+	}
+	Log(context, "Camp: the game ignored a click on the %s (an animation was playing); picking it anyway.", Camp::ClassNames[cls]);
+	g_chosenHero = cls;
+	g_selectedClass = -1;
+	ShowDeleteMode(context);
+	Dispatch(context, "CharacterCreate", "Select", Camp::ClassNames[cls]);  // the figure steps forward, if the game lets it
+	g_chosenHero = cls;  // whatever the game answered, the click picked this hero
+	ShowDeleteMode(context);
+}
+
+void __cdecl NoteFireClick(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_atFire && g_hoveredHero >= 0 && g_hoveredHero != g_chosenHero) {
+		g_clickedHero = g_hoveredHero;
+		Later(context, 150, ConfirmFireClick);  // time for the game's own Select, when it sends one
+	}
+}
+
+// While the Campfire is up, watches the left mouse button (Windows' own mouse state; the SDK
+// passes no mouse clicks to plugins) and reports each click made in the game's window.
+void WatchFireClicks(const D2RL::PluginContext* context) {
+	if (g_watchingClicks.exchange(true) || g_threads == nullptr) {
+		return;
+	}
+	std::thread([context] {
+		bool down = false;
+		for (;;) {
+			{
+				const Lock lock(g_mutex);
+				if (!g_atFire) {
+					break;
+				}
+			}
+			const bool now = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+			if (!now && down) {  // released: the game's own Select comes on release too
+				DWORD pid = 0;
+				GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+				if (pid == GetCurrentProcessId()) {
+					g_threads->runOnUiThread(context, NoteFireClick, nullptr);
+				}
+			}
+			down = now;
+			std::this_thread::sleep_for(std::chrono::milliseconds(15));
+		}
+		g_watchingClicks = false;
+	}).detach();
+}
+
 // The hero screen has opened: lay the camp's figures over it.
 void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
@@ -783,7 +855,10 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 		g_createMode = g_camp.heroes.empty();  // a new save has nobody to pick: go straight to making a hero
 		g_travelerMode = TravelerWaits();       // a traveler waits: show only the offer first
 		g_chosenHero = -1;
+		g_hoveredHero = -1;
+		g_clickedHero = -1;
 		g_selectedClass = -1;
+		WatchFireClicks(context);
 		if (g_justRecruited >= 0) {             // after Accept: the new class steps in, name box ready
 			g_createMode = true;
 			g_selectedClass = g_justRecruited;
@@ -1753,6 +1828,13 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 		}
 		if (std::strcmp(target, "CharacterCreate") == 0) {
 			const int cls = Camp::ClassFromName(text);
+			// The game keeps sending Hover while a figure animates, so the plugin always knows
+			// which hero a click is meant for (see WatchFireClicks).
+			if (std::strcmp(command, "Hover") == 0) {
+				g_hoveredHero = cls;
+			} else if (std::strcmp(command, "Unhover") == 0 && cls == g_hoveredHero) {
+				g_hoveredHero = -1;
+			}
 			if (cls >= 0 && g_camp.HeroOf(cls) != nullptr) {  // a hero of ours: a click picks (or buries) it
 				if (std::strcmp(command, "Select") == 0) {
 					if (g_deleteMode) {

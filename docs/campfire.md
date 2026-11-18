@@ -15,8 +15,11 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    Continue, or Start New on an empty Delve. A started Delve has a delete icon, which asks twice.
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
-   with a name plate. Clicking a hero (or its plate) picks it and turns Enter red; Enter loads
-   it. Create brings out the name box for a new hero; on a save with no heroes yet the name box is out from the start. Options, Retire and Exit Game are
+   with a name plate. Clicking a hero picks it: its plate glows red with the name in white, and
+   Enter turns red; Enter loads it. A click on another hero counts even while the picked one
+   plays its long animation: the game ignores such clicks (it sends no Select), so the plugin
+   watches the left mouse button itself, picks the hero that was under the mouse (the game's
+   Hover messages say which) and asks the game to select its figure. Create brings out the name box for a new hero; on a save with no heroes yet the name box is out from the start. Options, Retire and Exit Game are
    on the left; Change save (or Escape) lays the save slots over the fire.
 3. **New heroes** stand at the same fire in the game's standard look, and are made the usual
    way (click, name, Create). Only classes that may join right now are shown:
