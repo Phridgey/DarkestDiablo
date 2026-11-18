@@ -57,6 +57,10 @@ less recovery. So since 0.11.9 Dodge takes:
 - Recovery: the hero can act again from frame 2 of the dash instead of Charge's 8.
 - Free (no weapon, damage, cost or cooldown), works in town, every class from level 1.
 
+In the tables the skill is called `DD Dodge` (skilldesc `dd dodge`): the Amazon already has a
+skill named Dodge, and a repeated name crashed the game at start (0.11.10: "Cannot load
+skills: row ... repeats ID 13" in d2rloader.log). Players still see "Dodge".
+
 Not possible yet: **one dodge per click.** The game repeats any skill while its button is held,
 no table setting stops that, and the plugin can't see mouse buttons.
 
