@@ -54,7 +54,9 @@ less recovery. So since 0.11.9 Dodge takes:
 - From Leap: the movement. Same distance every time toward the cursor, stopping at walls.
 - From Charge: the poses (the hero's run), the look and sound on screen, the speed (300%, twice
   Charge's), and it can't be interrupted by hits.
-- Recovery: the hero can act again from frame 2 of the dash instead of Charge's 8.
+- Recovery: first cut to frame 2 (0.11.9). Since 0.11.15 (Sam: no travel advantage) the hero
+  can act again only from frame 20 (0.8 s), the time running the same distance takes (distance
+  7 / run speed 9 a second). The dash itself stays fast.
 - Free (no weapon, damage or cost), works in town, every class from level 1.
 - Cooldown (Sam, 0.11.13): 1.5 seconds (38 frames; the game counts 25 frames a second).
 

@@ -13,8 +13,8 @@ effects, animation and timing" of Charge):
   toward the cursor (min and max range set equal) and stops at walls.
 - From the Paladin's Charge: the poses (the hero's own run), the look and sound on the hero's
   screen ("clt" functions, start sound), its speed, and it can't be interrupted by hits.
-  Recovery after the dash is cut by 75% (Charge's "seqinput", the frame where the hero can act
-  again: 8 -> 2).
+  The frame where the hero can act again (Charge's "seqinput") is set so a dodge takes as long
+  as running the same distance: a burst to get out of danger, never a faster way to travel.
 
 Every class gets it the way every class gets Throw and Kick: through a free "Skill N" slot in
 charstats.txt. Put it on the right mouse button (or a skill hotkey) to use it.
@@ -34,7 +34,13 @@ DESC = "dd dodge"
 DISTANCE = 7          # Leap's "Range" (min and max equal, so every dodge is the same length). Leap: 8 to 30.
 MIN_FRAMES = 6        # Leap's "Minimum Airborne Frames" (Leap: 8): the shortest a dodge can take.
 SPEED = 300           # Speed %, read as "Velocity %" by Charge's code and "Leap Speed %" by Leap's (Charge: 150).
-RECOVERY_FRAME = 2    # Charge's "seqinput" (Charge: 8): 75% less recovery.
+# No travel advantage (Sam, 2026-11-18): a dodge must take as long as running its distance.
+# Run speed is charstats "RunVelocity" (9 for every class) in the same units as Leap's range
+# (sub-tiles a second; the game shows both as yards by multiplying by 2/3). So running 7 takes
+# 7 / 9 s = about 0.78 s = 20 frames. The dash itself stays fast; the hero can't act again until
+# frame RECOVERY_FRAME, so a dodge never gets anywhere sooner than running would.
+RUN_VELOCITY = 9
+RECOVERY_FRAME = -(-DISTANCE * 25 // RUN_VELOCITY)  # rounded up: 20. Was 2 (Charge: 8).
 COOLDOWN_FRAMES = 38  # Cooldown in frames (25 a second): 38 = 1.52 s, the nearest to Sam's 1.5 s. Meteor uses 30.
 
 STRINGS = {
