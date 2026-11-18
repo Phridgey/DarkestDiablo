@@ -884,6 +884,7 @@ void __cdecl ShowTraveler(const D2RL::PluginContext* context, void*) noexcept {
 	}
 	const std::string panel = FullName(TravelerPanel);
 	for (int place = 0; place < Camp::OfferSize; ++place) {
+		SetVisible(context, panel.c_str(), ("Offer" + std::to_string(place)).c_str(), place < static_cast<int>(g_camp.offer.size()));
 		for (int c = 0; c < Camp::ClassCount; ++c) {
 			const bool show = place < static_cast<int>(g_camp.offer.size()) && g_camp.offer[place] == c;
 			SetVisible(context, panel.c_str(), ("Offer" + std::to_string(place) + Camp::ClassNames[c]).c_str(), show);
@@ -896,18 +897,7 @@ void __cdecl ShowTraveler(const D2RL::PluginContext* context, void*) noexcept {
 
 void __cdecl ShowCamp(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
-	if (!Open(context, g_campPanel, "campfire")) {
-		return;
-	}
-	const std::string panel = FullName(CampPanel);
-	for (int c = 0; c < Camp::ClassCount; ++c) {
-		const bool hero = g_camp.HeroOf(c) != nullptr;
-		const bool recruit = Camp::State::Has(g_camp.recruits, c);
-		const std::string name = Camp::ClassNames[c];
-		SetVisible(context, panel.c_str(), ("Hero" + name).c_str(), hero);
-		SetVisible(context, panel.c_str(), ("Recruit" + name).c_str(), recruit);
-		SetVisible(context, panel.c_str(), ("Locked" + name).c_str(), !hero && !recruit);
-	}
+	Open(context, g_campPanel, "campfire");  // one button: rest, which saves and goes to the Campfire scene
 }
 
 void __cdecl LeaveGame(const D2RL::PluginContext* context, void*) noexcept {
@@ -1107,11 +1097,24 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 	} else if (StartsWith(action, "slot-")) {
 		PickSlot(context, std::atoi(action + 5));
 	} else if (StartsWith(action, "recruit-")) {
-		const int cls = Camp::ClassFromName(action + 8);
+		// The traveler's buttons say which place was picked (recruit-place-<n>); the class
+		// offered there is in the camp's offer. A hidden button still takes clicks, so the
+		// panel can't have one button per class.
+		int cls = -1;
+		if (StartsWith(action, "recruit-place-")) {
+			const int place = std::atoi(action + 14);
+			if (place >= 0 && place < static_cast<int>(g_camp.offer.size())) {
+				cls = g_camp.offer[place];
+			}
+		} else {
+			cls = Camp::ClassFromName(action + 8);
+		}
 		Close(context, g_travelerPanel);
-		if (Camp::Recruit(g_camp, cls)) {
+		if (cls >= 0 && Camp::Recruit(g_camp, cls)) {
 			Camp::SaveState(g_live, g_slot, g_camp);
 			Log(context, "Camp: the %s joins the camp as a recruit. %s", Camp::ClassNames[cls], Describe().c_str());
+		} else {
+			Log(context, "Camp: %s was not on offer. %s", action, Describe().c_str());
 		}
 	} else if (std::strcmp(action, "traveler-later") == 0) {
 		Close(context, g_travelerPanel);

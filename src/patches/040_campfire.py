@@ -60,8 +60,12 @@ def patch(t):
     objects = t.table("objects")
     chest_row = objects.first("Class", "Bank")
     fire_row = objects.first("Class", "RogueBonfire")
-    for column in ("Selectable0", "Parm0", "Sync", "Left", "OperateFn", "PopulateFn"):
+    for column in ("Selectable0", "Parm0", "Sync", "OperateFn", "PopulateFn"):
         fire_row[column] = chest_row.get(column, "")
+    # A bigger click box than the fire's own picture, so it can be used from any side of the
+    # pit. With CollisionSubst 1 the game uses Left/Top/Width/Height (screen pixels around the
+    # fire's foot) as the click box, like the town portal and the Inifuss tree.
+    fire_row.update({"CollisionSubst": "1", "Left": "-90", "Top": "-100", "Width": "180", "Height": "140"})
 
     # The fire is the camp's stash, so the Rogue Encampment's stash chest is taken out of the
     # four town maps. The game ignores changed maps shipped under the game's own file names, so
