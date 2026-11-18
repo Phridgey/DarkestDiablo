@@ -59,8 +59,9 @@ less recovery. So since 0.11.9 Dodge takes:
   can't force walking or a slow, so since 0.11.24 the dash itself lasts 20 frames (0.8 s, the
   time running its distance takes) and recovery is back at frame 2.
 - Fast, then slow (Sam, 2026-11-18, 0.11.58): the dash is quick again (8 frames, 0.32 s), and on
-  landing the hero gets the game's own "slowed" state with 40% less movement speed for 29
-  frames (1.16 s). That gives back exactly the ground the dash gained over running (see the
+  landing the hero is slowed by 40% for 29 frames (1.16 s). Since 0.11.60 the dash goes 8
+  instead of 7 (Sam: about 15% further), so the slow lasts 36 frames (1.44 s), and the hero
+  glows green like poison (green life globe too) while slowed, so you can see it. That gives back exactly the ground the dash gained over running (see the
   numbers in the patch). The game has no "slow the caster" setting for Leap, so the slow rides on
   an invisible landing pulse copied from Battle Orders' shout, which gives a state to friendly
   units it touches.
@@ -100,6 +101,6 @@ Use a new hero (skills from `charstats.txt` are given when a hero is made).
 3. Can you act again sooner after it than before?
 4. Stand in a pack of melee monsters and next to an archer, and dash through them. Do hits land
    mid-dash?
-5. After landing, does the hero walk and run noticeably slower for about a second? Does a
-   blue "slowed" look or an icon show? Is it gone after about a second?
+5. After landing, does the hero turn green and walk and run noticeably slower? Is it gone
+   after about a second and a half?
 6. Any crash or error in `d2rloader/logs/d2rloader.log`.

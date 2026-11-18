@@ -16,7 +16,7 @@ effects, animation and timing" of Charge):
 - Fast, then slow (Sam, 2026-11-18): the dash itself is quick, and on landing the hero is
   slowed for a short time, so a dodge plus its slow never covers ground faster than running.
   The slow rides on a landing pulse built like Battle Orders' shout (it gives a state to
-  friendly units it touches), carrying the game's own "slowed" state with less movement speed.
+  friendly units it touches), carrying a slow that also tints the hero green like poison.
   Untested: whether the pulse touches the hero who made it.
 
 Every class gets it the way every class gets Throw and Kick: through a free "Skill N" slot in
@@ -34,19 +34,23 @@ NAME = "DD Dodge"
 DESC = "dd dodge"
 
 # Tuning. D2 runs at 25 frames a second. PoE2's roll: about 3.7 metres in a bit under a second.
-DISTANCE = 7          # Leap's "Range" (min and max equal, so every dodge is the same length). Leap: 8 to 30.
+DISTANCE = 8          # Leap's "Range" (min and max equal, so every dodge is the same length). Leap: 8 to 30.
+                      # Was 7; Sam (2026-11-18) wanted about 15% further, and 8 is the nearest whole step.
 SPEED = 300           # Speed %, read as "Velocity %" by Charge's code and "Leap Speed %" by Leap's (Charge: 150).
 MIN_FRAMES = 8        # Leap's "Minimum Airborne Frames" (Leap's own value): the dash takes 0.32 s.
 # No travel advantage (Sam, 2026-11-18): a dodge must never cover ground faster than running.
 # Run speed is charstats "RunVelocity" (9 for every class) in the same units as Leap's range
 # (sub-tiles a second; the game shows both as yards by multiplying by 2/3). In the time the dash
-# takes (8 frames) running covers 9 * 8/25 = 2.9, so the dash gains 7 - 2.9 = 4.1. After landing
-# the hero is slowed by SLOW_PERCENT until running slower has given those 4.1 back:
-# 9 * 0.40 * t = 4.1, t = 1.14 s = 29 frames.
+# takes (8 frames) running covers 9 * 8/25 = 2.9, so the dash gains 8 - 2.9 = 5.1. After landing
+# the hero is slowed by SLOW_PERCENT until running slower has given those 5.1 back:
+# 9 * 0.40 * t = 5.1, t = 1.42 s = 36 frames.
 RUN_VELOCITY = 9
 SLOW_PERCENT = 40
 SLOW_FRAMES = -(-(DISTANCE * 25 - RUN_VELOCITY * MIN_FRAMES) * 100 // (RUN_VELOCITY * SLOW_PERCENT))
-SLOW_STATE = "slowed"  # the game's own state (no picture on the hero); carries the slow below.
+# Our own state for the slow, so the hero can be tinted green like poison while it lasts
+# (Sam, 2026-11-18). A copy of the game's plain "slowed" state with poison's colours, light
+# and green life globe; poison's damage comes from separate stats, so this one does no harm.
+SLOW_STATE = "dd dodge slow"
 MISSILE = "dd dodge slow"  # the landing pulse that gives the state (copied from Battle Orders')
 RECOVERY_FRAME = 2    # Charge's "seqinput" (Charge: 8).
 COOLDOWN_FRAMES = 6   # Cooldown in frames (25 a second): 6 = 0.24 s, the nearest to Sam's 250 ms (was 1.5 s).
@@ -99,6 +103,20 @@ def patch(t):
     for i in range(2, 7):  # only the one stat above
         skills.rows[-1][f"aurastat{i}"] = ""
         skills.rows[-1][f"aurastatcalc{i}"] = ""
+
+    try:
+        states = t.table("states")
+    except FileNotFoundError:
+        states = None  # a table copy without its own states.txt uses the main one
+    if states is not None:
+        if states.find("state", SLOW_STATE):
+            raise RuntimeError(f"state {SLOW_STATE!r} already exists; names must be unique")
+        state_id = max(int(r["*ID"]) for r in states.rows if r["*ID"].isdigit()) + 1
+        poison = states.first("state", "poison")
+        states.add_copy("state", "slowed", **{
+            "state": SLOW_STATE, "*ID": str(state_id),
+            **{c: poison[c] for c in ("green", "colorpri", "colorshift", "light-r", "light-g", "light-b")},
+        })
 
     try:
         missiles = t.table("missiles")
