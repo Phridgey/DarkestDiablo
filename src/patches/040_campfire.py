@@ -44,7 +44,11 @@ def patch(t):
     # fire's foot) as the click box, like the town portal and the Inifuss tree. That box only
     # counts in the old graphics: in the new ones the game tests the mouse against the fire's 3D
     # model (0.11.52: a 40% bigger box changed nothing in game), see the HD part below.
-    fire_row.update({"CollisionSubst": "1", "Left": "-126", "Top": "-128", "Width": "252", "Height": "196"})
+    # 0.11.56: the reach Sam saw with 0.11.53/0.11.55 (about 300 screen pixels at his resolution
+    # from the fire's middle) matches this box, not the hidden model's size (changing the model
+    # from 1.4 to 1.15 changed nothing), so the box is cut to end at the stones' outer edge
+    # (about 0.6 of 252 x 196), around the same middle.
+    fire_row.update({"CollisionSubst": "1", "Left": "-75", "Top": "-88", "Width": "150", "Height": "116"})
 
     # New graphics: a hidden copy of the fire's own model, bigger, under the real one, so the
     # mouse finds the fire over a wider area while it looks the same. Hidden models do take clicks
