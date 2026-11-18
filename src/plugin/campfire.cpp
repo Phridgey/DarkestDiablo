@@ -822,10 +822,27 @@ void __cdecl GoToEmptyFire(const D2RL::PluginContext* context, void*) noexcept {
 	Dispatch(context, "FrontEndNavigation", "ToCharacterCreate");
 }
 
+// Over the empty fire nothing of the game's hero screen is used: its name box, version picker,
+// Create and the toggle beside them are hidden (the game shows the name box again by itself, so
+// this runs a few times while the screen settles).
+void __cdecl HideCreateParts(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (!g_emptyFire) {
+		return;
+	}
+	for (const char* part : { "InputContainer", "NameLabel", "InputBackground", "InputText", "HardcoreCheckbox", "LadderToggle",
+	         "GameVersionContainer", "ToGame" }) {
+		SetVisible(context, "CharacterCreatePanel", part, false);
+	}
+}
+
 void __cdecl ShowEmptyFire(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
+	HideCreateParts(context, nullptr);
 	Close(context, g_curtainPanel);
 	ShowSlots(context, nullptr);
+	Later(context, 300, HideCreateParts);
+	Later(context, 1000, HideCreateParts);
 	Log(context, "Camp: the save slots, over the empty fire.");
 }
 
