@@ -58,6 +58,12 @@ less recovery. So since 0.11.9 Dodge takes:
   frame 20 so dodging is no faster than running; Sam didn't want to stand still, and the game
   can't force walking or a slow, so since 0.11.24 the dash itself lasts 20 frames (0.8 s, the
   time running its distance takes) and recovery is back at frame 2.
+- Fast, then slow (Sam, 2026-11-18, 0.11.56): the dash is quick again (8 frames, 0.32 s), and on
+  landing the hero gets the game's own "slowed" state with 40% less movement speed for 29
+  frames (1.16 s). That gives back exactly the ground the dash gained over running (see the
+  numbers in the patch). The game has no "slow the caster" setting for Leap, so the slow rides on
+  an invisible landing pulse copied from Battle Orders' shout, which gives a state to friendly
+  units it touches.
 - Free (no weapon, damage or cost), works in town, every class from level 1.
 - Cooldown: 1.5 s in 0.11.13, then 250 ms (Sam, 0.11.19): 6 frames = 0.24 s (the game counts 25 frames a second).
 
@@ -70,6 +76,14 @@ cursor (or the clicked monster); no table setting or plugin service changes the 
 
 Not possible yet: **one dodge per click.** The game repeats any skill while its button is held,
 no table setting stops that, and the plugin can't see mouse buttons.
+
+Unknown until tested: **whether the slow reaches the hero.** Battle Orders gives the caster
+its state through its own code and the pulse only to others, so the pulse may skip the hero
+who made it. If so, the dodge is fast with no slow, and the next idea is needed.
+
+Known gap: dodging again as soon as the cooldown allows (0.24 s) chains fast dashes, and each
+new dash moves at full speed even while slowed. To rule that out the cooldown would have to be
+about 0.8 s (the time running the distance takes).
 
 Unknown until tested: Leap's movement runs in the game's rules and Charge's in what the hero's
 screen shows, so the hero might be drawn running toward the cursor and then snap to where Leap
@@ -86,4 +100,6 @@ Use a new hero (skills from `charstats.txt` are given when a hero is made).
 3. Can you act again sooner after it than before?
 4. Stand in a pack of melee monsters and next to an archer, and dash through them. Do hits land
    mid-dash?
-5. Any crash or error in `d2rloader/logs/d2rloader.log`.
+5. After landing, does the hero walk and run noticeably slower for about a second? Does a
+   blue "slowed" look or an icon show? Is it gone after about a second?
+6. Any crash or error in `d2rloader/logs/d2rloader.log`.

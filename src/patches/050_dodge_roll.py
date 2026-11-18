@@ -1,7 +1,7 @@
 """Dodge: a quick dash every class has, modelled on how Path of Exile 2's roll plays.
 
 What we take from PoE2 is only how it behaves (see docs/dodge-roll.md): a fast move of set
-length toward the cursor, no mana cost, a 1.5 second cooldown, usable in town. None of GGG's files,
+length toward the cursor, no mana cost, a short cooldown, usable in town. None of GGG's files,
 animations or code are used.
 
 How it is built: the game has no free-form "move here fast" in its tables, only skills whose
@@ -13,8 +13,11 @@ effects, animation and timing" of Charge):
   toward the cursor (min and max range set equal) and stops at walls.
 - From the Paladin's Charge: the poses (the hero's own run), the look and sound on the hero's
   screen ("clt" functions, start sound), its speed, and it can't be interrupted by hits.
-  The dash lasts as long as running the same distance takes, so it gets the hero out of danger
-  but is never a faster way to travel; the hero can act again right after (frame 2).
+- Fast, then slow (Sam, 2026-11-18): the dash itself is quick, and on landing the hero is
+  slowed for a short time, so a dodge plus its slow never covers ground faster than running.
+  The slow rides on a landing pulse built like Battle Orders' shout (it gives a state to
+  friendly units it touches), carrying the game's own "slowed" state with less movement speed.
+  Untested: whether the pulse touches the hero who made it.
 
 Every class gets it the way every class gets Throw and Kick: through a free "Skill N" slot in
 charstats.txt. Put it on the right mouse button (or a skill hotkey) to use it.
@@ -33,14 +36,18 @@ DESC = "dd dodge"
 # Tuning. D2 runs at 25 frames a second. PoE2's roll: about 3.7 metres in a bit under a second.
 DISTANCE = 7          # Leap's "Range" (min and max equal, so every dodge is the same length). Leap: 8 to 30.
 SPEED = 300           # Speed %, read as "Velocity %" by Charge's code and "Leap Speed %" by Leap's (Charge: 150).
-# No travel advantage (Sam, 2026-11-18): a dodge must take as long as running its distance,
-# without standing still (Sam: no pause, and the game can't force walking). Run speed is
-# charstats "RunVelocity" (9 for every class) in the same units as Leap's range (sub-tiles a
-# second; the game shows both as yards by multiplying by 2/3). So running 7 takes 7 / 9 s =
-# about 0.78 s = 20 frames, and the dash itself is made to last that long (Leap's minimum
-# airborne frames). The hero keeps moving the whole time and can act again right after.
+MIN_FRAMES = 8        # Leap's "Minimum Airborne Frames" (Leap's own value): the dash takes 0.32 s.
+# No travel advantage (Sam, 2026-11-18): a dodge must never cover ground faster than running.
+# Run speed is charstats "RunVelocity" (9 for every class) in the same units as Leap's range
+# (sub-tiles a second; the game shows both as yards by multiplying by 2/3). In the time the dash
+# takes (8 frames) running covers 9 * 8/25 = 2.9, so the dash gains 7 - 2.9 = 4.1. After landing
+# the hero is slowed by SLOW_PERCENT until running slower has given those 4.1 back:
+# 9 * 0.40 * t = 4.1, t = 1.14 s = 29 frames.
 RUN_VELOCITY = 9
-MIN_FRAMES = -(-DISTANCE * 25 // RUN_VELOCITY)  # Leap's "Minimum Airborne Frames" (Leap: 8): 20.
+SLOW_PERCENT = 40
+SLOW_FRAMES = -(-(DISTANCE * 25 - RUN_VELOCITY * MIN_FRAMES) * 100 // (RUN_VELOCITY * SLOW_PERCENT))
+SLOW_STATE = "slowed"  # the game's own state (no picture on the hero); carries the slow below.
+MISSILE = "dd dodge slow"  # the landing pulse that gives the state (copied from Battle Orders')
 RECOVERY_FRAME = 2    # Charge's "seqinput" (Charge: 8).
 COOLDOWN_FRAMES = 6   # Cooldown in frames (25 a second): 6 = 0.24 s, the nearest to Sam's 250 ms (was 1.5 s).
 
@@ -79,10 +86,35 @@ def patch(t):
         "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": str(COOLDOWN_FRAMES), "globaldelay": "",
         "InTown": "1", "leftskill": "0", "rightskill": "1", "stsoundclass": "",
         "Param1": str(DISTANCE), "Param2": str(DISTANCE),
-        "Param3": "0", "Param4": "0", "srvmissilea": "",  # no knockback on landing
+        "Param3": "0", "Param4": "0",  # no knockback on landing
         "Param5": str(MIN_FRAMES), "Param7": str(SPEED), "calc2": str(SPEED),
         "seqinput": str(RECOVERY_FRAME),
+        # The slow after landing: Leap's code fires srvmissilea where the hero lands (Leap's own
+        # is its knockback), and our pulse gives friends it touches auratargetstate with these
+        # stats for auralencalc frames, the way Battle Orders does.
+        "srvmissilea": MISSILE, "aurastate": "", "auratargetstate": SLOW_STATE,
+        "auralencalc": str(SLOW_FRAMES), "aurastat1": "velocitypercent",
+        "aurastatcalc1": str(-SLOW_PERCENT),
     })
+    for i in range(2, 7):  # only the one stat above
+        skills.rows[-1][f"aurastat{i}"] = ""
+        skills.rows[-1][f"aurastatcalc{i}"] = ""
+
+    try:
+        missiles = t.table("missiles")
+    except FileNotFoundError:
+        missiles = None  # a table copy without its own missiles.txt uses the main one
+    if missiles is not None:
+        if missiles.find("Missile", MISSILE):
+            raise RuntimeError(f"missile {MISSILE!r} already exists; names must be unique")
+        missile_id = max(int(r["*ID"]) for r in missiles.rows if r["*ID"].isdigit()) + 1
+        # Battle Orders' shout (hits friends and gives them the skill's state), but invisible,
+        # silent, short-lived and hero-sized.
+        missiles.add_copy("Missile", "battleorders", **{
+            "Missile": MISSILE, "*ID": str(missile_id), "CelFile": "null", "TravelSound": "",
+            "Vel": "0", "MaxVel": "0", "Accel": "0", "Range": "4", "AnimLen": "1", "Trans": "0",
+            "Red": "0", "Green": "0", "Blue": "0", "NumDirections": "1", "Size": "2",
+        })
 
     desc = t.table("skilldesc")
     desc.add_copy(
