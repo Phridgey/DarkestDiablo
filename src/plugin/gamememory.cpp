@@ -22,6 +22,7 @@ namespace {
 // against this build in game, see docs/game-memory.md).
 constexpr std::size_t UnitType      = 0x00;  // uint32: 0 player, 1 monster, 2 object
 constexpr std::size_t UnitClass     = 0x04;  // uint32: class (players) or objects.txt row (objects)
+constexpr std::size_t UnitId        = 0x08;  // uint32: the unit's number, which picks its bucket
 constexpr std::size_t UnitData      = 0x10;  // pointer: PlayerData (players: the name comes first)
 constexpr std::size_t UnitPath      = 0x38;  // pointer: the unit's path
 constexpr std::size_t PathDynamicX  = 0x02;  // uint16: players and monsters, in sub-tiles
@@ -32,6 +33,8 @@ constexpr uint32_t    TypePlayer    = 0;
 constexpr uint32_t    TypeObject    = 2;
 constexpr uint32_t    FireRow       = 39;     // objects.txt: RogueBonfire
 constexpr uint32_t    FrozenBuild   = 95032;  // D2R_VERSION 3.4.95032
+constexpr uintptr_t   Buckets       = 128;    // the unit list: per unit kind, 128 chains of units
+constexpr std::size_t NextTries[]   = { 0x150, 0x158 };  // where a unit keeps the next unit of its chain
 
 std::mutex             g_lock;
 std::atomic<bool>      g_scanning { false };
@@ -39,6 +42,17 @@ uintptr_t              g_heroUnit = 0;
 Pos                    g_fire;
 std::string            g_report = "no scan yet";
 uint64_t               g_scanStarted = 0;  // GetTickCount64 when the running scan began
+
+// Where the game's unit list sits: a fixed place inside a game module, found once by the slow
+// search and saved next to the plugin (darkestdiablo-unitlist.txt), so later games read it
+// straight away.
+struct UnitList {
+	std::wstring module;      // file name of the module that holds it
+	uintptr_t    offset = 0;  // from the module's start to the list of player units
+	std::size_t  next = 0;    // where a unit keeps the next unit of its chain
+};
+UnitList g_list;
+bool     g_listLoaded = false;
 
 template <typename T>
 auto Read(uintptr_t address, T& out) -> bool {
@@ -71,6 +85,173 @@ auto FireAt(uintptr_t unit) -> Pos {
 	return { static_cast<int>(x), static_cast<int>(y), true };
 }
 
+auto ListFile() -> std::wstring {
+	HMODULE self = nullptr;
+	wchar_t path[MAX_PATH] {};
+	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+	        reinterpret_cast<LPCWSTR>(&ListFile), &self) || GetModuleFileNameW(self, path, MAX_PATH) == 0) {
+		return {};
+	}
+	std::wstring file(path);
+	const auto slash = file.find_last_of(L"\\/");
+	return (slash == std::wstring::npos ? std::wstring() : file.substr(0, slash + 1)) + L"darkestdiablo-unitlist.txt";
+}
+
+void LoadList() {
+	if (g_listLoaded) {
+		return;
+	}
+	g_listLoaded = true;
+	FILE* in = _wfopen(ListFile().c_str(), L"r");
+	if (in == nullptr) {
+		return;
+	}
+	wchar_t module[MAX_PATH] {};
+	unsigned long long offset = 0, next = 0;
+	unsigned build = 0;
+	if (fwscanf(in, L"%u %259ls %llx %llx", &build, module, &offset, &next) == 4 && build == FrozenBuild) {
+		g_list = { module, static_cast<uintptr_t>(offset), static_cast<std::size_t>(next) };
+	}
+	fclose(in);
+}
+
+void SaveList() {
+	FILE* out = _wfopen(ListFile().c_str(), L"w");
+	if (out == nullptr) {
+		return;
+	}
+	fwprintf(out, L"%u %ls %llx %llx\n", FrozenBuild, g_list.module.c_str(), static_cast<unsigned long long>(g_list.offset),
+		static_cast<unsigned long long>(g_list.next));
+	fclose(out);
+}
+
+// Calls `unit(address)` for every unit of one kind (0 players, 2 objects) in the list at `base`.
+template <typename F>
+void ForEachListed(uintptr_t base, uint32_t kind, std::size_t next, F&& unit) {
+	for (uintptr_t bucket = 0; bucket < Buckets; ++bucket) {
+		uintptr_t at = 0;
+		if (!Read(base + (kind * Buckets + bucket) * 8, at)) {
+			return;
+		}
+		for (int steps = 0; at != 0 && steps < 4096; ++steps) {
+			unit(at);
+			if (!Read(at + next, at)) {
+				break;
+			}
+		}
+	}
+}
+
+// True when the hero's name (with its ending zero) starts the player data of `unit`.
+auto NamedAs(uintptr_t unit, const std::string& name) -> bool {
+	uintptr_t data = 0;
+	char text[32] {};
+	return name.size() < sizeof(text) && Read(unit + UnitData, data) && Read(data, text) &&
+	       std::memcmp(text, name.c_str(), name.size() + 1) == 0;
+}
+
+// The fire unit nearest the hero, from the list.
+auto ListedFire(uintptr_t base, std::size_t next, Pos hero) -> Pos {
+	Pos fire;
+	long long best = -1;
+	ForEachListed(base, TypeObject, next, [&](uintptr_t unit) {
+		uint32_t type = 99, row = 0;
+		if (!Read(unit + UnitType, type) || type != TypeObject || !Read(unit + UnitClass, row) || row != FireRow) {
+			return;
+		}
+		const Pos p = FireAt(unit);
+		const long long dx = p.x - hero.x, dy = p.y - hero.y;
+		if (p.ok && (best < 0 || dx * dx + dy * dy < best)) {
+			best = dx * dx + dy * dy;
+			fire = p;
+		}
+	});
+	return fire;
+}
+
+// The quick way: hero and fire straight from the saved unit list. False if it isn't known.
+auto FromList(const std::string& name, uintptr_t& hero, Pos& heroPos, Pos& fire) -> bool {
+	LoadList();
+	if (g_list.module.empty()) {
+		return false;
+	}
+	const HMODULE module = GetModuleHandleW(g_list.module.c_str());
+	if (module == nullptr) {
+		return false;
+	}
+	const uintptr_t base = reinterpret_cast<uintptr_t>(module) + g_list.offset;
+	hero = 0;
+	ForEachListed(base, TypePlayer, g_list.next, [&](uintptr_t unit) {
+		if (hero == 0 && NamedAs(unit, name) && HeroAt(unit).ok) {
+			hero = unit;
+		}
+	});
+	if (hero == 0) {
+		return false;
+	}
+	heroPos = HeroAt(hero);
+	fire = ListedFire(base, g_list.next, heroPos);
+	return true;
+}
+
+// After the slow search found the hero: find the unit list that holds it, inside a game module,
+// and save where it is. The list entry for the hero sits at list + bucket * 8, the bucket being
+// the hero's number mod 128. Every place in a module's writable memory that holds the hero's
+// address is tried, and kept only if the list there also holds object units in their chains.
+auto FindList(uintptr_t hero, Pos heroPos) -> std::string {
+	uint32_t id = 0;
+	if (!Read(hero + UnitId, id)) {
+		return "unit list: hero number unreadable";
+	}
+	MEMORY_BASIC_INFORMATION info {};
+	int hits = 0;
+	for (uintptr_t at = 0x10000; at < 0x7FFFFFFF0000ULL;) {
+		if (VirtualQuery(reinterpret_cast<LPCVOID>(at), &info, sizeof(info)) == 0) {
+			break;
+		}
+		const uintptr_t start = reinterpret_cast<uintptr_t>(info.BaseAddress), end = start + info.RegionSize;
+		if (info.State == MEM_COMMIT && info.Type == MEM_IMAGE && (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY)) != 0 &&
+		    (info.Protect & PAGE_GUARD) == 0) {
+			std::vector<uintptr_t> words(info.RegionSize / 8);
+			SIZE_T got = 0;
+			ReadProcessMemory(GetCurrentProcess(), info.BaseAddress, words.data(), words.size() * 8, &got);
+			for (std::size_t i = 0; i < got / 8; ++i) {
+				if (words[i] != hero) {
+					continue;
+				}
+				++hits;
+				const uintptr_t base = start + i * 8 - (id % Buckets) * 8;
+				for (const std::size_t next : NextTries) {
+					int objects = 0, wrong = 0;
+					ForEachListed(base, TypeObject, next, [&](uintptr_t unit) {
+						uint32_t type = 99;
+						(Read(unit + UnitType, type) && type == TypeObject ? objects : wrong) += 1;
+					});
+					if (objects == 0 || wrong != 0) {
+						continue;
+					}
+					wchar_t path[MAX_PATH] {};
+					const auto module = reinterpret_cast<uintptr_t>(info.AllocationBase);
+					GetModuleFileNameW(reinterpret_cast<HMODULE>(info.AllocationBase), path, MAX_PATH);
+					std::wstring leaf(path);
+					const auto slash = leaf.find_last_of(L"\\/");
+					leaf = slash == std::wstring::npos ? leaf : leaf.substr(slash + 1);
+					g_list = { leaf, base - module, next };
+					SaveList();
+					const Pos fire = ListedFire(base, next, heroPos);
+					char line[256];
+					std::snprintf(line, sizeof(line), "unit list found: %ls + 0x%llx (next at 0x%llx), %d objects, fire %s; saved",
+						leaf.c_str(), static_cast<unsigned long long>(base - module), static_cast<unsigned long long>(next), objects,
+						fire.ok ? "found" : "not found");
+					return line;
+				}
+			}
+		}
+		at = end > at ? end : at + 0x1000;
+	}
+	return "unit list not found (" + std::to_string(hits) + " places hold the hero's address)";
+}
+
 // Calls `chunk(base, bytes, size)` for every readable, writable private block of our memory.
 template <typename F>
 void ForEachChunk(F&& chunk) {
@@ -100,6 +281,21 @@ void ForEachChunk(F&& chunk) {
 
 void Scan(std::string name) {
 	const auto started = GetTickCount64();
+	{
+		uintptr_t hero = 0;
+		Pos heroPos, fire;
+		if (FromList(name, hero, heroPos, fire)) {
+			char line[256];
+			std::snprintf(line, sizeof(line), "read from the unit list in %llu ms: hero at %d,%d, fire at %d,%d (%s)",
+				static_cast<unsigned long long>(GetTickCount64() - started), heroPos.x, heroPos.y, fire.x, fire.y, fire.ok ? "ok" : "not found");
+			const std::lock_guard<std::mutex> guard(g_lock);
+			g_heroUnit = hero;
+			g_fire = fire;
+			g_report = line;
+			g_scanning = false;
+			return;
+		}
+	}
 	// Pass 1: where the hero's name sits (the start of its PlayerData), and every object unit
 	// of the fire's row.
 	std::vector<uintptr_t> names;
@@ -170,10 +366,19 @@ void Scan(std::string name) {
 		"memory scan %llu ms: name found %d time(s), hero units %d, hero at %d,%d (%s); fire units %d of %d candidates, fire at %d,%d (%s)",
 		static_cast<unsigned long long>(GetTickCount64() - started), static_cast<int>(names.size()), static_cast<int>(heroes.size()),
 		heroPos.x, heroPos.y, heroPos.ok ? "ok" : "not found", fireUnits, static_cast<int>(fires.size()), fire.x, fire.y, fire.ok ? "ok" : "not found");
+	std::string report = line;
+	if (hero != 0) {
+		report += "; " + FindList(hero, heroPos);
+		if (!fire.ok && !g_list.module.empty()) {
+			if (const HMODULE module = GetModuleHandleW(g_list.module.c_str())) {
+				fire = ListedFire(reinterpret_cast<uintptr_t>(module) + g_list.offset, g_list.next, heroPos);
+			}
+		}
+	}
 	const std::lock_guard<std::mutex> guard(g_lock);
 	g_heroUnit = hero;
 	g_fire = fire;
-	g_report = line;
+	g_report = report;
 	g_scanning = false;
 }
 

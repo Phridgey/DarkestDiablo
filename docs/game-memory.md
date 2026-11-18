@@ -29,6 +29,20 @@ searches its memory once in town, on a background thread, a few seconds after ar
 
 The hero's unit is then remembered, so later positions are read straight from it.
 
+## The unit list (the quick way)
+
+The game keeps every unit in a fixed list inside one of its modules: for each kind of unit
+(0 players, 1 monsters, 2 objects, ...) 128 chains, picked by the unit's number mod 128. Each
+entry points at a unit, and each unit points at the next one in its chain.
+
+The list's place is found once, after the slow search has found the hero: the plugin looks in
+the game modules' writable memory for the hero's address, works back from the hero's chain to
+the start of the list, and keeps it only if the object chains there hold object units. It saves
+the module name and the distance from the module's start in `darkestdiablo-unitlist.txt` next
+to the plugin. From then on each search reads the list directly (a few milliseconds): the hero
+is the player unit whose player data starts with the hero's name, the fire is the nearest
+object unit of row 39. If the saved place stops working, the slow search runs and finds it again.
+
 ## Unit layout used
 
 Taken from the community's long-standing map of the D2R unit structure and checked in game.
@@ -37,10 +51,12 @@ Taken from the community's long-standing map of the D2R unit structure and check
 | --- | --- | --- |
 | Unit kind (0 player, 1 monster, 2 object) | unit + 0x00 | 4 bytes |
 | Class (players) or objects.txt row (objects) | unit + 0x04 | 4 bytes |
+| Unit number (picks its chain in the list) | unit + 0x08 | 4 bytes |
 | Player data (the name comes first) | unit + 0x10 | pointer |
 | Path (where the unit stands) | unit + 0x38 | pointer |
 | Hero X, Y in sub-tiles | path + 0x02, path + 0x06 | 2 bytes each |
 | Object X, Y in sub-tiles | path + 0x10, path + 0x14 | 4 bytes each |
+| Next unit in the same chain | unit + 0x150 (or 0x158; the search checks which) | pointer |
 
 Positions are world sub-tiles, the same numbers `location player` prints in the console.
 
