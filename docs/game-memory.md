@@ -81,10 +81,13 @@ Taken from the community's long-standing map of the D2R unit structure and check
 | Stat list (life) | unit + 0x88 | pointer |
 | Room the unit is in | path + 0x20 (players, monsters), path + 0x00 (objects) | pointer |
 | Level Id (levels.txt) | room + 0x18 -> + 0x90 -> + 0x1F8 | 4 bytes |
-| Life | stat list: flags + 0x1C; stats pointer and count at + 0x80 (or + 0x30 without full stats); stat 6, in 256ths | 8 bytes per stat |
+| Life | stat list: the first (pointer, count) pair in its first 0x100 bytes whose stats hold life (stat 6) and maximum life (stat 7); in 256ths | 8 bytes per stat |
 
-Mode, life and level come from the map tools' layout and were not checked in game yet; `dd-units`
-prints them so they can be compared with what the game shows.
+Checked in town with 0.11.51: the list was found from the game's code in 141 ms (D2RLoader.exe +
+0x2a23910, next at 0x150), mode (5, standing in town), level (1, Rogue Encampment) and the object
+rows (39 fire, 267 stash chest, 119 waypoint) were right. Life read -1 at the map tools' places
+(0x30, 0x80), so 0.11.52 searches the stat list for it; `dd-units` logs the stat list ("Units: hero
+stats") when it still fails.
 
 Positions are world sub-tiles, the same numbers `location player` prints in the console.
 

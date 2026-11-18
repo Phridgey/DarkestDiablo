@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <set>
@@ -33,10 +34,7 @@ constexpr std::size_t StaticY    = 0x14;
 constexpr std::size_t RoomOuter  = 0x18;  // room -> the bigger room record
 constexpr std::size_t OuterLevel = 0x90;  // bigger room -> its level
 constexpr std::size_t LevelId    = 0x1F8; // uint32: levels.txt Id
-constexpr std::size_t StatFlags  = 0x1C;  // uint32: 0x80000000 = the full stats are kept
-constexpr std::size_t StatBase   = 0x30;  // pointer + count: the unit's own stats
-constexpr std::size_t StatFull   = 0x80;  // pointer + count: with items and skills added
-constexpr uint16_t    LifeStat   = 6;     // itemstatcost.txt: hitpoints, in 256ths
+constexpr uint16_t    LifeStat   = 6;     // itemstatcost.txt: hitpoints, in 256ths (7: maximum)
 
 constexpr uintptr_t   Slots      = 128;   // per kind: 128 chains, picked by the unit's number
 constexpr uint32_t    Kinds      = 6;
@@ -492,31 +490,76 @@ auto Refresh(const Unit& unit) -> Unit {
 	return now && now.id == unit.id ? now : Unit {};
 }
 
-auto Life(const Unit& unit) -> int {
+// The stat list keeps its stats as (pointer, count) pairs, one for the unit's own stats and one
+// with items and skills added. The map tools' places for them (0x30 and 0x80) gave nothing on
+// our build (0.11.51 test), so every 8-byte step of the list's first 0x100 bytes is tried as such a
+// pair, and the first one holding life (stat 6) with maximum life (stat 7) at or above it wins.
+auto LifeAt(const Unit& unit, std::size_t& where) -> int {
 	if (!unit || (unit.kind != Kind::Player && unit.kind != Kind::Monster)) {
 		return -1;
 	}
 	uintptr_t list = 0;
-	uint32_t flags = 0;
-	if (!Get(unit.address + UnitStats, list) || !Pointer(list) || !Get(list + StatFlags, flags)) {
-		return -1;
-	}
-	struct { uintptr_t stats; uint64_t count; } where {};
-	if (!Get(list + ((flags & 0x80000000u) != 0 ? StatFull : StatBase), where) || !Pointer(where.stats) || where.count > 512) {
+	uint64_t head[0x100 / 8] {};
+	if (!Get(unit.address + UnitStats, list) || !Pointer(list) || !Get(list, head)) {
 		return -1;
 	}
 	struct Stat { uint16_t param, id; int32_t value; };
-	std::vector<Stat> stats(static_cast<std::size_t>(where.count));
-	SIZE_T got = 0;
-	if (stats.empty() || !ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(where.stats), stats.data(), stats.size() * sizeof(Stat), &got)) {
-		return -1;
-	}
-	for (const Stat& s : stats) {
-		if (s.id == LifeStat && s.param == 0) {
-			return s.value >> 8;
+	int fallback = -1;
+	for (std::size_t i = 0; i + 1 < std::size(head); ++i) {
+		const uintptr_t stats = static_cast<uintptr_t>(head[i]);
+		const uint64_t count = head[i + 1] & 0xFFFFFFFFu;
+		if (!Pointer(stats) || count == 0 || count > 512) {
+			continue;
+		}
+		std::vector<Stat> all(static_cast<std::size_t>(count));
+		SIZE_T got = 0;
+		if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(stats), all.data(), all.size() * sizeof(Stat), &got) ||
+		    got != all.size() * sizeof(Stat)) {
+			continue;
+		}
+		int life = -1, most = -1;
+		for (const Stat& st : all) {
+			if (st.param == 0 && st.id == LifeStat) {
+				life = st.value >> 8;
+			} else if (st.param == 0 && st.id == LifeStat + 1) {
+				most = st.value >> 8;
+			}
+		}
+		if (life >= 0 && most >= life) {
+			where = i * 8;
+			return life;
+		}
+		if (life >= 0 && fallback < 0) {
+			fallback = life;
+			where = i * 8;
 		}
 	}
-	return -1;
+	return fallback;
+}
+
+auto Life(const Unit& unit) -> int {
+	std::size_t where = 0;
+	return LifeAt(unit, where);
+}
+
+auto StatsReport(const Unit& unit) -> std::string {
+	uintptr_t list = 0;
+	if (!unit || !Get(unit.address + UnitStats, list)) {
+		return "stats: unit unreadable";
+	}
+	std::size_t where = 0;
+	const int life = LifeAt(unit, where);
+	std::string text = "stats: list at unit + 0x88 = " + Hex(list) + ", life " + std::to_string(life) +
+	                   (life >= 0 ? " from the pair at list + " + Hex(where) : std::string()) + "; list starts";
+	uint64_t head[0x100 / 8] {};
+	if (Pointer(list) && Get(list, head)) {
+		for (const uint64_t v : head) {
+			text += " " + Hex(static_cast<uintptr_t>(v));
+		}
+	} else {
+		text += " unreadable";
+	}
+	return text;
 }
 
 auto Level(const Unit& unit) -> int {

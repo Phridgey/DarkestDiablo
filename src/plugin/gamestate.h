@@ -66,10 +66,13 @@ auto Nearest(Kind kind, uint32_t row, int x, int y) -> Unit;
 // Reads a unit again (its mode and position now). Gone: Unit().
 auto Refresh(const Unit& unit) -> Unit;
 
-// Hit points now (players and monsters), or -1 when unknown. Not yet checked in game.
+// Hit points now (players and monsters), or -1 when unknown.
 auto Life(const Unit& unit) -> int;
 
-// The levels.txt Id of the level the unit stands in, or -1 when unknown. Not yet checked in game.
+// What the unit's stat list holds, for the log when Life is -1 (dd-units).
+auto StatsReport(const Unit& unit) -> std::string;
+
+// The levels.txt Id of the level the unit stands in, or -1 when unknown (checked in town: 1).
 auto Level(const Unit& unit) -> int;
 
 // Used by the slow search in gamememory.cpp when it finds the list its own way.

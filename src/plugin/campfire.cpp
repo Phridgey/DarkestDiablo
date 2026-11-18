@@ -1323,6 +1323,9 @@ auto UnitsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 			}
 			say("Loaded now: " + counts + ".");
 			say(hero ? "Hero: " + describe(hero) + ", level " + std::to_string(GameState::Level(hero)) : std::string("Hero: not found."));
+			if (hero) {
+				Log(command->plugin, "Units: hero %s", GameState::StatsReport(hero).c_str());
+			}
 			const GameState::Unit fire = GameState::Nearest(GameState::Kind::Object, 39, hero.x, hero.y);
 			say(fire ? "Nearest town fire (objects row 39): " + describe(fire) : std::string("No town fire (objects row 39) loaded."));
 			word = "objects", kind = 2;
