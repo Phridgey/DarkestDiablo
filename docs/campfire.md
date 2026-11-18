@@ -22,8 +22,11 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    **Retire** asks which hero to bury. A retired hero counts as a death.
 4. **In town.** Each time a hero comes back to town from a stop there is a chance (25%) that
    a traveler arrives with up to 3 locked classes; a notice says "A traveler waits by your fire".
-   The class of the last hero that fell is always one of them, once. At the Campfire (through the
-   fire, or Save and Exit) only the offered classes stand by the fire; pick one and press Accept:
+   The class of the last hero that fell is always one of them, once. Using the fire then opens
+   Cain's portal where the hero stands (`location player`, `cheat ospawn 189`), the hooded
+   traveler (Natalya's figure, `cheat mspawn natalya`) steps out, and 3 s later the hero goes to
+   the Campfire. The town lands somewhere new every game, so this can only happen once the hero
+   is at the fire. At the Campfire (through the fire, or Save and Exit) only the offered classes stand by the fire; pick one and press Accept:
    the others leave, the camp's heroes come back and the new class waits with the name box ready.
    "Not now" keeps the traveler waiting for later.
 5. **The bonfire.** Clicking the Rogue Encampment's bonfire (from any side: it has a bigger click

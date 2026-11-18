@@ -108,6 +108,7 @@ bool g_slotsOpen = false;
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
 bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
+bool g_travelerArrives = false; // the fire was used with a traveler waiting: portal and figure are showing
 bool g_travelerMode = false; // a traveler waits: the Campfire shows only the offered classes until one is accepted
 D2RL::Panels::RegistrationHandle g_curtainPanel = D2RL::Panels::InvalidHandle;
 fs::path g_dataDir;         // the mod's d2rloader folder: camp_data.txt, SaveSlots.layout.json
@@ -938,6 +939,52 @@ void __cdecl LeaveGame(const D2RL::PluginContext* context, void*) noexcept {
 	Dispatch(context, "PausePanelMessage", "ExitGame");
 }
 
+// Runs a console command through D2RCore's ExecuteConsoleCommand export (UI thread only).
+// "Accepted" is not "worked": errors show in the in-game console only.
+auto RunConsole(const D2RL::PluginContext* context, const char* command) noexcept -> bool {
+	namespace CE = D2RL::CoreExports;
+	static CE::ExecuteConsoleCommandFn execute = nullptr;
+	if (execute == nullptr) {
+		const HMODULE core = GetModuleHandleA(CE::CoreDllName);
+		execute = core == nullptr ? nullptr : reinterpret_cast<CE::ExecuteConsoleCommandFn>(GetProcAddress(core, CE::ExecuteConsoleCommandInfo.name));
+	}
+	const bool ok = execute != nullptr && execute(command);
+	Log(context, "Camp: console %s -> %s", command, ok ? "sent" : "refused");
+	return ok;
+}
+
+// ---- The traveler at the fire ---------------------------------------------------------------
+// The town lands somewhere new every game, so the fire's place can't be known ahead. When the
+// fire is used the hero stands by it: "location player" makes that the spawn spot, Cain's
+// portal opens there, the hooded traveler (Natalya's figure) steps out, and then the hero goes
+// to the Campfire, where the traveler's classes wait (traveler mode).
+void __cdecl TravelerGoesToFire(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	g_travelerArrives = false;
+	if (g_inGame) {
+		RecordGear(context, nullptr);
+		LeaveGame(context, nullptr);
+	}
+}
+
+void __cdecl TravelerStepsOut(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_inGame && g_travelerArrives) {
+		RunConsole(context, "cheat mspawn natalya");
+		Later(context, 3000, TravelerGoesToFire);
+	}
+}
+
+void __cdecl TravelerPortal(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (!g_inGame || !g_travelerArrives) {
+		return;
+	}
+	RunConsole(context, "location player");
+	RunConsole(context, "cheat ospawn 189");  // objects.txt row 189: CainPortal
+	Later(context, 1200, TravelerStepsOut);
+}
+
 // ---- Console ------------------------------------------------------------------------------
 
 auto CampCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
@@ -1397,10 +1444,20 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 		// fire saves and leaves the game for the Campfire scene, like Save and Exit.
 		if (panelManager && std::strcmp(text, "BankExpansionLayout") == 0 && std::strcmp(command, "OpenPanel") == 0 && g_inGame &&
 		    g_levelId == RogueEncampment && g_threads != nullptr) {
+			// The fire is a stash chest to the game; the stash window itself stays shut.
+			if (g_travelerArrives) {
+				return true;
+			}
+			if (TravelerWaits()) {
+				g_travelerArrives = true;
+				g_threads->runOnUiThread(context, TravelerPortal, nullptr);
+				Log(context, "Camp: the fire was used with a traveler waiting: portal, traveler, then the Campfire.");
+				return true;
+			}
 			RecordGear(context, nullptr);
 			g_threads->runOnUiThread(context, LeaveGame, nullptr);
 			Log(context, "Camp: the fire was used: saving and going to the Campfire.");
-			return false;
+			return true;
 		}
 		if (std::strcmp(target, "PausePanelMessage") == 0 && std::strcmp(command, "ExitGame") == 0) {
 			RecordGear(context, nullptr);
@@ -1518,6 +1575,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			break;
 		}
 		case Kind::GameLeft:
+			g_travelerArrives = false;
 			g_levelId = -1;  // g_inGame stays set until the menu loads, so the camp knows a game just ended
 			break;
 		default:
