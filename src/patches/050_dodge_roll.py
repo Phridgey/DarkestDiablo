@@ -25,7 +25,10 @@ that, so holding the button dodges again and again.
 import json
 from pathlib import Path
 
-NAME = "Dodge"
+# The name tables use. It must be unique: the Amazon already has a skill "Dodge" (and skilldesc
+# "dodge"), and a repeated name crashes the game at start. Players see "Dodge" (STRINGS).
+NAME = "DD Dodge"
+DESC = "dd dodge"
 
 # Tuning. D2 runs at 25 frames a second. PoE2's roll: about 3.7 metres in a bit under a second.
 DISTANCE = 7          # Leap's "Range" (min and max equal, so every dodge is the same length). Leap: 8 to 30.
@@ -55,12 +58,15 @@ def _new_string_ids(count):
 
 def patch(t):
     skills = t.table("skills")
+    for table, column, name in ((skills, "skill", NAME), (t.table("skilldesc"), "skilldesc", DESC)):
+        if any(r[column].lower() == name.lower() for r in table.rows):
+            raise RuntimeError(f"{column} {name!r} already exists; names must be unique")
     next_id = max(int(r["*Id"]) for r in skills.rows if r["*Id"].isdigit()) + 1
     charge = skills.first("skill", "Charge")
     from_charge = ("anim", "seqtrans", "seqnum", "monanim", "cltstfunc", "cltdofunc", "cltstopfunc",
                    "stsound", "castoverlay", "cltoverlaya", "cltoverlayb", "interrupt")
     skills.add_copy("skill", "Leap", **{c: charge[c] for c in from_charge}, **{
-        "skill": NAME, "*Id": str(next_id), "charclass": "", "skilldesc": "dodge",
+        "skill": NAME, "*Id": str(next_id), "charclass": "", "skilldesc": DESC,
         "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
         "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": "", "globaldelay": "",
         "InTown": "1", "leftskill": "0", "rightskill": "1", "stsoundclass": "",
@@ -74,7 +80,7 @@ def patch(t):
     desc.add_copy(
         "skilldesc", "charge",
         **{
-            "skilldesc": "dodge", "SkillPage": "0", "SkillRow": "0", "SkillColumn": "0", "ListRow": "0",
+            "skilldesc": DESC, "SkillPage": "0", "SkillRow": "0", "SkillColumn": "0", "ListRow": "0",
             "str name": "skillname_dodge", "str short": "skillsd_dodge",
             "str long": "skillld_dodge", "str alt": "skillname_dodge",
         },
