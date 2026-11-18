@@ -1,57 +1,42 @@
-"""Dodge Roll: a quick dash every class has, modelled on how Path of Exile 2's roll plays.
+"""Dodge: a quick dash every class has, modelled on how Path of Exile 2's roll plays.
 
-What we take from PoE2 is only how it behaves (see docs/dodge-roll.md): a fast move toward the
-cursor, no mana cost and no cooldown, usable in town. None of GGG's files, animations or code
-are used.
+What we take from PoE2 is only how it behaves (see docs/dodge-roll.md): a fast move of set
+length toward the cursor, no mana cost and no cooldown, usable in town. None of GGG's files,
+animations or code are used.
 
 How it is built: the game has no free-form "move here fast" in its tables, only skills whose
-movement code is fixed. A skill's movement code and its poses are separate columns, so:
+code is fixed. But a skill's movement code, its poses and its effects are separate columns, so
+Dodge mixes two of the game's own skills (Sam, 2026-11-18: "the brains of Leap" with "the
+effects, animation and timing" of Charge):
 
-- "Dodge Roll" moves with the Barbarian's Leap code, which can go a fixed distance (its min and
-  max range set equal) toward the cursor, but shows the Paladin's Charge poses (the hero's own
-  run, then Charge's ending). Sam asked for Charge's look, a set distance and PoE2's timing.
-  Whether Leap's code plays nicely with Charge's poses is the first thing to test.
-- "Dodge Dash" (test only) is plain Charge: run pose, but it runs to wherever you click. Kept
-  to compare, in case the mix above looks wrong. Every class but the Barbarian gets it (the
-  Barbarian has one free skill slot).
+- From the Barbarian's Leap: the movement ("srv" functions). It always goes the same distance
+  toward the cursor (min and max range set equal) and stops at walls.
+- From the Paladin's Charge: the poses (the hero's own run), the look and sound on the hero's
+  screen ("clt" functions, start sound), its speed, and it can't be interrupted by hits.
+  Recovery after the dash is cut by 75% (Charge's "seqinput", the frame where the hero can act
+  again: 8 -> 2).
 
-Every class gets them the way every class gets Throw and Kick: through free "Skill N" slots in
-charstats.txt. Put one on the right mouse button (or a skill hotkey) to use it.
+Every class gets it the way every class gets Throw and Kick: through a free "Skill N" slot in
+charstats.txt. Put it on the right mouse button (or a skill hotkey) to use it.
 
-PROTOTYPE: these numbers are a first guess to be tuned in game. Open questions are listed in
-docs/dodge-roll.md.
+Known limit: the game repeats any skill while its button is held, and no table setting stops
+that, so holding the button dodges again and again.
 """
 import json
 from pathlib import Path
 
-ROLL = "Dodge Roll"
-DASH = "Dodge Dash"
+NAME = "Dodge"
 
 # Tuning. D2 runs at 25 frames a second. PoE2's roll: about 3.7 metres in a bit under a second.
-ROLL_RANGE = 7        # Leap's "Range" (min and max equal, so every roll is the same length). Leap: 8 to 30.
-AIRBORNE_FRAMES = 6   # Leap's "Minimum Airborne Frames" (Leap: 8): the shortest a roll can take.
-ROLL_SPEED = 175      # Leap's "Leap Speed %" (Leap: 175).
-DASH_SPEED = 300      # Charge's "Velocity %" (Charge: 150), for the plain Charge test skill.
+DISTANCE = 7          # Leap's "Range" (min and max equal, so every dodge is the same length). Leap: 8 to 30.
+MIN_FRAMES = 6        # Leap's "Minimum Airborne Frames" (Leap: 8): the shortest a dodge can take.
+SPEED = 300           # Speed %, read as "Velocity %" by Charge's code and "Leap Speed %" by Leap's (Charge: 150).
+RECOVERY_FRAME = 2    # Charge's "seqinput" (Charge: 8): 75% less recovery.
 
 STRINGS = {
-    "skillname_dodgeroll": "Dodge Roll",
-    "skillsd_dodgeroll": "dashes out of danger",
-    "skillld_dodgeroll": "Dash a short distance toward the cursor",
-    "skillname_dodgedash": "Dodge Dash",
-    "skillsd_dodgedash": "test: dashes to a spot",
-    "skillld_dodgedash": "Test version: dash to the target spot",
-}
-
-# Shared by both: a free movement skill for everyone, with no weapon, cost, damage or cooldown.
-COMMON = {
-    "charclass": "", "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
-    "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": "", "globaldelay": "",
-    "InTown": "1", "leftskill": "0", "rightskill": "1",
-    "itypea1": "", "itypea2": "", "itypea3": "", "etypea1": "", "etypea2": "",
-    "itypeb1": "", "itypeb2": "", "itypeb3": "", "etypeb1": "", "etypeb2": "",
-    "TargetableOnly": "", "SearchEnemyXY": "", "SearchEnemyNear": "",
-    "SrcDam": "0", "MinDam": "0", "MaxDam": "0", "calc1": "0", "ToHit": "0", "LevToHit": "0",
-    "stsound": "", "stsoundclass": "", "attackrank": "0", "durability": "",
+    "skillname_dodge": "Dodge",
+    "skillsd_dodge": "dashes out of danger",
+    "skillld_dodge": "Dash a set distance toward the cursor",
 }
 
 
@@ -68,13 +53,30 @@ def _new_string_ids(count):
     return range(start, start + count)
 
 
-def _skill_desc(desc, source, name, key):
+def patch(t):
+    skills = t.table("skills")
+    next_id = max(int(r["*Id"]) for r in skills.rows if r["*Id"].isdigit()) + 1
+    charge = skills.first("skill", "Charge")
+    from_charge = ("anim", "seqtrans", "seqnum", "monanim", "cltstfunc", "cltdofunc", "cltstopfunc",
+                   "stsound", "castoverlay", "cltoverlaya", "cltoverlayb", "interrupt")
+    skills.add_copy("skill", "Leap", **{c: charge[c] for c in from_charge}, **{
+        "skill": NAME, "*Id": str(next_id), "charclass": "", "skilldesc": "dodge",
+        "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
+        "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": "", "globaldelay": "",
+        "InTown": "1", "leftskill": "0", "rightskill": "1", "stsoundclass": "",
+        "Param1": str(DISTANCE), "Param2": str(DISTANCE),
+        "Param3": "0", "Param4": "0", "srvmissilea": "",  # no knockback on landing
+        "Param5": str(MIN_FRAMES), "Param7": str(SPEED), "calc2": str(SPEED),
+        "seqinput": str(RECOVERY_FRAME),
+    })
+
+    desc = t.table("skilldesc")
     desc.add_copy(
-        "skilldesc", source,
+        "skilldesc", "charge",
         **{
-            "skilldesc": name, "SkillPage": "0", "SkillRow": "0", "SkillColumn": "0", "ListRow": "0",
-            "str name": f"skillname_{key}", "str short": f"skillsd_{key}",
-            "str long": f"skillld_{key}", "str alt": f"skillname_{key}",
+            "skilldesc": "dodge", "SkillPage": "0", "SkillRow": "0", "SkillColumn": "0", "ListRow": "0",
+            "str name": "skillname_dodge", "str short": "skillsd_dodge",
+            "str long": "skillld_dodge", "str alt": "skillname_dodge",
         },
     )
     row = desc.rows[-1]
@@ -82,41 +84,16 @@ def _skill_desc(desc, source, name, key):
         if column.startswith(("desc", "dsc2", "dsc3", "ddam")):
             row[column] = ""
 
-
-def patch(t):
-    skills = t.table("skills")
-    next_id = max(int(r["*Id"]) for r in skills.rows if r["*Id"].isdigit()) + 1
-    charge = skills.first("skill", "Charge")
-    skills.add_copy("skill", "Leap", **COMMON, **{
-        "skill": ROLL, "*Id": str(next_id), "skilldesc": "dodge roll",
-        "Param1": str(ROLL_RANGE), "Param2": str(ROLL_RANGE),
-        "Param3": "0", "Param4": "0", "srvmissilea": "",  # no knockback on landing
-        "Param5": str(AIRBORNE_FRAMES), "Param7": str(ROLL_SPEED),
-        # Charge's poses on Leap's movement.
-        "anim": charge["anim"], "seqtrans": charge["seqtrans"], "seqnum": charge["seqnum"],
-    })
-    skills.add_copy("skill", "Charge", **COMMON, **{
-        "skill": DASH, "*Id": str(next_id + 1), "skilldesc": "dodge dash",
-        "Param1": str(DASH_SPEED), "Param3": "0", "Param4": "0", "Param8": "0",
-    })
-
-    desc = t.table("skilldesc")
-    _skill_desc(desc, "charge", "dodge roll", "dodgeroll")
-    _skill_desc(desc, "charge", "dodge dash", "dodgedash")
-
-    # Every class: the first free "Skill N" slots, like Throw and Kick.
+    # Every class: the first free "Skill N" slot, like Throw and Kick.
     stats = t.table("charstats")
     slots = [f"Skill {i}" for i in range(1, 11)]
     for row in stats.rows:
         if not row.get("Skill 1"):
             continue  # the "Expansion" divider row
-        for skill in (ROLL, DASH):
-            if skill == DASH and row["class"] == "Barbarian":
-                continue
-            free = next((s for s in slots if not row.get(s)), None)
-            if free is None:
-                raise RuntimeError(f"charstats: {row['class']} has no free skill slot for {skill}")
-            row[free] = skill
+        free = next((s for s in slots if not row.get(s)), None)
+        if free is None:
+            raise RuntimeError(f"charstats: {row['class']} has no free skill slot for {NAME}")
+        row[free] = NAME
 
     strings = t.data("local/lng/strings/skills.json")
     langs = [k for k in strings[0] if k not in ("id", "Key")]
