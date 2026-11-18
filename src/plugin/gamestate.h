@@ -69,10 +69,13 @@ auto Refresh(const Unit& unit) -> Unit;
 // Hit points now (players and monsters), or -1 when unknown.
 auto Life(const Unit& unit) -> int;
 
+// The hero's or monster's character level (stat 12), or -1 when unknown.
+auto CharacterLevel(const Unit& unit) -> int;
+
 // What the unit's stat list holds, for the log when Life is -1 (dd-units).
 auto StatsReport(const Unit& unit) -> std::string;
 
-// The levels.txt Id of the level the unit stands in, or -1 when unknown (checked in town: 1).
+// The levels.txt Id of the area (map) the unit stands in, or -1 when unknown (checked in town: 1).
 auto Level(const Unit& unit) -> int;
 
 // Used by the slow search in gamememory.cpp when it finds the list its own way.

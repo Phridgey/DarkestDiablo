@@ -494,17 +494,21 @@ auto Refresh(const Unit& unit) -> Unit {
 // with items and skills added. The map tools' places for them (0x30 and 0x80) gave nothing on
 // our build (0.11.51 test), so every 8-byte step of the list's first 0x100 bytes is tried as such a
 // pair, and the first one holding life (stat 6) with maximum life (stat 7) at or above it wins.
-auto LifeAt(const Unit& unit, std::size_t& where) -> int {
+namespace {
+
+struct Stat { uint16_t param, id; int32_t value; };
+
+// The stats array chosen as above; `where` is its pair's distance from the list's start.
+auto StatsOf(const Unit& unit, std::size_t& where) -> std::vector<Stat> {
 	if (!unit || (unit.kind != Kind::Player && unit.kind != Kind::Monster)) {
-		return -1;
+		return {};
 	}
 	uintptr_t list = 0;
 	uint64_t head[0x100 / 8] {};
 	if (!Get(unit.address + UnitStats, list) || !Pointer(list) || !Get(list, head)) {
-		return -1;
+		return {};
 	}
-	struct Stat { uint16_t param, id; int32_t value; };
-	int fallback = -1;
+	std::vector<Stat> fallback;
 	for (std::size_t i = 0; i + 1 < std::size(head); ++i) {
 		const uintptr_t stats = static_cast<uintptr_t>(head[i]);
 		const uint64_t count = head[i + 1] & 0xFFFFFFFFu;
@@ -527,19 +531,36 @@ auto LifeAt(const Unit& unit, std::size_t& where) -> int {
 		}
 		if (life >= 0 && most >= life) {
 			where = i * 8;
-			return life;
+			return all;
 		}
-		if (life >= 0 && fallback < 0) {
-			fallback = life;
+		if (life >= 0 && fallback.empty()) {
+			fallback = all;
 			where = i * 8;
 		}
 	}
 	return fallback;
 }
 
+auto StatValue(const std::vector<Stat>& all, uint16_t id) -> int {
+	for (const Stat& st : all) {
+		if (st.param == 0 && st.id == id) {
+			return st.value;
+		}
+	}
+	return -1;
+}
+
+}  // namespace
+
 auto Life(const Unit& unit) -> int {
 	std::size_t where = 0;
-	return LifeAt(unit, where);
+	const int value = StatValue(StatsOf(unit, where), LifeStat);
+	return value < 0 ? -1 : value >> 8;
+}
+
+auto CharacterLevel(const Unit& unit) -> int {
+	std::size_t where = 0;
+	return StatValue(StatsOf(unit, where), 12);  // itemstatcost.txt: level
 }
 
 auto StatsReport(const Unit& unit) -> std::string {
@@ -548,7 +569,8 @@ auto StatsReport(const Unit& unit) -> std::string {
 		return "stats: unit unreadable";
 	}
 	std::size_t where = 0;
-	const int life = LifeAt(unit, where);
+	const int life = Life(unit);
+	StatsOf(unit, where);
 	std::string text = "stats: list at unit + 0x88 = " + Hex(list) + ", life " + std::to_string(life) +
 	                   (life >= 0 ? " from the pair at list + " + Hex(where) : std::string()) + "; list starts";
 	uint64_t head[0x100 / 8] {};

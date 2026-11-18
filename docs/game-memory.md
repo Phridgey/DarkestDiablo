@@ -84,7 +84,7 @@ Taken from the community's long-standing map of the D2R unit structure and check
 | Life | stat list: the first (pointer, count) pair in its first 0x100 bytes whose stats hold life (stat 6) and maximum life (stat 7); in 256ths | 8 bytes per stat |
 
 Checked in town with 0.11.51: the list was found from the game's code in 141 ms (D2RLoader.exe +
-0x2a23910, next at 0x150), mode (5, standing in town), level (1, Rogue Encampment) and the object
+0x2a23910, next at 0x150), mode (5, standing in town), level (the area: 1, Rogue Encampment) and the object
 rows (39 fire, 267 stash chest, 119 waypoint) were right. Life read -1 at the map tools' places
 (0x30, 0x80), so 0.11.52 searches the stat list for it; `dd-units` logs the stat list ("Units: hero
 stats") when it still fails.

@@ -1304,7 +1304,7 @@ auto UnitsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 				text += " " + u.name;
 			}
 			if (u.kind == GameState::Kind::Monster || u.kind == GameState::Kind::Player) {
-				text += " life " + std::to_string(GameState::Life(u)) + (u.Alive() ? "" : " dead");
+				text += " level " + std::to_string(GameState::CharacterLevel(u)) + " life " + std::to_string(GameState::Life(u)) + (u.Alive() ? "" : " dead");
 			}
 			return text;
 		};
@@ -1322,7 +1322,7 @@ auto UnitsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 				counts += (k ? ", " : "") + std::to_string(GameState::Units(static_cast<GameState::Kind>(k)).size()) + " " + Words[k];
 			}
 			say("Loaded now: " + counts + ".");
-			say(hero ? "Hero: " + describe(hero) + ", level " + std::to_string(GameState::Level(hero)) : std::string("Hero: not found."));
+			say(hero ? "Hero: " + describe(hero) + ", in area " + std::to_string(GameState::Level(hero)) + " (levels.txt)" : std::string("Hero: not found."));
 			if (hero) {
 				Log(command->plugin, "Units: hero %s", GameState::StatsReport(hero).c_str());
 			}
