@@ -30,6 +30,9 @@ def patch(t):
         "Velocity": "0",
         "Run": "0",
     })
+    # D2R finds a monster's 3D model by its Id in this file; without an entry it is invisible.
+    models = t.data("hd/character/monsters.json")
+    models[NAME] = models[LOOK]
 
     if t.excel.name != "excel":  # the base copy only keeps tables; the string is shipped once
         return

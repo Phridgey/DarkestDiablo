@@ -23,7 +23,8 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
   game memory by hand, and never try to get around Blizzard's protection (`D2R_loader.dll`).
   One exception, agreed by both of us: the plugin may READ a few game values the SDK doesn't
   offer (first: the hero's position, for spawns placed relative to the town fire), from the
-  frozen build in `D2R_VERSION` only, through the SDK's own services. Reading only: never write
+  frozen build in `D2R_VERSION` only. The SDK has no read service, so reads use Windows'
+  `ReadProcessMemory` on our own process (a bad address fails the read instead of crashing). Reading only: never write
   to game memory and never change game code. Each value read and its address go in
   `docs/game-memory.md`, and the plugin turns the feature off if the game build differs.
 - `src/patches` can also change the game's menu layouts with `t.layout("<name>")` (parsed JSON).
