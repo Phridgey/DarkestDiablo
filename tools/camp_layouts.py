@@ -7,12 +7,14 @@ plugin shows the right ones. Buttons talk to the plugin with a made-up panel nam
 PanelManager:OpenPanel:darkestdiablo/<action> (see campfire.cpp, OnAction).
 """
 CLASSES = ["Amazon", "Sorceress", "Necromancer", "Paladin", "Barbarian", "Druid", "Assassin", "Warlock"]
-FRAME = "Panel\\Modals\\Modal_No_Title_BG"   # about 1254 wide; buttons are 300 wide
+FRAME = "Panel\\Modals\\Modal_No_Title_BG"   # about 1226 wide and 428 tall
+BUTTON_W, BUTTON_H = 513, 92                # the ModalButton picture at full size (measured in game)
 
 
-def button(name, x, y, text, action=None, message=None, disabled=False, color="$FontColorWhite"):
+def button(name, x, y, text, action=None, message=None, disabled=False, color="$FontColorWhite", scale=1.0):
+    """`scale` shrinks the whole button, text included, so several fit side by side in the frame."""
     fields = {
-        "rect": {"x": x, "y": y},
+        "rect": {"x": x, "y": y, "scale": scale} if scale != 1.0 else {"x": x, "y": y},
         "filename": "Panel\\Modals\\ModalButton",
         "focusIndicatorFilename": "Controller/HoverImages/ModalButton_Hover",
         "pressedFrame": 1,
@@ -91,20 +93,23 @@ def save_slots():
         kids.append(line(f"Slot{slot}Summary", y + 150, f"SLOT{slot}SUMMARY", "$FontColorWhite"))
         kids.append(line(f"Slot{slot}Last", y + 210, "Last played", "$FontColorGoldYellow", "$MediumFontSize"))
         kids.append(menu_button(f"Slot{slot}Delete", 345, y + 22, "Delete", act + f"slot-delete-{slot}"))
-    # Deleting a save is asked twice. Each question is a ready-made group the plugin shows; the
-    # buttons swap sides for the second question, so a double click can't answer both.
+    # Deleting a save is asked twice. Each question's words are a ready-made group per slot that
+    # the plugin shows. A hidden button still takes clicks in this game, so no two buttons may
+    # share a spot: the four answer buttons are made once (not per slot) and stand side by side
+    # in one row, low on the screen where no slot button is. The second question's buttons are
+    # to the right of the first's and swap order, so a double click can't answer both.
     for slot in (1, 2, 3):
-        yes1 = menu_button("Yes", -500, 1000, f"Delete Save {slot}", act + f"slot-delete-sure-{slot}")
-        no1 = menu_button("No", 30, 1000, "Keep it", act + "slot-delete-cancel")
         kids.append({"type": "Widget", "name": f"Confirm{slot}A", "fields": {"rect": {"x": 0, "y": 0}}, "children": [
             line("Title", 640, f"Delete Save {slot}?", "$FontColorGoldYellow", "$XExtraLargeFontSize"),
             line("Text", 780, "Its heroes, everything they carry and its stash will be gone."),
-            line("Text2", 850, "The other saves are not touched."), yes1, no1]})
-        no2 = menu_button("No", -500, 1000, "Keep it", act + "slot-delete-cancel")
-        yes2 = menu_button("Yes", 30, 1000, f"Yes, delete Save {slot}", act + f"slot-delete-yes-{slot}")
+            line("Text2", 850, "The other saves are not touched.")]})
         kids.append({"type": "Widget", "name": f"Confirm{slot}B", "fields": {"rect": {"x": 0, "y": 0}}, "children": [
             line("Title", 640, "Are you sure?", "$FontColorRed", "$XExtraLargeFontSize"),
-            line("Text", 780, f"Save {slot} can't be brought back. You won't be asked again."), no2, yes2]})
+            line("Text", 780, f"Save {slot} can't be brought back. You won't be asked again.")]})
+    kids.append(menu_button("AskYes", -1060, 1650, "Delete it", act + "slot-delete-sure"))
+    kids.append(menu_button("AskNo", -540, 1650, "Keep it", act + "slot-delete-cancel"))
+    kids.append(menu_button("SureNo", -20, 1650, "Keep it", act + "slot-delete-cancel"))
+    kids.append(menu_button("SureYes", 500, 1650, "Yes, delete it", act + "slot-delete-yes"))
     kids.append(line("RestartNotice", 1740, "This save is ready. Close the game and start it again to play it.", "$FontColorWhite"))
     kids.append(menu_button("Exit", -235, 1840, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit"))
     return {"type": "Panel", "name": "darkestdiablo/SaveSlots",
@@ -112,25 +117,29 @@ def save_slots():
 
 
 def traveler():
-    kids = [text("Heading", 78, 60, 1076, 70, "A traveler joins your camp", "$StyleSettingsTitle"),
-            text("Help", 150, 140, 956, 110, "Choose who stays by the fire. They wait at the Campfire as a new hero.")]
-    for place, x in enumerate((120, 477, 834)):
+    # Three offers side by side: each button at 0.7 size is about 360 wide.
+    scale = 0.7
+    kids = [text("Heading", 78, 50, 1076, 70, "A traveler joins your camp", "$StyleSettingsTitle"),
+            text("Help", 135, 125, 956, 90, "Choose who stays by the fire. They wait at the Campfire as a new hero.")]
+    for place, x in enumerate((55, 433, 811)):
         for cls in CLASSES:
-            kids.append(button(f"Offer{place}{cls}", x, 275, cls, action=f"recruit-{cls}"))
-    kids.append(button("NotNow", 477, 385, "Not now", action="traveler-later"))
+            kids.append(button(f"Offer{place}{cls}", x, 225, cls, action=f"recruit-{cls}", scale=scale))
+    kids.append(button("NotNow", 433, 320, "Not now", action="traveler-later", scale=scale))
     return panel("Traveler", kids)
 
 
 def campfire():
-    kids = [text("Heading", 78, 50, 1076, 70, "The Campfire", "$StyleSettingsTitle"),
-            text("Help", 150, 120, 956, 80, "By the fire, waiting to join (new), or not in camp (grey).")]
+    # Eight classes in two rows of four: each button at 0.56 size is about 287 wide and 52 tall.
+    scale = 0.56
+    kids = [text("Heading", 78, 40, 1076, 70, "The Campfire", "$StyleSettingsTitle"),
+            text("Help", 135, 105, 956, 60, "By the fire, waiting to join (new), or not in camp (grey).")]
     for i, cls in enumerate(CLASSES):
-        x, y = 27 + (i % 4) * 300, 205 + (i // 4) * 85
-        kids.append(button(f"Hero{cls}", x, y, cls))
-        kids.append(button(f"Recruit{cls}", x, y, f"{cls} (new)", color="$FontColorGoldYellow"))
-        kids.append(button(f"Locked{cls}", x, y, cls, disabled=True, color="$FontColorLightGray"))
-    kids.append(button("ToCampfire", 327, 390, "Go to the fire", action="to-campfire"))
-    kids.append(button("Close", 627, 390, "@d2r:strClose", message="PanelManager:ClosePanel:darkestdiablo/Campfire"))
+        x, y = 30 + (i % 4) * 293, 185 + (i // 4) * 62
+        kids.append(button(f"Hero{cls}", x, y, cls, scale=scale))
+        kids.append(button(f"Recruit{cls}", x, y, f"{cls} (new)", color="$FontColorGoldYellow", scale=scale))
+        kids.append(button(f"Locked{cls}", x, y, cls, disabled=True, color="$FontColorLightGray", scale=scale))
+    kids.append(button("ToCampfire", 255, 325, "Go to the fire", action="to-campfire", scale=0.7))
+    kids.append(button("Close", 625, 325, "@d2r:strClose", message="PanelManager:ClosePanel:darkestdiablo/Campfire", scale=0.7))
     return panel("Campfire", kids)
 
 

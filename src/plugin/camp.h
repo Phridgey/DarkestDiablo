@@ -504,10 +504,14 @@ inline auto ReadSave(const fs::path& file) -> SaveInfo {
 		return info;
 	}
 	const uint32_t magic = head[0] | (head[1] << 8) | (head[2] << 16) | (static_cast<uint32_t>(head[3]) << 24);
-	info.cls      = head[40];
-	info.level    = head[43];
-	info.hardcore = (head[36] & 0x04) != 0;
-	info.dead     = (head[36] & 0x08) != 0;
+	// Save version 105 (this game build) dropped 16 bytes from the start of the file: class and
+	// level sit at 24 and 27 there (seen in real saves), where older versions have them at 40 and 43.
+	const uint32_t version = head[4] | (head[5] << 8) | (head[6] << 16) | (static_cast<uint32_t>(head[7]) << 24);
+	const int shift = version >= 105 ? 16 : 0;
+	info.cls      = head[40 - shift];
+	info.level    = head[43 - shift];
+	info.hardcore = (head[36 - shift] & 0x04) != 0;
+	info.dead     = (head[36 - shift] & 0x08) != 0;
 	info.ok       = magic == 0xAA55AA55U && info.cls < ClassCount && info.level >= 1 && info.level <= 99;
 	return info;
 }

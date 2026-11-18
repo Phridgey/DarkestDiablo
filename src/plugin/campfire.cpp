@@ -90,6 +90,7 @@ bool g_inGame        = false;
 int  g_levelId       = -1;
 int  g_selectedClass = -1;      // on the hero screen
 int  g_pendingClass  = -1;      // Create was pressed for this class; its save has not been seen yet
+int  g_pickedClass   = -1;      // the class last clicked on the hero screen: pressing Enter in the name box makes a hero without a Create message
 bool g_died          = false;   // the hero in the current game died
 int  g_reachedLevel  = 0;       // character level reported during the current game
 fs::file_time_type g_joinTime {};
@@ -165,7 +166,7 @@ auto PlayedHero() -> std::string {
 // levels reported during it are applied to the hero that was played.
 void Reconcile(const D2RL::PluginContext* context, bool afterGame) {
 	Camp::Hints hints;
-	hints.newClass = g_pendingClass;
+	hints.newClass = g_pendingClass >= 0 ? g_pendingClass : g_pickedClass;
 	if (afterGame) {
 		const std::string played = PlayedHero();
 		if (g_died) {
@@ -186,6 +187,7 @@ void Reconcile(const D2RL::PluginContext* context, bool afterGame) {
 	}
 	if (g_camp.heroes.size() > heroesBefore || !g_inGame) {
 		g_pendingClass = -1;
+		g_pickedClass = -1;
 	}
 	if (afterGame) {
 		g_died = false;
@@ -382,6 +384,11 @@ void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 	for (const char* part : { "Heading", "Sub", "Exit" }) {
 		SetVisible(context, panel.c_str(), part, !asking);
 	}
+	// The answer buttons are shared by the three saves (a hidden button still takes clicks).
+	SetVisible(context, panel.c_str(), "AskYes", g_confirmStep == 1);
+	SetVisible(context, panel.c_str(), "AskNo", g_confirmStep == 1);
+	SetVisible(context, panel.c_str(), "SureNo", g_confirmStep == 2);
+	SetVisible(context, panel.c_str(), "SureYes", g_confirmStep == 2);
 	SetVisible(context, panel.c_str(), "RestartNotice", false);
 }
 
@@ -447,6 +454,7 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 		g_slot = slot;
 		g_camp = Camp::LoadState(g_live, g_slot);
 		g_pendingClass = -1;
+		g_pickedClass = -1;
 		Reconcile(context, false);
 		Log(context, "Camp: switched to save %d. %s", slot, Describe().c_str());
 		said = "Switched to save " + std::to_string(slot) + ".";
@@ -724,7 +732,7 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	if (PoolOpen(context, g_fire, "Campfire")) {
 		g_atFire = true;
 		g_deleteMode = false;
-		g_createMode = false;
+		g_createMode = g_camp.heroes.empty();  // a new save has nobody to pick: go straight to making a hero
 		g_chosenHero = -1;
 		ShowDeleteMode(context);
 		Later(context, 300, ShowFireState);  // again once the game's screen has settled
@@ -1061,6 +1069,7 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 	if (slot == g_slot) {
 		g_camp = Camp::LoadState(g_live, g_slot);
 		g_pendingClass = -1;
+		g_pickedClass = -1;
 		g_chosenHero = -1;
 		g_slotChosen = false;
 	}
@@ -1074,17 +1083,18 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 
 auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 	if (std::strcmp(action, "slot-delete-cancel") == 0) {
+		Log(context, "Camp: Keep it pressed (question %d about save %d).", g_confirmStep, g_confirmSlot);
 		g_confirmSlot = 0;
 		g_confirmStep = 0;
 		ShowSlotWidgets(context);
-	} else if (StartsWith(action, "slot-delete-yes-")) {
-		const int slot = std::atoi(action + 16);
-		if (slot == g_confirmSlot && g_confirmStep == 2) {
-			DeleteSave(context, slot);
+	} else if (std::strcmp(action, "slot-delete-yes") == 0) {
+		if (g_confirmSlot != 0 && g_confirmStep == 2) {
+			DeleteSave(context, g_confirmSlot);
 		}
-	} else if (StartsWith(action, "slot-delete-sure-")) {
-		if (std::atoi(action + 17) == g_confirmSlot && g_confirmStep == 1) {
+	} else if (std::strcmp(action, "slot-delete-sure") == 0) {
+		if (g_confirmSlot != 0 && g_confirmStep == 1) {
 			g_confirmStep = 2;
+			Log(context, "Camp: asking once more before deleting save %d.", g_confirmSlot);
 			ShowSlotWidgets(context);
 		}
 	} else if (StartsWith(action, "slot-delete-")) {
@@ -1093,6 +1103,7 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 			g_confirmSlot = slot;
 			g_confirmStep = 1;
 			ShowSlotWidgets(context);
+			Log(context, "Camp: asking before deleting save %d.", slot);
 		}
 	} else if (StartsWith(action, "slot-")) {
 		PickSlot(context, std::atoi(action + 5));
@@ -1120,7 +1131,7 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 		BuryHero(context, Camp::ClassFromName(action + 5));
 	} else if (std::strcmp(action, "delete-mode") == 0) {
 		g_deleteMode = !g_deleteMode;
-		g_createMode = false;
+		g_createMode = g_camp.heroes.empty();
 		ShowDeleteMode(context);
 	} else if (std::strcmp(action, "to-campfire") == 0) {
 		RecordGear(context, nullptr);
@@ -1361,6 +1372,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				}
 				if (std::strcmp(command, "Select") == 0) {
 					g_selectedClass = cls;
+					g_pickedClass = cls;
 					g_chosenHero = -1;
 					ShowDeleteMode(context);
 					Later(context, 100, ShowFireState);
