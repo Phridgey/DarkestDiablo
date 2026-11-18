@@ -1055,10 +1055,10 @@ auto AtFire(const D2RL::PluginContext* context) -> bool {
 		return false;
 	}
 	const long long dx = hero.x - fire.x, dy = hero.y - fire.y;
-	const bool near = dx * dx + dy * dy <= FireReach * FireReach;
+	const bool atFire = dx * dx + dy * dy <= FireReach * FireReach;
 	Log(context, "Camp: stash window in town, hero at %d,%d, fire at %d,%d (%.1f sub-tiles): %s.", hero.x, hero.y, fire.x, fire.y,
-		std::sqrt(static_cast<double>(dx * dx + dy * dy)), near ? "the fire" : "the stash");
-	return near;
+		std::sqrt(static_cast<double>(dx * dx + dy * dy)), atFire ? "the fire" : "the stash");
+	return atFire;
 }
 
 // Where the portal opens: across the fire from the hero, about 4 sub-tiles past the fire's
