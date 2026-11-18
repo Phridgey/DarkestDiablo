@@ -24,9 +24,9 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    "A traveler joins your camp" and offers up to 3 locked classes. The class of the last hero
    that fell is always one of them, once. The picked class waits at the Campfire as a recruit.
 5. **The bonfire.** The Rogue Encampment's bonfire is the camp's stash: its stash chest is gone.
-   Clicking the fire opens the stash and the Campfire roster together. The roster shows who is
-   by the fire and has "Go to the fire", which saves, leaves the game and lands on the Campfire
-   to pick another hero. Elsewhere the stash window has a Campfire button.
+   Clicking the fire (from any side: it has a bigger click box) opens the stash and a small
+   window at the top with "Rest at the Campfire", which saves, leaves the game and lands on the
+   Campfire scene to pick another hero. Elsewhere the stash window has a Campfire button.
 6. **Death is final.** A fallen hero's files move to the graveyard, with everything it wore and
    carried. Its class locks again. Only the stash carries on.
 7. **The stash.** The game's shared stash, with 7 more pages. Each save has its own.
@@ -55,8 +55,9 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
   stash. The plugin opens the roster whenever the stash opens in the Rogue Encampment, where
   the fire is the only stash.
 - **Text on our panels is fixed.** A plugin can show and hide widgets but not change their
-  text. The traveler and roster panels hold a ready-made button for every case and show the
-  right ones. The roster shows classes, not hero names and levels. The slot screen's summary
+  text. Panels hold a ready-made label for every case and show the right ones. A hidden button
+  still takes clicks, so labels are stacked but buttons never are: the traveler has one button
+  per place and the plugin looks up which class is offered there. The slot screen's summary
   lines are made once at launch.
 - **No "player died" event.** The plugin watches for the game's "You died" window and for a
   resurrection. A softcore hero that comes back is sent out of the game at once and buried.
