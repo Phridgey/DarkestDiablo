@@ -74,44 +74,94 @@ def menu_button(name, x, y, text, message, large=False):
                        "textColor": "$LightButtonTextColor"}}
 
 
+FE = "FrontEnd\\HD\\Final\\"
+PANEL_SCALE = 1.3                       # FrontEnd_DifficultyModal (the Normal/Nightmare/Hell card) is 544 x 457
+PANEL_W, PANEL_H = int(544 * PANEL_SCALE), int(457 * PANEL_SCALE)
+PANEL_Y = (2160 - (int(457 * 1.3) + 25 + 118)) // 2  # the cards and their buttons, centred top to bottom
+PANEL_GAP = 50
+PANEL_X = [-(PANEL_W * 3 + PANEL_GAP * 2) // 2 + i * (PANEL_W + PANEL_GAP) for i in range(3)]
+HERO_LINES = 8                          # one hero per class at most: two columns of four
+BUTTON_Y = PANEL_Y + PANEL_H + 25
+ROW_Y = 1930                            # Exit and the delete questions' answers
+
+
+def styled(name, x, y, width, height, value, color, size, align="left", font="16pt"):
+    """A text line in the hero list's own style (character select: gold, drop shadow)."""
+    return {"type": "TextBoxWidget", "name": name,
+            "fields": {"rect": {"x": x, "y": y, "width": width, "height": height}, "fontType": font, "text": value,
+                       "style": {"fontColor": color, "pointSize": size, "spacing": "$ReducedSpacing",
+                                 "alignment": {"h": align, "v": "center"}, "dropShadow": "$DefaultDropShadow"}}}
+
+
+def fe_button(name, x, y, text, message, art="FrontEnd_ButtonMed"):
+    return {"type": "ButtonWidget", "name": name,
+            "fields": {"rect": {"x": x, "y": y}, "filename": FE + art, "textString": text, "onClickMessage": message,
+                       "pressedFrame": 1, "hoveredFrame": 3, "disabledFrame": 2, "text/style": "$StyleFEButtonText"}}
+
+
+def delve(slot):
+    """One save as the game's difficulty card: "Delve N", its living heroes as "level class"
+    (two columns of four), and the difficulty it plays on, large at the bottom. The plugin
+    writes the @@...@@ marks (campfire.cpp, RegisterSlotsLayout); an empty save shows none."""
+    x = PANEL_X[slot - 1]
+    m = f"@@S{slot}"
+    kids = [{"type": "ImageWidget", "name": "Frame",
+             "fields": {"rect": {"x": x, "y": PANEL_Y, "scale": PANEL_SCALE}, "filename": FE + "FrontEnd_DifficultyModal"}},
+            styled("Title", x + 60, PANEL_Y + 40, PANEL_W - 200, 80, f"Delve {slot}", "$FontColorGoldYellow",
+                   "$XExtraLargeFontSize", font="30pt")]
+    col_w = (PANEL_W - 120) // 2
+    for i in range(HERO_LINES):
+        kids.append(styled(f"Hero{i + 1}", x + 60 + (i // 4) * col_w, PANEL_Y + 175 + (i % 4) * 52, col_w, 50,
+                           f"{m}HERO{i + 1}@@", "$LightButtonTextColor", "$XMediumFontSize"))
+    kids.append(styled("Recruits", x + 60, PANEL_Y + 385, PANEL_W - 120, 44, f"{m}RECRUITS@@",
+                       "$CharacterListDetailsColor", "$SmallFontSize"))
+    kids.append(styled("Difficulty", x + 30, PANEL_Y + PANEL_H - 150, PANEL_W - 60, 100, f"{m}DIFF@@", f"{m}DIFFCOLOR@@",
+                       "$HugeFontSize", align="center", font="30pt"))
+    return {"type": "Widget", "name": f"Delve{slot}", "fields": {"rect": {"x": 0, "y": 0}}, "children": kids}
+
+
 def save_slots():
-    """The first screen, and it fills the whole screen: nothing of the game's own menu may show
-    behind it. A black screen, a gold title, and three of the main
-    menu's large buttons, each with a line saying who is by that save's fire."""
+    """The first screen. It is laid over the empty Campfire (the hero screen with nobody at the
+    fire) and darkens it; the plugin writes the darkness in (@@BACKDROP@@: see-through over the
+    fire, black where the game's own menu would show). Three saves ("Delves") side by side in
+    the game's difficulty card, each with its heroes, its difficulty and one button under it
+    (Continue, or Start New when it is empty)."""
     kids = [{"type": "RectangleWidget", "name": "Backdrop",
-             "fields": {"anchor": {"x": -0.5}, "fitToScreen": True, "color": [0.0, 0.0, 0.0, 1.0]},
-             "children": [{"type": "ClickCatcherWidget", "name": "catcher", "fields": {"fitToParent": True}}]},
-            {"type": "TextBoxWidget", "name": "Heading",
-             "fields": {"rect": {"x": -900, "y": 430, "width": 1800, "height": 90}, "fontType": "30pt",
-                        "text": "Choose your save", "style": GOLD_TITLE}},
-            line("Sub", 540, "Each save is its own camp, with its own heroes and stash.")]
+             "fields": {"anchor": {"x": -0.5}, "fitToScreen": True, "color": "@@BACKDROP@@"},
+             "children": [{"type": "ClickCatcherWidget", "name": "catcher", "fields": {"fitToParent": True}}]}]
     act = "PanelManager:OpenPanel:darkestdiablo/"
     for slot in (1, 2, 3):
-        y = 720 + (slot - 1) * 330
-        kids.append(menu_button(f"Slot{slot}", -305, y, f"Save {slot}",
-                                f"PanelManager:OpenPanel:darkestdiablo/slot-{slot}", large=True))
-        kids.append(line(f"Slot{slot}Summary", y + 150, f"SLOT{slot}SUMMARY", "$FontColorWhite"))
-        kids.append(line(f"Slot{slot}Last", y + 210, "Last played", "$FontColorGoldYellow", "$MediumFontSize"))
-        kids.append(menu_button(f"Slot{slot}Delete", 345, y + 22, "Delete", act + f"slot-delete-{slot}"))
+        x = PANEL_X[slot - 1]
+        kids.append(delve(slot))
+        kids.append(styled(f"Slot{slot}Last", x + 60, PANEL_Y + 112, PANEL_W - 200, 44, "Last played",
+                           "$CharacterListDetailsColor", "$SmallFontSize"))
+        # One button per save; its words are written in by the plugin (a hidden button still
+        # takes clicks in this game, so Continue and Start New can't be two buttons in one spot).
+        kids.append(fe_button(f"Slot{slot}", x + (PANEL_W - 470) // 2, BUTTON_Y, f"@@S{slot}BUTTON@@",
+                              act + f"slot-{slot}"))
+        kids.append({"type": "ButtonWidget", "name": f"Slot{slot}Delete",
+                     "fields": {"rect": {"x": x + PANEL_W - 150, "y": PANEL_Y + 40}, "filename": FE + "FrontEnd_Delete",
+                                "onClickMessage": act + f"slot-delete-{slot}", "pressedFrame": 1, "hoveredFrame": 3,
+                                "disabledFrame": 2}})
     # Deleting a save is asked twice. Each question's words are a ready-made group per slot that
     # the plugin shows. A hidden button still takes clicks in this game, so no two buttons may
-    # share a spot: the four answer buttons are made once (not per slot) and stand side by side
-    # in one row, low on the screen where no slot button is. The second question's buttons are
-    # to the right of the first's and swap order, so a double click can't answer both.
+    # share a spot: the four answer buttons are made once (not per slot) and stand in the bottom
+    # row, clear of the Exit button in the middle. The second question's buttons are to the
+    # right of the first's and swap order, so a double click can't answer both.
     for slot in (1, 2, 3):
         kids.append({"type": "Widget", "name": f"Confirm{slot}A", "fields": {"rect": {"x": 0, "y": 0}}, "children": [
-            line("Title", 640, f"Delete Save {slot}?", "$FontColorGoldYellow", "$XExtraLargeFontSize"),
+            line("Title", 640, f"Delete Delve {slot}?", "$FontColorGoldYellow", "$XExtraLargeFontSize"),
             line("Text", 780, "Its heroes, everything they carry and its stash will be gone."),
-            line("Text2", 850, "The other saves are not touched.")]})
+            line("Text2", 850, "The other Delves are not touched.")]})
         kids.append({"type": "Widget", "name": f"Confirm{slot}B", "fields": {"rect": {"x": 0, "y": 0}}, "children": [
             line("Title", 640, "Are you sure?", "$FontColorRed", "$XExtraLargeFontSize"),
-            line("Text", 780, f"Save {slot} can't be brought back. You won't be asked again.")]})
-    kids.append(menu_button("AskYes", -1060, 1650, "Delete it", act + "slot-delete-sure"))
-    kids.append(menu_button("AskNo", -540, 1650, "Keep it", act + "slot-delete-cancel"))
-    kids.append(menu_button("SureNo", -20, 1650, "Keep it", act + "slot-delete-cancel"))
-    kids.append(menu_button("SureYes", 500, 1650, "Yes, delete it", act + "slot-delete-yes"))
-    kids.append(line("RestartNotice", 1740, "This save is ready. Close the game and start it again to play it.", "$FontColorWhite"))
-    kids.append(menu_button("Exit", -235, 1840, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit"))
+            line("Text", 780, f"Delve {slot} can't be brought back. You won't be asked again.")]})
+    kids.append(fe_button("AskYes", -1460, ROW_Y, "Delete it", act + "slot-delete-sure"))
+    kids.append(fe_button("AskNo", -960, ROW_Y, "Keep it", act + "slot-delete-cancel"))
+    kids.append(fe_button("SureNo", 490, ROW_Y, "Keep it", act + "slot-delete-cancel"))
+    kids.append(fe_button("SureYes", 990, ROW_Y, "Yes, delete it", act + "slot-delete-yes"))
+    kids.append(line("RestartNotice", 1000, "This Delve is ready. Close the game and start it again to play it.", "$FontColorWhite"))
+    kids.append(fe_button("Exit", -235, ROW_Y, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit"))
     return {"type": "Panel", "name": "darkestdiablo/SaveSlots",
             "fields": {"anchor": {"x": 0.5}, "fitToParent": True, "priority": 9000}, "children": kids}
 

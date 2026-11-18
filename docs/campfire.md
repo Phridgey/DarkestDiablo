@@ -7,8 +7,12 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 
 ## What the player sees
 
-1. **Save slots.** After the title screen a window asks for Save 1, 2 or 3, each with a line
-   saying who is by its fire. A save that has been started has a Delete button, which asks twice.
+1. **Save slots ("Delves").** After the title screen the hero screen opens with nobody at the
+   fire, darkened, and three cards stand side by side over it, Delve 1 to 3, in the game's own
+   difficulty-card frame and fonts. Each lists its living heroes as
+   "level class" and shows the difficulty it plays on, large at the bottom (the hardest one
+   played in that save, which the plugin notes from the game while you play). The button under it says
+   Continue, or Start New on an empty Delve. A started Delve has a delete icon, which asks twice.
 2. **The Campfire.** The game's hero screen (the classes around the fire) is the character
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
    with a name plate. Clicking a hero (or its plate) picks it and turns Enter red; Enter loads
@@ -33,8 +37,12 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    box) saves, leaves the game and lands on the Campfire scene, like Save and Exit. To the game the
    fire is a stash chest, the only use we can notice. The town's own stash chest is untouched
    (Sam, 2026-11-18): both open the stash window, and the plugin tells them apart by where the
-   hero stands (read from game memory, `docs/game-memory.md`). Next to the fire it goes to the
-   Campfire; anywhere else the stash opens. If the positions can't be read, the stash opens.
+   hero stands (read from game memory, `docs/game-memory.md`). The hero walks up to what was
+   clicked, so if it stands nearer the fire than the stash chest it goes to the Campfire, and
+   otherwise the stash opens. (The chest is only about 14 steps from the fire, so 0.11.42's
+   "within 20 steps of the fire" sent the chest to the Campfire too.) If the chest can't be
+   found, only a hero right at the pit's edge counts as the fire; if the positions can't be
+   read, the stash opens.
 6. **Death is final.** A fallen hero's files move to the graveyard, with everything it wore and
    carried. Its class locks again. Only the stash carries on.
 7. **The stash.** The game's shared stash, with 7 more pages. Each save has its own.
@@ -70,8 +78,8 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 - **Text on our panels is fixed.** A plugin can show and hide widgets but not change their
   text. Panels hold a ready-made label for every case and show the right ones. A hidden button
   still takes clicks, so labels are stacked but buttons never are: the traveler has one button
-  per place and the plugin looks up which class is offered there. The slot screen's summary
-  lines are made once at launch.
+  per place and the plugin looks up which class is offered there. The slot screen's text
+  (heroes, difficulty, button words) is written into its layout by the plugin each time it opens.
 - **No "player died" event.** The plugin watches for the game's "You died" window and for a
   resurrection. A softcore hero that comes back is sent out of the game at once and buried.
   Hardcore heroes are also caught by the dead mark in their save.

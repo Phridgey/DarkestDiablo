@@ -25,7 +25,8 @@ searches its memory once in town, on a background thread, a few seconds after ar
 1. It looks for the hero's name. The name is the first thing in the hero's player data.
 2. It looks for units that point to that player data. A unit keeps it 0x10 bytes from its start.
 3. In the same search it collects object units of the town fire (objects.txt row 39,
-   RogueBonfire) and keeps the one nearest to the hero.
+   RogueBonfire) and keeps the one nearest to the hero, and object units of the town's stash
+   chest (row 267, bank), keeping the one nearest to the fire.
 
 The hero's unit is then remembered, so later positions are read straight from it.
 
@@ -41,7 +42,7 @@ the start of the list, and keeps it only if the object chains there hold object 
 the module name and the distance from the module's start in `darkestdiablo-unitlist.txt` next
 to the plugin. From then on each search reads the list directly (a few milliseconds): the hero
 is the player unit whose player data starts with the hero's name, the fire is the nearest
-object unit of row 39. If the saved place stops working, the slow search runs and finds it again.
+object unit of row 39 and the stash chest the row 267 unit nearest the fire. If the saved place stops working, the slow search runs and finds it again.
 
 ## Unit layout used
 
@@ -62,6 +63,8 @@ Positions are world sub-tiles, the same numbers `location player` prints in the 
 
 ## What uses them
 
+- Fire or stash: both open the stash window, so the plugin compares the hero's distance to the
+  fire and to the stash chest; the nearer one was used (`AtFire` in `campfire.cpp`).
 - The traveler's portal: it opens on the far side of the fire from the hero (`PlacePortal` in
   `campfire.cpp`). If either position can't be read, it opens where the hero stands.
 

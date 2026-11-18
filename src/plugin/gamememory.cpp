@@ -32,6 +32,7 @@ constexpr std::size_t PathStaticY   = 0x14;
 constexpr uint32_t    TypePlayer    = 0;
 constexpr uint32_t    TypeObject    = 2;
 constexpr uint32_t    FireRow       = 39;     // objects.txt: RogueBonfire
+constexpr uint32_t    StashRow      = 267;    // objects.txt: bank (the town's stash chest)
 constexpr uint32_t    FrozenBuild   = 95032;  // D2R_VERSION 3.4.95032
 constexpr uintptr_t   Buckets       = 128;    // the unit list: per unit kind, 128 chains of units
 constexpr std::size_t NextTries[]   = { 0x150, 0x158 };  // where a unit keeps the next unit of its chain
@@ -40,6 +41,7 @@ std::mutex             g_lock;
 std::atomic<bool>      g_scanning { false };
 uintptr_t              g_heroUnit = 0;
 Pos                    g_fire;
+Pos                    g_stash;
 std::string            g_report = "no scan yet";
 uint64_t               g_scanStarted = 0;  // GetTickCount64 when the running scan began
 std::atomic<uint32_t>  g_scanPass { 0 };   // which pass of the slow search runs (1 or 2)
@@ -152,27 +154,31 @@ auto NamedAs(uintptr_t unit, const std::string& name) -> bool {
 	       std::memcmp(text, name.c_str(), name.size() + 1) == 0;
 }
 
-// The fire unit nearest the hero, from the list.
-auto ListedFire(uintptr_t base, std::size_t next, Pos hero) -> Pos {
-	Pos fire;
+// The object of one objects.txt row nearest `from`, from the list.
+auto ListedObject(uintptr_t base, std::size_t next, uint32_t wanted, Pos from) -> Pos {
+	Pos found;
 	long long best = -1;
 	ForEachListed(base, TypeObject, next, [&](uintptr_t unit) {
 		uint32_t type = 99, row = 0;
-		if (!Read(unit + UnitType, type) || type != TypeObject || !Read(unit + UnitClass, row) || row != FireRow) {
+		if (!Read(unit + UnitType, type) || type != TypeObject || !Read(unit + UnitClass, row) || row != wanted) {
 			return;
 		}
 		const Pos p = FireAt(unit);
-		const long long dx = p.x - hero.x, dy = p.y - hero.y;
+		const long long dx = p.x - from.x, dy = p.y - from.y;
 		if (p.ok && (best < 0 || dx * dx + dy * dy < best)) {
 			best = dx * dx + dy * dy;
-			fire = p;
+			found = p;
 		}
 	});
-	return fire;
+	return found;
+}
+
+auto ListedFire(uintptr_t base, std::size_t next, Pos hero) -> Pos {
+	return ListedObject(base, next, FireRow, hero);
 }
 
 // The quick way: hero and fire straight from the saved unit list. False if it isn't known.
-auto FromList(const std::string& name, uintptr_t& hero, Pos& heroPos, Pos& fire) -> bool {
+auto FromList(const std::string& name, uintptr_t& hero, Pos& heroPos, Pos& fire, Pos& stash) -> bool {
 	LoadList();
 	if (g_list.module.empty()) {
 		return false;
@@ -193,6 +199,7 @@ auto FromList(const std::string& name, uintptr_t& hero, Pos& heroPos, Pos& fire)
 	}
 	heroPos = HeroAt(hero);
 	fire = ListedFire(base, g_list.next, heroPos);
+	stash = fire.ok ? ListedObject(base, g_list.next, StashRow, fire) : Pos {};
 	return true;
 }
 
@@ -299,14 +306,16 @@ void Scan(std::string name) {
 	const auto started = GetTickCount64();
 	{
 		uintptr_t hero = 0;
-		Pos heroPos, fire;
-		if (FromList(name, hero, heroPos, fire)) {
+		Pos heroPos, fire, stash;
+		if (FromList(name, hero, heroPos, fire, stash)) {
 			char line[256];
-			std::snprintf(line, sizeof(line), "read from the unit list in %llu ms: hero at %d,%d, fire at %d,%d (%s)",
-				static_cast<unsigned long long>(GetTickCount64() - started), heroPos.x, heroPos.y, fire.x, fire.y, fire.ok ? "ok" : "not found");
+			std::snprintf(line, sizeof(line), "read from the unit list in %llu ms: hero at %d,%d, fire at %d,%d (%s), stash at %d,%d (%s)",
+				static_cast<unsigned long long>(GetTickCount64() - started), heroPos.x, heroPos.y, fire.x, fire.y, fire.ok ? "ok" : "not found",
+				stash.x, stash.y, stash.ok ? "ok" : "not found");
 			const std::lock_guard<std::mutex> guard(g_lock);
 			g_heroUnit = hero;
 			g_fire = fire;
+			g_stash = stash;
 			g_report = line;
 			g_scanning = false;
 			return;
@@ -318,6 +327,7 @@ void Scan(std::string name) {
 	g_scannedMb = 0;
 	std::vector<uintptr_t> names;
 	std::vector<uintptr_t> fires;
+	std::vector<uintptr_t> stashes;
 	const std::size_t length = name.size() + 1;  // with its ending zero
 	ForEachChunk([&](uintptr_t base, const unsigned char* bytes, SIZE_T size) {
 		for (SIZE_T i = 0; i + 16 <= size; i += 8) {
@@ -330,6 +340,9 @@ void Scan(std::string name) {
 			std::memcpy(&row, bytes + i + 4, 4);
 			if (type == TypeObject && row == FireRow && fires.size() < 512) {
 				fires.push_back(base + i);
+			}
+			if (type == TypeObject && row == StashRow && stashes.size() < 512) {
+				stashes.push_back(base + i);
 			}
 		}
 	});
@@ -420,9 +433,24 @@ void Scan(std::string name) {
 			}
 		}
 	}
+	// The town's stash chest: the one nearest the fire.
+	Pos stash;
+	if (fire.ok) {
+		long long nearest = -1;
+		for (const uintptr_t c : stashes) {
+			const Pos p = FireAt(c);
+			const long long dx = p.x - fire.x, dy = p.y - fire.y;
+			if (p.ok && dx * dx + dy * dy < 200 * 200 && (nearest < 0 || dx * dx + dy * dy < nearest)) {
+				nearest = dx * dx + dy * dy;
+				stash = p;
+			}
+		}
+	}
+	report += "; stash " + (stash.ok ? "at " + std::to_string(stash.x) + "," + std::to_string(stash.y) : std::string("not found"));
 	const std::lock_guard<std::mutex> guard(g_lock);
 	g_heroUnit = hero;
 	g_fire = fire;
+	g_stash = stash;
 	g_report = report;
 	g_scanning = false;
 }
@@ -536,6 +564,11 @@ auto Hero() -> Pos {
 auto Fire() -> Pos {
 	const std::lock_guard<std::mutex> guard(g_lock);
 	return g_fire;
+}
+
+auto Stash() -> Pos {
+	const std::lock_guard<std::mutex> guard(g_lock);
+	return g_stash;
 }
 
 auto Report() -> std::string {

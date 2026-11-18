@@ -119,12 +119,19 @@ static void CampFileRoundTrip() {
 	camp.recruits = { Sorceress };
 	camp.fallen = { Druid };
 	camp.offer = { Druid, 0, 2 };
+	camp.difficulty = 2;
 	const State back = Parse(Serialize(camp));
+	CHECK(back.difficulty == 2 && Parse(Serialize(State {})).difficulty == 0 && Parse("difficulty 7\n").difficulty == 2);
 	CHECK(back.started && back.heroes.size() == 1 && back.heroes[0].name == "Burr" && back.heroes[0].level == 12);
 	CHECK(back.recruits == camp.recruits && back.fallen == camp.fallen && back.offer == camp.offer);
 	CHECK(Summary(back) == "Paladin 12 - 1 recruit waiting");
 	CHECK(Summary(State {}) == "Empty - start a new camp");
 	CHECK(!Parse("garbage\nhero Nobody 3 x\n").started);
+	const auto text = DelveText(back);
+	CHECK(text[0].second == "12 Paladin" && text[1].second.empty() && text[8].second == "1 recruit waiting");
+	CHECK(text[10].second == "Hell" && text[9].second == "$FontColorRed" && text[11].second == "Continue");
+	const auto empty = DelveText(State {});
+	CHECK(empty[0].second.empty() && empty[10].second.empty() && empty[11].second == "Start New");
 }
 
 static void SlotsKeepTheirOwnHeroesAndStash() {
