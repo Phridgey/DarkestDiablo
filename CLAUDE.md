@@ -16,6 +16,8 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
 - `vanilla/` — tables extracted from your own game copy (`tools/extract.cpp` or CascView).
 - `src/data/` — new files copied into the mod as they are (same folder layout as the game's data).
 - `src/patches/*.py` — scripts that change vanilla tables. Each defines `patch(t)`; run in name order.
+  The game keeps a second copy of its tables in `global/excel/base` (rules without the Warlock
+  expansion), so `tools/build.py` runs every patch on that copy too; write patches that work on both.
 - `src/plugin/` — the code layer: a D2RLoader plugin built with the D2RLoader Plugin SDK 0.3.0
   (fork menu via waypoints, run and camp state, item rolls). Use SDK services; do not patch
   game memory by hand, and never try to get around Blizzard's protection (`D2R_loader.dll`).

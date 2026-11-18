@@ -121,7 +121,8 @@ def find_widget(node, name):
 
 
 class Tables:
-    def __init__(self):
+    def __init__(self, excel=EXCEL):
+        self.excel = excel  # global/excel, or global/excel/base (see run_patches_on_base)
         self.loaded = {}
         self.layouts = {}
         self.files = {}
@@ -155,7 +156,7 @@ class Tables:
 
     def table(self, name):
         if name not in self.loaded:
-            src = VANILLA / EXCEL / f"{name}.txt"
+            src = VANILLA / self.excel / f"{name}.txt"
             if not src.exists():
                 raise FileNotFoundError(f"{src} is missing. Extract the vanilla files first.")
             self.loaded[name] = Table(src)
@@ -207,6 +208,28 @@ def write_camp_data(t, target):
     print(f"wrote: d2rloader/camp_data.txt ({len(lines)} lines)")
 
 
+def run_patches_on_base(patches):
+    """The game has a second copy of its tables in global/excel/base (the rules without the
+    Warlock expansion). Heroes that use those rules never see changes made only to
+    global/excel, so every patch runs again on that copy. Only its tables are kept: menus and
+    other files were already written by the first run. A patch that doesn't fit the base copy
+    is reported and undone, so it can't break the build."""
+    if not (VANILLA / EXCEL / "base").is_dir():
+        return
+    import copy
+    base = Tables(EXCEL / "base")
+    for name, mod in patches:
+        before = copy.deepcopy(base.loaded)
+        try:
+            mod.patch(base)
+        except Exception as error:  # noqa: BLE001 - report every kind of mismatch
+            base.loaded = before  # undo the half-applied patch
+            print(f"note: {name} skipped for global/excel/base ({type(error).__name__}: {error})")
+    for name, table in base.loaded.items():
+        table.save(OUT / "data" / EXCEL / "base" / f"{name}.txt")
+        print(f"wrote: data/global/excel/base/{name}.txt")
+
+
 def main():
     if not VANILLA.exists():
         sys.exit("vanilla/ is missing. Extract the game's tables first (see README.md).")
@@ -239,15 +262,18 @@ def main():
         shutil.copytree(ROOT / "build" / "maps" / "data", OUT / "data", dirs_exist_ok=True)
 
     t = Tables()
+    patches = []
     for p in sorted((ROOT / "src" / "patches").glob("*.py")):
         spec = importlib.util.spec_from_file_location(p.stem, p)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.patch(t)
+        patches.append((p.name, mod))
         print(f"patched: {p.name}")
     for name, table in t.loaded.items():
         table.save(OUT / "data" / EXCEL / f"{name}.txt")
         print(f"wrote: data/global/excel/{name}.txt")
+    run_patches_on_base(patches)
 
     for name, layout in t.layouts.items():
         target = OUT / "data" / "global" / "ui" / "layouts" / f"{name}.json"
