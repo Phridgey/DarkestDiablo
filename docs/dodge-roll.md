@@ -25,45 +25,50 @@ From public guides (Mobalytics, poe2db, Sportskeeda, the 0.1.0d patch notes):
 ## What D2R plus our plugin can do
 
 - **Moving the hero.** The plugin SDK (0.3.0) cannot move the hero, read where the hero is, or
-  change life or stats. So the roll has to be a **skill** in the game's tables. The closest
-  engine code to a roll is the Barbarian's **Leap**: it carries the hero to a point and knocks
-  back monsters where it lands. Its range, minimum airtime and speed are table values we can tune.
+  change life or stats. So the roll has to be a **skill** in the game's tables, reusing the
+  movement code of an existing skill (see Animation below).
 - **Input.** The plugin can add a rebindable key (InputService), but it has no way to make the
   hero use a skill. On keyboard and mouse D2R only casts skills from the mouse buttons, so the
   roll is a right-click skill (or a skill hotkey, then right-click). A real "press Space to
   roll" would need engine work the SDK does not offer.
 - **Cancelling.** D2 never lets a new action cut an attack or cast short. The roll can't cancel
   other actions the way PoE2's does.
-- **Avoiding hits.** No table setting gives a short window of immunity. Leap may already make
-  the hero untouchable in the air; that needs testing. If not, the options are a plugin timer
+- **Avoiding hits.** No table setting gives a short window of immunity. If not, the options are a plugin timer
   that runs the `cheat invincible` console command around the roll (works only because the mod
   is offline, and the plugin would need to know when the roll starts, which it currently
   can't), or accepting a roll that only moves.
 - **Animation.** D2R's player animations are 3D files in Blizzard's own formats; there are no
-  public tools to author new ones. The roll uses Leap's animation sequence. On a Barbarian
-  that is the leap; on the other classes it is untested and may look odd or fall back to
-  another pose. A real roll animation would need custom model tooling and is not in this step.
+  public tools to author new ones. A skill can only use poses the game already has, and skills
+  that move the hero come with a fixed sequence of poses in the game's code. Moves that carry
+  the hero across the ground: Leap (jump), Charge (fast run, then a swing at a monster),
+  Whirlwind (spin), Dragon Flight and Teleport (instant).
 
-## First version (prototype, `src/patches/050_dodge_roll.py`)
+## Current version (prototype, `src/patches/050_dodge_roll.py`)
 
-A new skill, **Dodge Roll**, that every class has from level 1 (in the same free skill slots as
-Throw and Kick, so it shows up with them in the skill picker):
+First try (0.11.0) used Leap. Sam asked for a different pose and a dash to the clicked spot
+instead of a jump (2026-11-18), so it now has two test skills every class gets from level 1, in
+the same free skill slots as Throw and Kick:
 
-- Leap's code with a short fixed range (every roll is the same length), less airtime, more speed.
-- No mana cost, no cooldown, works in town.
-- A small knockback where it lands, like PoE2 pushing small monsters aside.
-- Placeholder icon (Leap's picture slot), English text in every language.
+- **Dodge Roll**: the Paladin's Charge code with no weapon, damage, cost or cooldown, and twice
+  Charge's speed. The pose is the hero's own run, faster. Unknown: whether Charge accepts a
+  click on plain ground (in the normal game it charges at monsters), and whether it swings at
+  the end.
+- **Dodge Spin** (test only, not for the Barbarian, who has one free slot and Whirlwind
+  already): Whirlwind's code, no weapon or damage. It surely moves to the clicked spot, but the
+  pose is the spin. It stays only if Charge refuses plain ground.
+- Placeholder icons (Charge's and Whirlwind's picture slots), English text in every language.
 
-The tuning values are at the top of the patch file.
+The tuning values are at the top of the patch file. Neither skill can go a fixed distance: both
+go to where you click.
 
 ## Test in game
 
 Use a new hero (skills from `charstats.txt` are given when a hero is made).
 
-1. Put Dodge Roll on the right mouse button. Roll in town and in a fight, with a Barbarian and
-   with one other class.
-2. Does each roll go the same distance toward the cursor? Too long, too short, too slow?
-3. What does the animation look like on the non-Barbarian?
-4. Stand in a pack of melee monsters and next to an archer, and roll through them. Do hits
-   land while in the air?
+1. Put Dodge Roll on the right mouse button. Click plain ground in town and in a fight, with a
+   Paladin or Barbarian and with one caster (Sorceress or Necromancer).
+2. Does it dash to the spot? Does it swing at the end? Too slow or too fast?
+3. If it refuses plain ground, try Dodge Spin the same way.
+4. Stand in a pack of melee monsters and next to an archer, and dash through them. Do hits land
+   mid-dash?
 5. Any crash or error in `d2rloader/logs/d2rloader.log`.
