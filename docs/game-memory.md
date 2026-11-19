@@ -93,19 +93,10 @@ layout. `dd-units` logs every stat entry raw ("Units: hero stats").
 
 Positions are world sub-tiles, the same numbers `location player` prints in the console.
 
-### The hero's stats (magic find)
+### The hero's magic find
 
-| Value | Where | Size |
-| --- | --- | --- |
-| Stat list | unit + 0x88 (0x90 and 0x80 are tried too) | pointer |
-| Owner kind and number (must be the hero's) | list + 0x08, list + 0x0C | 4 bytes each |
-| Stat arrays: { entries, count } | pairs between list + 0x10 and list + 0x100 | pointer + 4 bytes |
-| One stat (16 bytes each): stat (itemstatcost.txt row), value | entry + 0x04, + 0x08 | 2, 4 bytes |
-
-The list holds one array with the hero's own stats (list + 0x30, count at + 0x38) and one with
-everything counted, gear included (list + 0xA8, count at + 0xB0), as seen with `dd-where stats`. Rather than trust one offset, every pair that looks like a stat array (sorted stat
-numbers, under 1200) is read, and the largest value of the stat is kept: the gear-counted one.
-Magic find is stat 80 (item_magicbonus).
+Stat 80 (item_magicbonus) from the hero's stats with items counted (`GameState::Stats`, the
+list + 0xA8 array above), read by `GameMemory::HeroMagicFind`.
 
 ## What uses them
 
@@ -127,6 +118,6 @@ the plugin log ("Units:" lines).
 
 Type `dd-where` in the console: it prints the hero and fire positions, the hero's magic find
 (compare it with the character screen) and the last search's report. Compare the hero's
-position with `location player`. `dd-where scan` searches again; `dd-where stats` writes the
-hero's stat lists to d2rloader/darkestdiablo-stats.txt.
+position with `location player`. `dd-where scan` searches again. `dd-state stats` lists every
+hero stat.
 The plugin log has a "memory scan" line after each search.

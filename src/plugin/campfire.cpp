@@ -1256,26 +1256,11 @@ auto WhereCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 	std::snprintf(line, sizeof(line), "Hero %d,%d (%s). Fire %d,%d (%s).", hero.x, hero.y, hero.ok ? "read" : "not found", fire.x, fire.y, fire.ok ? "read" : "not found");
 	command->plugin->WriteConsoleMessage(line);
 	command->plugin->WriteConsoleMessage(GameMemory::Report().c_str());
-	const GameMemory::Stat mf = GameMemory::HeroStat(80);  // itemstatcost: item_magicbonus
+	const GameMemory::Stat mf = GameMemory::HeroMagicFind();
 	char mfLine[160];
 	std::snprintf(mfLine, sizeof(mfLine), "Magic find %d%% (%s).", mf.value, mf.ok ? mf.where.c_str() : ("not read: " + mf.where).c_str());
 	command->plugin->WriteConsoleMessage(mfLine);
 	Log(command->plugin, "Camp: dd-where: %s %s %s", line, mfLine, GameMemory::Report().c_str());
-	if (std::strcmp(command->args == nullptr ? "" : command->args, "stats") == 0) {
-		// Also to d2rloader/darkestdiablo-stats.txt (not the plugins folder, which ships), as the log may not keep long lines.
-		const std::filesystem::path file = (command->plugin->pluginDirectory != nullptr ? std::filesystem::path(command->plugin->pluginDirectory).parent_path() : std::filesystem::path()) / "darkestdiablo-stats.txt";
-		FILE* out = _wfopen(file.c_str(), L"w");
-		for (const auto& dump : GameMemory::DumpStats()) {
-			command->plugin->LogInfo(dump.c_str());
-			if (out != nullptr) {
-				std::fprintf(out, "%s\n", dump.c_str());
-			}
-		}
-		if (out != nullptr) {
-			std::fclose(out);
-		}
-		command->plugin->WriteConsoleMessage(out != nullptr ? "Stat lists written to d2rloader/darkestdiablo-stats.txt." : "Could not write darkestdiablo-stats.txt.");
-	}
 	if (std::strcmp(command->args == nullptr ? "" : command->args, "scan") == 0) {
 		GameMemory::StartScan(CurrentHero());
 		command->plugin->WriteConsoleMessage("Scanning again; type dd-where in a few seconds.");

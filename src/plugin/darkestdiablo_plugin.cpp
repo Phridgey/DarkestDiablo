@@ -530,7 +530,7 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run)
 	// with the magic find past the lower step, so the rune chance climbs smoothly on average.
 	const CraftStep* step = nullptr;   // the highest step at or under the hero's magic find
 	const CraftStep* next = nullptr;   // the step after it
-	const GameMemory::Stat mf = GameMemory::HeroStat(80);  // itemstatcost: item_magicbonus
+	const GameMemory::Stat mf = GameMemory::HeroMagicFind();
 	const int find = mf.ok ? (std::max)(0, mf.value) : 0;
 	for (const auto& candidate : g_craftSteps) {
 		if (candidate.levelId != arena.levelId) {
