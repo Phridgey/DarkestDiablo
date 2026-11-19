@@ -18,9 +18,9 @@
       "id": 52,
       "tile": [
         6,
-        4
+        3
       ],
-      "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
+      "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38). Tile 6,3 (was 6,4): one tile north, so the room's front wall no longer hides it.",
       "hd_prefab": {
         "prefab": "data/hd/env/model/act1/outdoors/act1_outdoors_props/pf_waypoint01.json",
         "offset": [

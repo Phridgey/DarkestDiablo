@@ -38,7 +38,7 @@ inline constexpr Stop Stops[] = {
 	{ "den",       "NodeDen",        0, 13, 13 },  // the Den arena (one room, level 13)
 	{ "burial",    "NodeBurial",     1, 10,  9 },  // arrive in the entry room (10), fight on 9
 	{ "inifuss",   "NodeInifuss",    2, 12, 11 },  // Rakanishu & Treehead: entry 12, fight on 11
-	{ "mausoleum", "Fork1Mausoleum", 2, -1, -1 },
+	{ "mausoleum", "Fork1Mausoleum", 2, 14, 14 },  // crafting hunt: a round crypt hall (level 14)
 	{ "crypt",     "Fork1Crypt",     2, -1, -1 },
 	{ "tristram",  "NodeTristram",   3, -1, -1 },
 	{ "pit",       "Fork2Pit",       4, -1, -1 },

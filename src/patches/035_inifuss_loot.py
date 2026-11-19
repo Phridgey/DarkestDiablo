@@ -167,8 +167,9 @@ def patch(t):
     # Treehead's extra set or unique, from his own loot table (the game's normal drop path; making
     # it in the plugin crashed the game). For each difficulty his table is a copy of the shared
     # Rakanishu/Treehead table plus one forced pick from a bonus table: every base item with a
-    # spawnable unique or set at or below his item level (area level + 3), unique and set chance
-    # at the maximum. If that base's uniques already dropped this game, the game tries set, then rare.
+    # spawnable unique or set at or below his item level, unique and set chance at the maximum.
+    # Those uniques may drop again in the same game (nolimit), so the pick is a unique, or a set
+    # for a base with only a set item (bonus_bases); never the game's rare fallback.
     arena = t.table("levels").first("Id", ARENA_ID)
     treehead = supers.first("Superunique", TREEHEAD)
     for tc_col, lvl_col, tag in (("TC", "MonLvlEx", ""), ("TC(N)", "MonLvlEx(N)", " (N)"), ("TC(H)", "MonLvlEx(H)", " (H)")):
@@ -194,15 +195,31 @@ def patch(t):
 
 
 def bonus_bases(t, item_level):
-    """Item codes that have a spawnable unique or set at or below this item level."""
+    """Item codes of base items that have a unique or a set item at or below his item level.
+    The pick is a unique when the base has one: those uniques get "nolimit" = 1, so they drop again
+    in a game where one already dropped (without it the game falls back to a set, then rare). A
+    base with only a set item gives the set. Quest items (Horadric Staff, Khalim's Flail, ...) and
+    ladder-only or charm-like ("carry1") items are left out."""
+    quest_bases = {r.get("code") for name in ("weapons", "armor", "misc") for r in t.table(name).rows
+                   if r.get("quest", "").strip() not in ("", "0")}
+
+    def droppable(row, code_col):
+        lvl = row.get("lvl", "").strip()
+        return (lvl.isdigit() and int(lvl) <= item_level and row.get(code_col) and row.get("spawnable") == "1"
+                and row.get(code_col) not in quest_bases and row.get("disabled", "") in ("", "0")
+                and not row.get("firstLadderSeason", "").strip() and not row.get("carry1", "").strip())
+
     codes = []
-    for table, code_col in (("uniqueitems", "code"), ("setitems", "item")):
-        for row in t.table(table).rows:
-            lvl = row.get("lvl", "").strip()
-            if (lvl.isdigit() and int(lvl) <= item_level and row.get(code_col) and row.get("spawnable") == "1"
-                    and row.get("disabled", "") in ("", "0") and not row.get("firstLadderSeason", "").strip()
-                    and row[code_col] not in codes):
-                codes.append(row[code_col])
+    for row in t.table("uniqueitems").rows:
+        if droppable(row, "code"):
+            row["nolimit"] = "1"
+            if row["code"] not in codes:
+                codes.append(row["code"])
+    for row in t.table("setitems").rows:
+        if droppable(row, "item") and row["item"] not in codes:
+            codes.append(row["item"])
+    if not codes:
+        raise RuntimeError(f"No unique or set can drop at item level {item_level}; Treehead's bonus pick would fail.")
     return codes
 
 

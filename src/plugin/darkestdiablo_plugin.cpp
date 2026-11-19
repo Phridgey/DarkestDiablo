@@ -20,12 +20,15 @@
 #include <D2RLPlugin/api.h>
 #include <D2RLPlugin/core_exports.h>
 #include "campfire.h"
+#include "gamememory.h"
 #include "devtools.h"
 #include "route.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <atomic>
+#include <mutex>
 #include <chrono>
+#include <cmath>
 #include <thread>
 #include <algorithm>
 #include <cstdio>
@@ -110,15 +113,41 @@ static void __cdecl DropTownPortal(const D2RL::PluginContext* context, void*) no
 	GiveItem(context, "tsc", "Town Portal");
 }
 
+// ---- Trace file (test) --------------------------------------------------------------------
+// The loader's log file doesn't keep the plugin's lines, and a crash loses the console. So the
+// loot and wave steps are also written to d2rloader/darkestdiablo-trace.txt (not the plugins
+// folder, which ships), flushed
+// line by line: after a crash its last lines show the last step taken.
+static std::mutex g_traceLock;
+static void Trace(const D2RL::PluginContext* context, const char* line) noexcept {
+	if (context == nullptr || context->pluginDirectory == nullptr) {
+		return;
+	}
+	try {
+		const std::lock_guard<std::mutex> guard(g_traceLock);
+		static FILE* out = _wfopen((std::filesystem::path(context->pluginDirectory).parent_path() / "darkestdiablo-trace.txt").c_str(), L"w");
+		if (out != nullptr) {
+			std::fprintf(out, "%llu %s\n", static_cast<unsigned long long>(GetTickCount64()), line);
+			std::fflush(out);
+		}
+	} catch (...) {
+	}
+}
+
 // ---- The plugin's own drops ----------------------------------------------------------------
 // tools/build.py writes d2rloader/loot_data.txt from the patches (035_inifuss_loot.py):
 //   "drop <level id> <monster class> <item level normal> <nightmare> <hell>"  when that monster
 //       dies in that level, one extra set or unique item at that item level
 //   "unique <item code> <level>" / "set <item code> <level>"                  the candidates
+//   "craftmf <level id> <magic find %> <suffix> <rune chance %>" (060_mausoleum.py): in that
+//       level, monsters "dd_craft_..." spawn as their copy with that suffix when the hero has at
+//       least that much magic find (the copies' loot tables drop runes at that chance)
 struct DropRule  { int32_t levelId; uint32_t monsterClass; int itemLevel[3]; };
 struct Candidate { std::string code; int level; bool set; };
 static std::vector<DropRule>  g_dropRules;
 static std::vector<Candidate> g_candidates;
+struct CraftStep { int32_t levelId; int magicFind; std::string suffix; double runeChance; };
+static std::vector<CraftStep> g_craftSteps;             // in the order of loot_data.txt (rising magic find)
 static std::atomic<int>       g_pendingDropLevel { 0 };  // item level of a queued drop, 0 = none
 
 static void ReadLootData(const D2RL::PluginContext* context) noexcept {
@@ -149,6 +178,11 @@ static void ReadLootData(const D2RL::PluginContext* context) noexcept {
 					if (words >> rule.levelId >> rule.monsterClass >> rule.itemLevel[0] >> rule.itemLevel[1] >> rule.itemLevel[2]) {
 						g_dropRules.push_back(rule);
 					}
+				} else if (kind == "craftmf") {
+					CraftStep step {};
+					if (words >> step.levelId >> step.magicFind >> step.suffix >> step.runeChance) {
+						g_craftSteps.push_back(step);
+					}
 				} else if (kind == "unique" || kind == "set") {
 					Candidate c { {}, 0, kind == "set" };
 					if (words >> c.code >> c.level) {
@@ -161,11 +195,13 @@ static void ReadLootData(const D2RL::PluginContext* context) noexcept {
 	} catch (...) {
 		g_dropRules.clear();
 		g_candidates.clear();
+		g_craftSteps.clear();
 	}
-	char message[128] {};
-	std::snprintf(message, sizeof(message), "Loot: %d guaranteed drop(s), %d set/unique candidates.",
-		static_cast<int>(g_dropRules.size()), static_cast<int>(g_candidates.size()));
+	char message[160] {};
+	std::snprintf(message, sizeof(message), "Loot: %d guaranteed drop(s), %d set/unique candidates, %d magic find step(s).",
+		static_cast<int>(g_dropRules.size()), static_cast<int>(g_candidates.size()), static_cast<int>(g_craftSteps.size()));
 	context->LogInfo(message);
+		Trace(context, message);
 }
 
 // Game thread: one set or unique item at the queued item level. Picks random candidates at or
@@ -220,12 +256,14 @@ static void __cdecl DropGuaranteed(const D2RL::PluginContext* context, void*) no
 			std::snprintf(message, sizeof(message), "Guaranteed drop: a %s %s (item level %d), try %d.",
 				c->set ? "set" : "unique", c->code.c_str(), itemLevel, tries);
 			context->LogInfo(message);
+		Trace(context, message);
 			return;
 		}
 	}
 	std::snprintf(message, sizeof(message), "Guaranteed drop: nothing could be made at item level %d (%d candidates, %d tries).",
 		itemLevel, static_cast<int>(fits.size()), tries - 1);
 	context->LogWarn(message);
+		Trace(context, message);
 }
 
 // Runs a console command through D2RCore's ExecuteConsoleCommand export (UI thread only).
@@ -245,6 +283,7 @@ static bool RunConsole(const D2RL::PluginContext* context, const char* command) 
 	char message[160] {};
 	std::snprintf(message, sizeof(message), "Console: %s -> %s", command, ok ? "sent" : "refused");
 	context->LogInfo(message);
+		Trace(context, message);
 	return ok;
 }
 
@@ -273,6 +312,13 @@ struct Arena {
 	int         originX, originY;     // levels.txt OffsetX/Y: the map's world tile position
 	const Wave* waves;
 	int         waveCount;
+	// Spawn around the hero instead of at the fixed spots. The game only keeps the map near the
+	// hero loaded, and spawning in a part that isn't loaded crashes it (BC_ASSERT hRoom), so a big
+	// hall can't use far fixed spots. The spots then say where around the hero, at half their
+	// distance from `centre`, kept within `reach` tiles of the centre (the open floor).
+	bool        nearHero = false;
+	Spot        centre   = { 0, 0 };
+	int         reach    = 0;
 };
 
 static constexpr uint32_t AnyClass       = 0xFFFFFFFFU;
@@ -334,10 +380,25 @@ static constexpr Wave InifussWaves[] = {
 	{ { { "monster", "super:4", 3, { 12, 4 } } }, 1, AnyClass, TreeheadClass },
 };
 
+// Mausoleum (level 14, the fork 1 crafting hunt): a round crypt hall, 24 tiles across, centre tile
+// 16,16 (src/maps/mausoleum.json). The waypoint stands at the west edge (tile 5,16); the undead come
+// from the east. Their types are the Mausoleum's undead copied as dd_craft_<id>, which drop only
+// runes, gems, potions and gold (src/patches/060_mausoleum.py). Test the spots in game with
+// "cheat mspawn". 44 monsters; no boss: cleared when all are dead.
+static constexpr Wave MausoleumWaves[] = {
+	{ { { "mspawn", "dd_craft_skeleton1", 5, { 14, 12 } }, { "mspawn", "dd_craft_zombie2", 4, { 14, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_zombie2", 5, { 20, 16 } }, { "mspawn", "dd_craft_skeleton1", 4, { 14, 12 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_wraith1", 4, { 22, 11 } }, { "mspawn", "dd_craft_skeleton1", 4, { 14, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_sk_archer1", 3, { 24, 20 } }, { "mspawn", "dd_craft_zombie2", 5, { 20, 16 } }, { "mspawn", "dd_craft_wraith1", 2, { 22, 11 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_craft_skeleton1", 5, { 14, 12 } }, { "mspawn", "dd_craft_sk_archer1", 3, { 24, 20 } }, { "mspawn", "dd_craft_wraith1", 2, { 22, 21 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_craft_zombie2", 6, { 26, 16 } }, { "mspawn", "dd_craft_skeleton1", 4, { 20, 16 } } }, 2, AnyClass },
+};
+
 static constexpr Arena Arenas[] = {
 	{ "Den of Evil",    DenOfEvilLevelId, 1500, 2500, DenWaves,    static_cast<int>(sizeof(DenWaves) / sizeof(DenWaves[0])) },
 	{ "Burial Grounds", 9,                1500, 1300, BurialWaves, static_cast<int>(sizeof(BurialWaves) / sizeof(BurialWaves[0])) },
 	{ "Tree of Inifuss", 11,              1500, 1900, InifussWaves, static_cast<int>(sizeof(InifussWaves) / sizeof(InifussWaves[0])) },
+	{ "Mausoleum",      14,               1500, 2624, MausoleumWaves, static_cast<int>(sizeof(MausoleumWaves) / sizeof(MausoleumWaves[0])), true, { 16, 16 }, 10 },
 };
 
 static constexpr int     ArrivalDelayMs = 1000;   // wave 1: right on arrival the map isn't loaded yet
@@ -408,6 +469,7 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 	char message[160] {};
 	std::snprintf(message, sizeof(message), "%s: cleared.", Arenas[index].name);
 	context->LogInfo(message);
+		Trace(context, message);
 	// The hero's route progress: this stop counts as cleared (route.h).
 	try {
 		const Route::Stop* stop = Route::StopByArenaLevel(Arenas[index].levelId);
@@ -426,6 +488,7 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 			std::snprintf(message, sizeof(message), "Route: %s %s; tier %d of %d is open now.", stop->id,
 				counted ? "counts as cleared" : "was not open for this hero, so it doesn't count", progress.CurrentTier() + 1, Route::TierCount);
 			context->LogInfo(message);
+		Trace(context, message);
 		}
 	} catch (...) {
 		context->LogWarn("Route: recording the clear failed.");
@@ -462,10 +525,75 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run)
 	}
 	g_wave = wave;
 	char message[128] {};
+	// The crafting hunt: its monsters spawn as the copies for the hero's magic find (craftmf
+	// lines). Between two steps each monster is the higher step's copy with a chance that grows
+	// with the magic find past the lower step, so the rune chance climbs smoothly on average.
+	const CraftStep* step = nullptr;   // the highest step at or under the hero's magic find
+	const CraftStep* next = nullptr;   // the step after it
+	const GameMemory::Stat mf = GameMemory::HeroMagicFind();
+	const int find = mf.ok ? (std::max)(0, mf.value) : 0;
+	for (const auto& candidate : g_craftSteps) {
+		if (candidate.levelId != arena.levelId) {
+			continue;
+		}
+		if (step == nullptr || find >= candidate.magicFind) {
+			step = &candidate;
+			next = nullptr;
+		} else if (next == nullptr) {
+			next = &candidate;
+		}
+	}
+	double upShare = 0.0;  // share of monsters that are the next step's copy
+	if (step != nullptr && next != nullptr && next->magicFind > step->magicFind) {
+		upShare = static_cast<double>(find - step->magicFind) / (next->magicFind - step->magicFind);
+	}
+	if (step != nullptr) {
+		const double chance = step->runeChance + (next != nullptr ? (next->runeChance - step->runeChance) * upShare : 0.0);
+		std::snprintf(message, sizeof(message), "%s: magic find %d%% (%s): monsters %s/%s (%.0f%% the second), rune chance %.1f%%.", arena.name,
+			mf.value, mf.ok ? "read" : mf.where.c_str(), step->suffix.c_str(), next != nullptr ? next->suffix.c_str() : "-", upShare * 100.0, chance);
+		context->LogInfo(message);
+		Trace(context, message);
+	}
+	static std::mt19937 rng(std::random_device {}());
 	for (int g = 0; g < w.groupCount; ++g) {
 		const Group& group = w.groups[g];
-		const int x = (arena.originX + group.at.tx) * 5 + 2;
-		const int y = (arena.originY + group.at.ty) * 5 + 2;
+		const bool craft = step != nullptr && std::strncmp(group.what, "dd_craft_", 9) == 0;
+		int upper = 0;  // how many of the group are the next step's copy
+		if (craft && next != nullptr) {
+			upper = std::binomial_distribution<int>(group.count, upShare)(rng);
+		}
+		int tx = group.at.tx, ty = group.at.ty;
+		if (arena.nearHero) {
+			const GameMemory::Pos hero = GameMemory::Hero();
+			if (hero.ok) {
+				double hx = (hero.x - 2) / 5.0 - arena.originX + (group.at.tx - arena.centre.tx) / 2.0;
+				double hy = (hero.y - 2) / 5.0 - arena.originY + (group.at.ty - arena.centre.ty) / 2.0;
+				const double dx = hx - arena.centre.tx, dy = hy - arena.centre.ty;
+				const double distance = std::sqrt(dx * dx + dy * dy);
+				if (distance > arena.reach) {  // pull it back onto the open floor
+					hx = arena.centre.tx + dx * arena.reach / distance;
+					hy = arena.centre.ty + dy * arena.reach / distance;
+				}
+				tx = static_cast<int>(std::lround(hx));
+				ty = static_cast<int>(std::lround(hy));
+			} else {
+				tx = (group.at.tx + arena.centre.tx * 2) / 3;  // no hero position: closer in than the spot
+				ty = (group.at.ty + arena.centre.ty * 2) / 3;
+			}
+		}
+		const int x = (arena.originX + tx) * 5 + 2;
+		const int y = (arena.originY + ty) * 5 + 2;
+		if (std::strcmp(group.command, "mspawn") == 0 && craft) {
+			if (group.count - upper > 0) {
+				std::snprintf(message, sizeof(message), "cheat mspawn %s%s,%d @ %d,%d", group.what, step->suffix.c_str(), group.count - upper, x, y);
+				RunConsole(context, message);
+			}
+			if (upper > 0) {
+				std::snprintf(message, sizeof(message), "cheat mspawn %s%s,%d @ %d,%d", group.what, next->suffix.c_str(), upper, x, y);
+				RunConsole(context, message);
+			}
+			continue;
+		}
 		if (std::strcmp(group.command, "mspawn") == 0) {
 			std::snprintf(message, sizeof(message), "cheat mspawn %s,%d @ %d,%d", group.what, group.count, x, y);
 		} else {
@@ -475,6 +603,7 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run)
 	}
 	std::snprintf(message, sizeof(message), "%s: wave %d of %d (+%d, %d alive).", arena.name, wave, arena.waveCount, total, g_remaining.load());
 	context->LogInfo(message);
+		Trace(context, message);
 	if (wave < arena.waveCount) {
 		Later(context, WaveIntervalMs, StartNextWave);
 	}
@@ -488,6 +617,11 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 		return;
 	}
 	Campfire::NoteDifficulty(context, event->difficulty);
+	{
+		char line[96];
+		std::snprintf(line, sizeof(line), "death: level %d class %u", event->levelId, event->monster.classId);
+		Trace(context, line);
+	}
 	const int index = g_arena.load();
 	if (index < 0 || event->levelId != Arenas[index].levelId || g_wave.load() < 1 || g_portalDropped.load()) {
 		return;
@@ -513,6 +647,7 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 	char message[96] {};
 	std::snprintf(message, sizeof(message), "%s: kill (class %u), %d alive.", arena.name, event->monster.classId, left);
 	context->LogInfo(message);
+		Trace(context, message);
 	// Crowded maps sometimes refuse a spawn ("Monster not created") and the plugin can't tell, so
 	// allow a few missing monsters.
 	if (g_wave.load() >= arena.waveCount && left <= MissingSpawnSlack && finalKills >= g_finalSize.load() - MissingSpawnSlack &&
@@ -554,6 +689,7 @@ static void __cdecl CloseNativeWaypointPanel(const D2RL::PluginContext* context,
 	std::snprintf(message, sizeof(message), "Route map: closing %s -> %s (code %d).", g_nativeWaypointPanel,
 		result == D2RL::Widgets::Result::Success ? "sent" : "failed", static_cast<int>(result));
 	context->LogInfo(message);
+		Trace(context, message);
 	if (result == D2RL::Widgets::Result::Success) {
 		g_nativeWaypointPanel[0] = '\0';
 	}
@@ -572,7 +708,7 @@ static auto InTown() noexcept -> bool {
 	}
 }
 
-static constexpr char RouteMapLayout[] = R"json({"type":"Panel","name":"darkestdiablo/RouteMap","fields":{"rect":"$LeftPanelRect","anchor":"$LeftPanelAnchor","priority":8500},"children":[{"type":"ImageWidget","name":"Background","fields":{"rect":{"x":0,"y":0},"filename":"PANEL\\Waypoints\\Waypoints_Base","frame":0}},{"type":"ImageWidget","name":"LeftHinge","fields":{"rect":"$LeftHingeRect","filename":"$LeftHingeSprite"}},{"type":"TextBoxWidget","name":"Title","fields":{"rect":"$InGamePanelTitleRect","text":"Act I - Choose your path","style":"$StyleTitleBlock"}},{"type":"ButtonWidget","name":"NodeTownLocked","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeTown","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-1"}},{"type":"ButtonWidget","name":"NodeDenLocked","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Den of Evil","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeDen","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Den of Evil","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-13","disabled":true}},{"type":"TextBoxWidget","name":"Line1","fields":{"rect":{"x":561,"y":275,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeBurialLocked","fields":{"rect":{"x":406,"y":330},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Blood Raven","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeBurial","fields":{"rect":{"x":406,"y":330},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Blood Raven","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-10","disabled":true}},{"type":"TextBoxWidget","name":"Line2","fields":{"rect":{"x":561,"y":415,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line3","fields":{"rect":{"x":205,"y":425,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line4","fields":{"rect":{"x":185,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line5","fields":{"rect":{"x":561,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line6","fields":{"rect":{"x":937,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork1Note","fields":{"rect":{"x":0,"y":475,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeInifussLocked","fields":{"rect":{"x":30,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Rakanishu & Treehead","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeInifuss","fields":{"rect":{"x":30,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Rakanishu & Treehead","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-12","disabled":true}},{"type":"ButtonWidget","name":"Fork1Mausoleum","fields":{"rect":{"x":406,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Mausoleum","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork1Crypt","fields":{"rect":{"x":782,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Crypt","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"TextBoxWidget","name":"Kind0_602","fields":{"rect":{"x":30,"y":602,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind1_602","fields":{"rect":{"x":406,"y":602,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind2_602","fields":{"rect":{"x":782,"y":602,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line11","fields":{"rect":{"x":185,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line12","fields":{"rect":{"x":561,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line13","fields":{"rect":{"x":937,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line14","fields":{"rect":{"x":205,"y":635,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line15","fields":{"rect":{"x":561,"y":680,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeTristram","fields":{"rect":{"x":406,"y":730},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Tristram","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"TextBoxWidget","name":"Line16","fields":{"rect":{"x":561,"y":815,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line17","fields":{"rect":{"x":205,"y":825,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line18","fields":{"rect":{"x":185,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line19","fields":{"rect":{"x":561,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line20","fields":{"rect":{"x":937,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork2Note","fields":{"rect":{"x":0,"y":895,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"Fork2Pit","fields":{"rect":{"x":30,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Pit","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Countess","fields":{"rect":{"x":406,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Countess","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Malus","fields":{"rect":{"x":782,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Horadric Malus","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"TextBoxWidget","name":"Kind0_1022","fields":{"rect":{"x":30,"y":1022,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind1_1022","fields":{"rect":{"x":406,"y":1022,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind2_1022","fields":{"rect":{"x":782,"y":1022,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line25","fields":{"rect":{"x":185,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line26","fields":{"rect":{"x":561,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line27","fields":{"rect":{"x":937,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line28","fields":{"rect":{"x":205,"y":1055,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line29","fields":{"rect":{"x":561,"y":1100,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeAndariel","fields":{"rect":{"x":406,"y":1150},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Andariel","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"CloseButton","fields":{"rect":{"x":1075,"y":9},"filename":"PANEL\\closebtn_4x","hoveredFrame":3,"tooltipString":"@d2r:strClose","sound":"cursor_close_window_hd","onClickMessage":"PanelManager:ClosePanel:darkestdiablo/RouteMap","pressedFrame":1}}]})json";
+static constexpr char RouteMapLayout[] = R"json({"type":"Panel","name":"darkestdiablo/RouteMap","fields":{"rect":"$LeftPanelRect","anchor":"$LeftPanelAnchor","priority":8500},"children":[{"type":"ImageWidget","name":"Background","fields":{"rect":{"x":0,"y":0},"filename":"PANEL\\Waypoints\\Waypoints_Base","frame":0}},{"type":"ImageWidget","name":"LeftHinge","fields":{"rect":"$LeftHingeRect","filename":"$LeftHingeSprite"}},{"type":"TextBoxWidget","name":"Title","fields":{"rect":"$InGamePanelTitleRect","text":"Act I - Choose your path","style":"$StyleTitleBlock"}},{"type":"ButtonWidget","name":"NodeTownLocked","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeTown","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-1"}},{"type":"ButtonWidget","name":"NodeDenLocked","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Den of Evil","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeDen","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Den of Evil","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-13","disabled":true}},{"type":"TextBoxWidget","name":"Line1","fields":{"rect":{"x":561,"y":275,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeBurialLocked","fields":{"rect":{"x":406,"y":330},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Blood Raven","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeBurial","fields":{"rect":{"x":406,"y":330},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Blood Raven","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-10","disabled":true}},{"type":"TextBoxWidget","name":"Line2","fields":{"rect":{"x":561,"y":415,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line3","fields":{"rect":{"x":205,"y":425,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line4","fields":{"rect":{"x":185,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line5","fields":{"rect":{"x":561,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line6","fields":{"rect":{"x":937,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork1Note","fields":{"rect":{"x":0,"y":475,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeInifussLocked","fields":{"rect":{"x":30,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Rakanishu & Treehead","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeInifuss","fields":{"rect":{"x":30,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Rakanishu & Treehead","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-12","disabled":true}},{"type":"ButtonWidget","name":"Fork1MausoleumLocked","fields":{"rect":{"x":406,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Mausoleum","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork1Mausoleum","fields":{"rect":{"x":406,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Mausoleum","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-14"}},{"type":"ButtonWidget","name":"Fork1Crypt","fields":{"rect":{"x":782,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Crypt","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"TextBoxWidget","name":"Kind0_602","fields":{"rect":{"x":30,"y":602,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind1_602","fields":{"rect":{"x":406,"y":602,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind2_602","fields":{"rect":{"x":782,"y":602,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line11","fields":{"rect":{"x":185,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line12","fields":{"rect":{"x":561,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line13","fields":{"rect":{"x":937,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line14","fields":{"rect":{"x":205,"y":635,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line15","fields":{"rect":{"x":561,"y":680,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeTristram","fields":{"rect":{"x":406,"y":730},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Tristram","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"TextBoxWidget","name":"Line16","fields":{"rect":{"x":561,"y":815,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line17","fields":{"rect":{"x":205,"y":825,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line18","fields":{"rect":{"x":185,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line19","fields":{"rect":{"x":561,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line20","fields":{"rect":{"x":937,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork2Note","fields":{"rect":{"x":0,"y":895,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"Fork2Pit","fields":{"rect":{"x":30,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Pit","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Countess","fields":{"rect":{"x":406,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Countess","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Malus","fields":{"rect":{"x":782,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Horadric Malus","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"TextBoxWidget","name":"Kind0_1022","fields":{"rect":{"x":30,"y":1022,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind1_1022","fields":{"rect":{"x":406,"y":1022,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind2_1022","fields":{"rect":{"x":782,"y":1022,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line25","fields":{"rect":{"x":185,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line26","fields":{"rect":{"x":561,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line27","fields":{"rect":{"x":937,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line28","fields":{"rect":{"x":205,"y":1055,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line29","fields":{"rect":{"x":561,"y":1100,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeAndariel","fields":{"rect":{"x":406,"y":1150},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Andariel","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"CloseButton","fields":{"rect":{"x":1075,"y":9},"filename":"PANEL\\closebtn_4x","hoveredFrame":3,"tooltipString":"@d2r:strClose","sound":"cursor_close_window_hd","onClickMessage":"PanelManager:ClosePanel:darkestdiablo/RouteMap","pressedFrame":1}}]})json";
 
 // ---- Unlocks along the route (src/plugin/route.h) -----------------------------------------
 // Each hero's progress decides which buttons on the route map work: only stops of the current
@@ -638,8 +774,10 @@ static void __cdecl RefreshRouteMap(const D2RL::PluginContext* context, void*) n
 		open.empty() ? " none" : open.c_str(), failed.empty() ? "" : "; FAILED:", failed.c_str());
 	if (failed.empty()) {
 		context->LogInfo(message);
+		Trace(context, message);
 	} else {
 		context->LogWarn(message);
+		Trace(context, message);
 	}
 }
 
@@ -656,6 +794,7 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0) {
 		std::snprintf(message, sizeof(message), "UI message: %s:%s:%s", target, command, text);
 		context->LogInfo(message);
+		Trace(context, message);
 	}
 	if (DevTools::OnUiMessage(context, target, command, text) || Campfire::OnUiMessage(context, target, command, text)) {
 		return Action::Consume;
@@ -678,6 +817,7 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		}
 		std::snprintf(message, sizeof(message), "Route map: open failed (code %d); showing Blizzard's waypoint list.", static_cast<int>(result));
 		context->LogWarn(message);
+		Trace(context, message);
 		return Action::Continue;
 	}
 	// Node buttons send "PanelManager:OpenPanel:darkestdiablo/travel-<level id>". The game drops
@@ -691,6 +831,7 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		if (level > 0 && level != TownLevelId && (stop == nullptr || !LoadProgress().CanEnter(*stop))) {
 			std::snprintf(message, sizeof(message), "Route map: %s is locked for this hero.", stop != nullptr ? stop->id : text);
 			context->LogInfo(message);
+		Trace(context, message);
 			RefreshRouteMap(context, nullptr);
 			return Action::Consume;
 		}
@@ -720,6 +861,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		char message[96] {};
 		std::snprintf(message, sizeof(message), "Level changed: %d -> %d.", event->previousValue, event->currentValue);
 		context->LogInfo(message);
+		Trace(context, message);
 		const int arena = FindArena(g_levelId);
 		// Back in an arena the hero may not enter now (cleared, or a later tier), e.g. through the
 		// Town Portal left open: no waves, so nothing can be farmed (route.h).
@@ -728,6 +870,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			ResetArena();
 			std::snprintf(message, sizeof(message), "%s: not open for this hero (%s); no waves.", Arenas[arena].name, stop->id);
 			context->LogInfo(message);
+		Trace(context, message);
 			return;
 		}
 		if (arena >= 0 && arena != g_arena.load()) {
@@ -753,6 +896,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		char message[128] {};
 		std::snprintf(message, sizeof(message), "Quest completed: quest row %u, level %d.", event->questRecordId, g_levelId);
 		context->LogInfo(message);
+		Trace(context, message);
 		// Backup: a native quest finishing inside a running arena also gives the scroll, once.
 		if (g_arena.load() >= 0 && !g_portalDropped.exchange(true) && g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
 			context->LogWarn("Town Portal: could not queue the drop.");

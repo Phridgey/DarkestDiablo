@@ -21,7 +21,7 @@ The shared whiteboard has the same plan as a picture; this file is the reference
 |---|---|---|---|
 | Quest | Quest rewards | — | Uses the act's own quests |
 | MF run | One guaranteed set or unique of the area's level, plus kill drops | D2R rules; bosses and unique monsters feel it more | |
-| Crafting hunt | No magic items; runes, gems, crafting materials | Raises the rune chance instead | |
+| Crafting hunt | No magic items; runes, gems, crafting materials, white items (socketed and ethereal ones too) | Raises the rune chance instead | |
 | XP grind | Normal drops | Normal | +33% experience |
 
 Magic find also raises socket count, superior ("high quality") chance and ethereal chance
@@ -35,6 +35,31 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 5. Fork (2 picks): **Pit** (MF) · **Countess** (crafting hunt, +2 bonus runes) ·
    **Horadric Malus** (XP grind; finishing earns an imbue)
 6. **Andariel** — act boss. Open question: forced final stop?
+
+## Drop and experience numbers (decided so far)
+Every multiplier and drop rate we have agreed on, in one place. "Built" means it is in the game;
+"planned" means agreed but not made yet.
+
+| What | Number | Status |
+|---|---|---|
+| Magic find, first pick of each stop | +25% magic find | planned |
+| XP grind stops (Crypt, Horadric Malus) | +33% experience | planned |
+| Countess (crafting hunt) | +2 bonus runes | planned |
+| Den of Evil, first clear | 1 skill point (no respec) | built |
+| Rakanishu & Treehead (MF run) | Treehead: one guaranteed unique or set (a set if no unique fits), plus his normal table drops | built |
+| Mausoleum: rune chance per kill | 5% at 0 magic find, 10% at 250, then on up in a straight line (+1% per 50 MF), 100% at most | built |
+| Mausoleum: white item chance per kill | 12% (weapon or armor near the area's level, never magic; can roll sockets and ethereal like any normal drop) | built |
+| Mausoleum: gems, potions, gold | 1 pick per kill (2 for champions) from chipped/flawed gems, a healing potion and gold; 40 in 74 picks drop nothing (10 in 44 for champions) | built |
+
+Rune rules:
+- Act I tops out at Tal. Tal and Ral drop only from the Countess (the next crafting hunt). The
+  Mausoleum tops out at Eth (Normal); Nightmare and Hell still use the game's Runes 8 and 13.
+- Keep the game's own odds between runes (its rune tables), even where they look odd: the
+  newest runes of a table drop most often (in the Mausoleum, Eth 37.5%, Tir 26.8%, Nef 17.9%,
+  El 10.7%, Eld 7.1%). Only the top rune and the overall rune chance are ours to set.
+
+The game's player count (`/players`) raises every drop chance above, as it does in the base
+game: the numbers are for one player.
 
 ## The camp (between characters)
 - The camp is the run: the circle of characters by the fire, plus the stash.
