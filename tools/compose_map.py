@@ -184,7 +184,8 @@ def compose(spec):
         tx, ty = o["tile"]
         m["objects"].append({"type": o["type"], "id": o["id"], "x": tx * 5 + 4, "y": ty * 5 + 4, "flags": 0})
     # "circle": {"radius": R} makes one round open cavern from the stitched rooms: floor inside a
-    # circle of R tiles around the map's centre, solid rock (unwalkable) outside, no walls at all.
+    # circle of R tiles around the map's centre, solid rock (unwalkable) outside, and walls only
+    # along the edge (for the automap; "walls": false leaves them out).
     # build_hd drops every wall and rock model and rings the circle with cave rocks instead.
     cr = spec.get("circle")
     if cr:
@@ -198,6 +199,13 @@ def compose(spec):
             elif not v & 0x20000:
                 counts[v] = counts.get(v, 0) + 1
         floor = max(counts, key=counts.get)
+        # The rooms' own wall tiles, for the boundary walls below: the most used left (1) and
+        # top (2) wall tile.
+        wall_tiles = {}
+        for o in (1, 2):
+            seen_walls = [m["walls"][0][i] for i in range(cells) if m["walls"] and m["orients"][0][i] == o and m["walls"][0][i]]
+            if seen_walls:
+                wall_tiles[o] = max(set(seen_walls), key=seen_walls.count)
         cx, cy, r = (W - 1) / 2, (H - 1) / 2, cr["radius"]
         for y in range(H):
             for x in range(W):
@@ -211,6 +219,20 @@ def compose(spec):
                     base[i] = floor
                 else:
                     base[i] = (rock or floor) | 0x20000
+        # Walls along the circle's edge, in the gameplay map only (the HD look keeps its ring of
+        # models). They are what the automap draws, so the map shows the hall's boundary; the
+        # floor tiles alone draw nothing there. A wall sits on a cell's left (1) or top (2) edge;
+        # a cell with both gets the corner (3), as the crypt rooms do.
+        if cr.get("walls", True) and m["walls"] and 1 in wall_tiles and 2 in wall_tiles:
+            inside = lambda x, y: 0 <= x < W and 0 <= y < H and (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+            for y in range(H):
+                for x in range(W):
+                    left = inside(x, y) != inside(x - 1, y)
+                    top = inside(x, y) != inside(x, y - 1)
+                    if left or top:
+                        i = y * W + x
+                        m["walls"][0][i] = wall_tiles[1 if left else 2]
+                        m["orients"][0][i] = 3 if left and top else 1 if left else 2
         # The rooms' own objects (torches and such) only where the floor still is.
         m["objects"] = [o for o in m["objects"]
                         if (o["x"] / 5 - cx) ** 2 + (o["y"] / 5 - cy) ** 2 <= (r - 1) ** 2]
