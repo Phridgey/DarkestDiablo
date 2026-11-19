@@ -369,7 +369,7 @@
   },
   {
    "type": "ButtonWidget",
-   "name": "Fork1Crypt",
+   "name": "Fork1CryptLocked",
    "fields": {
     "rect": {
      "x": 782,
@@ -383,6 +383,25 @@
     "pointSize": "$SmallFontSize",
     "textColor": "$FontColorDarkGrayBlue",
     "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "Fork1Crypt",
+   "fields": {
+    "rect": {
+     "x": 782,
+     "y": 520
+    },
+    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Crypt",
+    "pointSize": "$SmallFontSize",
+    "textColor": "$FontColorWhite",
+    "disabled": true,
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-15"
    }
   },
   {
@@ -555,7 +574,7 @@
   },
   {
    "type": "ButtonWidget",
-   "name": "NodeTristram",
+   "name": "NodeTristramLocked",
    "fields": {
     "rect": {
      "x": 406,
@@ -569,6 +588,25 @@
     "pointSize": "$SmallFontSize",
     "textColor": "$FontColorDarkGrayBlue",
     "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeTristram",
+   "fields": {
+    "rect": {
+     "x": 406,
+     "y": 730
+    },
+    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Tristram",
+    "pointSize": "$SmallFontSize",
+    "textColor": "$FontColorWhite",
+    "disabled": true,
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-38"
    }
   },
   {
@@ -699,6 +737,24 @@
   },
   {
    "type": "ButtonWidget",
+   "name": "Fork2PitLocked",
+   "fields": {
+    "rect": {
+     "x": 30,
+     "y": 940
+    },
+    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Pit",
+    "pointSize": "$SmallFontSize",
+    "textColor": "$FontColorDarkGrayBlue",
+    "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
    "name": "Fork2Pit",
    "fields": {
     "rect": {
@@ -710,6 +766,25 @@
     "disabledFrame": 2,
     "hoveredFrame": 3,
     "textString": "Pit",
+    "pointSize": "$SmallFontSize",
+    "textColor": "$FontColorWhite",
+    "disabled": true,
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-16"
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "Fork2CountessLocked",
+   "fields": {
+    "rect": {
+     "x": 406,
+     "y": 940
+    },
+    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Countess",
     "pointSize": "$SmallFontSize",
     "textColor": "$FontColorDarkGrayBlue",
     "disabled": true
@@ -729,8 +804,9 @@
     "hoveredFrame": 3,
     "textString": "Countess",
     "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
+    "textColor": "$FontColorWhite",
+    "disabled": true,
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-25"
    }
   },
   {

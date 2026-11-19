@@ -83,7 +83,20 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
     compose_map's `circle` (Blizzard has no round crypt room) and ringed with crypt pillars, bone
     piles and statues. Waypoint at the west edge. Six waves of undead that drop only runes, gems,
     potions and gold. See `src/maps/mausoleum.json` and `src/patches/060_mausoleum.py`.
+  - **Crypt** (fork 1 XP grind): the same round hall on level 15, with undead worth 40% more
+    experience and normal drops. See `src/maps/crypt.json` and `src/patches/070_crypt.py`.
+  - **Tristram** (forced): the game's own Tristram map and Cain's rescue, with waves instead of its
+    own monsters, cleared by killing Griswold (the last wave).
+    +40% magic find in the zone; Griswold drops 6 white items. See `src/patches/080_tristram.py`.
+  - **Pit** (fork 2 MF run): the real Pit level 2 (level 16) on the Den's room, 5 packs each led by
+    a unique; a random one of them is the target (guaranteed unique or set; killing it wins).
+    See `src/maps/pit.json` and `src/patches/090_pit.py`.
+  - **Countess** (fork 2 crafting hunt): the game's own Tower Cellar 5 map, as waves; she drops 5 runes, Ith to
+    Amn. Cleared when she dies. See `src/patches/100_countess.py`.
 - **No keys** drop anywhere (`src/patches/005_no_keys.py`).
+- **No health potions** drop anywhere or are sold; everything else in those tables drops as often
+  as before (`src/patches/006_no_health_potions.py`). Instead each cleared stop earns 3, put in the
+  hero's stash next time in town; what doesn't fit stays owed (the plugin's potion supply).
 - **Bigger inventory:** every hero's bag is 10x5 instead of 10x4 (`src/patches/055_inventory_row.py`).
   The panel's background gets its extra row at build time from the game's own picture.
 - **Route map**: every waypoint opens it instead of Blizzard's list (outside town it has

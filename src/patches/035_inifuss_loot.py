@@ -16,6 +16,8 @@ unique (see the end of patch()). Every new monster Id is mapped to its model in 
 """
 
 CHANCE_FACTOR = 1.4                 # magic/rare/set/unique chance multiplier for the whole run
+CHARM_FACTOR = 3                    # charms 3 times as likely (+200%) in MF runs (more_charms)
+CHARM_SHARE = 6 / 20                # charms' share of the game's Jewelry tables
 ARENA_ID = "11"                     # Tree of Inifuss arena (030_inifuss.py)
 TREEHEAD_TYPE = "dd_treehead"
 TREEHEAD_CLASS = 752                # TreeheadClass in src/plugin/darkestdiablo_plugin.cpp
@@ -77,6 +79,9 @@ class Loot:
         row = dict(self.by_name[name])
         row["Treasure Class"] = f"{prefix} {name}"
         self.copies[key] = row["Treasure Class"]
+        # Out of the game's level groups: a copy left in its original's group could be picked for
+        # other monsters when the game moves a table up by monster level.
+        row["group"], row["level"] = "", ""
         kept = []
         for k, item in self.items(row):
             base = item.split(",")[0]
@@ -115,6 +120,46 @@ class Loot:
     def without_keys(self, name):
         return self.copy(name, "DD NoKey", lambda row: None)
 
+    def charms_table(self):
+        """One charm (small, large or grand, equally likely): the extra charm pick of MF runs."""
+        if "DD Charms" not in self.by_name:
+            self.code_tree("DD Charms", ["cm1", "cm2", "cm3"], {})
+        return "DD Charms"
+
+    def more_charms(self, row):
+        """MF runs: charms CHARM_FACTOR times as likely. Charms only come from the "Jewelry"
+        tables (6 of their 20 weight: rings, amulets and jewels are the rest). Next to each Jewelry
+        entry goes an extra charms entry worth (CHARM_FACTOR - 1) times the Jewelry entry's charm
+        share, so charms drop CHARM_FACTOR times as often while rings, amulets, jewels and the
+        table's other drops stay close to their old odds. Tables on the way to Jewelry are copied
+        ("DD Charm ...") so the change stays in the run."""
+        entries = self.items(row)
+        jewelry = [(k, item) for k, item in entries if item.split(",")[0].startswith("Jewelry")]
+        for k, item in entries:
+            base = item.split(",")[0]
+            if not base.startswith("Jewelry") and self.is_tc(base) and self.reaches(base, "cm1"):
+                row[f"Item{k}"] = self.with_charms(base) + item[len(base):]
+        if not jewelry:
+            return
+        if len(entries) + len(jewelry) > 10:
+            raise RuntimeError(f"{row['Treasure Class']}: no room for the extra charm entry")
+        scale = 5  # weights x5 so the extra entry is a whole number
+        for k, _ in entries:
+            if row.get(f"Prob{k}", "").isdigit():
+                row[f"Prob{k}"] = str(int(row[f"Prob{k}"]) * scale)
+        if row.get("NoDrop", "").isdigit():
+            row["NoDrop"] = str(int(row["NoDrop"]) * scale)
+        slot = len(entries) + 1
+        for k, _ in jewelry:
+            extra = round(int(row[f"Prob{k}"]) * CHARM_SHARE * (CHARM_FACTOR - 1))
+            row[f"Item{slot}"], row[f"Prob{slot}"] = self.charms_table(), str(extra)
+            slot += 1
+
+    def with_charms(self, name):
+        if not name or name not in self.by_name or not self.reaches(name, "cm1"):
+            return name
+        return self.copy(name, "DD Charm", self.more_charms)
+
     def with_mf(self, name):
         if not name or name not in self.by_name:
             return name
@@ -123,6 +168,7 @@ class Loot:
         def boost(row):
             for q, value in ratios.items():
                 row[q] = str(value)
+            self.more_charms(row)
         return self.copy(name, "DD MF", boost)
 
 

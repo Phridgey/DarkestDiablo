@@ -1,0 +1,15 @@
+{
+  "name": "darkest_countess",
+  "folder": "act1/crypt",
+  "room": 30,
+  "comment": "Countess (fork 2 crafting hunt): the game's own Tower Cellar level 5 (cryptcountess1, one of its two versions) with its monster spots (the Countess and the monster groups) and treasure chests left out, so the plugin's waves are the only monsters and quitting can't refill the chests.",
+  "keep_monsters": [],
+  "drop_objects": [104],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/crypt/cryptcountess1"
+    }
+  ]
+}

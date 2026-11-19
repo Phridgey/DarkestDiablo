@@ -287,7 +287,8 @@ static void RouteUnlocksTierByTier() {
 	CHECK(p.RecordClear(burial));
 	CHECK(p.CurrentTier() == 2);                  // fork 1
 	CHECK(p.CanEnter(inifuss));
-	CHECK(!p.CanEnter(crypt));                    // not built yet: never enterable
+	CHECK(p.CanEnter(crypt));                     // fork 1 has three built options
+	CHECK(!p.CanEnter(*Route::StopById("andariel")));  // not built yet: never enterable
 }
 
 static void ForkGivesTwoPicksSameOneAllowed() {
@@ -302,6 +303,27 @@ static void ForkGivesTwoPicksSameOneAllowed() {
 	CHECK(!p.CanEnter(inifuss));                  // two picks: the fork locks
 	CHECK(p.CurrentTier() == 3);                  // Tristram is next
 	CHECK(!p.RecordClear(inifuss));
+}
+
+static void ARunMustBeFinishedAndResumes() {
+	Route::Progress p;
+	p.clears["den"] = 1;
+	p.clears["burial"] = 1;
+	const auto& mausoleum = *Route::StopById("mausoleum");
+	const auto& crypt = *Route::StopById("crypt");
+	CHECK(p.StartRun(mausoleum) == 0);            // a new run
+	p.NoteWaves(mausoleum, 3);
+	CHECK(!p.CanEnter(crypt));                    // the pick is spent: no switching
+	CHECK(p.CanEnter(mausoleum));
+	CHECK(p.StartRun(mausoleum) == 3);            // coming back resumes after wave 3
+	const fs::path dir = TempDir("run");
+	const fs::path file = dir / "hero.txt";
+	CHECK(Route::Save(file, p));
+	const auto loaded = Route::Load(file);
+	CHECK(loaded.running == "mausoleum" && loaded.runWaves == 3);
+	CHECK(p.RecordClear(mausoleum));              // clearing ends the run
+	CHECK(p.running.empty() && p.CanEnter(crypt));
+	CHECK(p.StartRun(mausoleum) == 0);            // the same option again: a fresh run
 }
 
 static void RouteProgressRoundTripAndBadLines() {
@@ -346,6 +368,7 @@ static void ReadsThisGameBuildsSaves() {
 int main() {
 	RouteUnlocksTierByTier();
 	ForkGivesTwoPicksSameOneAllowed();
+	ARunMustBeFinishedAndResumes();
 	RouteProgressRoundTripAndBadLines();
 	EveryBuiltStopIsFoundByItsLevels();
 	ReadsThisGameBuildsSaves();

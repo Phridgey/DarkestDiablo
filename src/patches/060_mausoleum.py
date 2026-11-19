@@ -163,8 +163,8 @@ def rune_steps():
 
 
 def white_copies(t, item_levels):
-    """Always-white copies of the weapon and armor bases from BASE_BAND levels under each item
-    level up to it. Returns the copies' codes per difficulty."""
+    """Always-white copies ("z" + code) of every weapon and armor base that can drop. Returns the
+    codes of those from BASE_BAND levels under each item level up to it, per difficulty."""
     types = t.table("itemtypes")
     by_code = {r.get("Code"): r for r in types.rows if r.get("Code")}
     taken = {r.get("code") for name in ("weapons", "armor", "misc") for r in t.table(name).rows}
@@ -181,9 +181,9 @@ def white_copies(t, item_levels):
             if (len(code) != 3 or not level.isdigit() or row.get("spawnable") != "1" or code in quest
                     or row.get("type") not in by_code or code not in assets):
                 continue
+            # Every base gets its copy (other stops use them too, e.g. Griswold in Tristram);
+            # the Mausoleum's tables list the ones near its own item levels.
             wanted = [d for d, top in enumerate(item_levels) if top - BASE_BAND < int(level) <= top]
-            if not wanted:
-                continue
             kind = row["type"]
             if kind not in new_types:
                 # Named by the original type's place in itemtypes, so both copies of the tables
