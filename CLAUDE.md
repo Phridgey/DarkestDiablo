@@ -24,8 +24,11 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
   One exception, agreed by both of us: the plugin may READ a few game values the SDK doesn't
   offer (first: the hero's position, for spawns placed relative to the town fire), from the
   frozen build in `D2R_VERSION` only. The SDK has no read service, so reads use Windows'
-  `ReadProcessMemory` on our own process (a bad address fails the read instead of crashing). Reading only: never write
-  to game memory and never change game code. Each value read and its address go in
+  `ReadProcessMemory` on our own process (a bad address fails the read instead of crashing).
+  Writes (proposed by Sam 2026-11-19, needs Fabrizio's approval on the game-writes pull request):
+  the plugin may change existing values in game memory (stats, buff/debuff values and end times)
+  through `src/plugin/gamewrite.h` only, the one file that writes, on the frozen build only, into
+  plain data memory (never code). Never change game code, and never write anywhere else. Each value read and its address go in
   `docs/game-memory.md`, and the plugin turns the feature off if the game build differs.
 - Game information (hero, monsters, objects, items, stats, buffs/debuffs, events) comes from the
   game-state API, `src/plugin/gameapi.h`; its guide is `docs/game-state-api.md`. Use it instead of
