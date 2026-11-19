@@ -77,6 +77,11 @@ Plain, jargon-free language in docs and commit messages.
 
 ## Lessons learned (map and plugin work)
 - Close the game before `tools\build-plugin.cmd`: the running game locks the plugin DLL.
+- When a patch stops changing a table (or is shelved), the build stops making that file, but a
+  file copied in earlier stays in `Mods/darkestdiablo` and the game keeps loading it. The
+  launcher deletes files its last install placed that the new build no longer makes; a manual
+  copy (robocopy) does not, so delete those files by hand (Dodge's skills, skilldesc, charstats
+  and strings/skills.json, in `excel` and `excel/base`, on 2026-11-19).
 - Outdoor levels (DrlgType 3, e.g. the Graveyard) are placed by the outdoor map builder somewhere
   new every game, so spawn coordinates can't be known. Build arenas on unused cave levels
   (fixed `OffsetX/Y`, own `Layer`) and copy the look from the real level's row.
