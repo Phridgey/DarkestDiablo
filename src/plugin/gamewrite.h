@@ -1,7 +1,6 @@
 // Game-state WRITES: changing values in the running game (movement speed, buffs, debuffs, magic
-// find...). Sam chose this on 2026-11-19; it breaks the CLAUDE.md rule "never write to game
-// memory" until both of us agree, so it lives on the game-writes branch and is off on any build
-// other than D2R_VERSION. Reference: docs/game-state-api.md, "Changing values".
+// find...). Agreed by both of us on 2026-11-19 (CLAUDE.md): this is the only file that writes,
+// and it is off on any build other than D2R_VERSION. Reference: docs/game-state-api.md, "Changing values".
 //
 // What a write can and can't do (the safe subset):
 //   - It changes a stat entry the unit already has (e.g. velocitypercent while slowed, or magic

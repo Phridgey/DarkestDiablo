@@ -1533,7 +1533,7 @@ auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
-// dd-set: test the game-state WRITES (gamewrite.h, game-writes branch only).
+// dd-set: test the game-state WRITES (gamewrite.h).
 //   dd-set copies                     find every copy of the hero in memory (1-2 s) and list them
 //   dd-set stat <id> <value>          set a hero stat the hero already has (e.g. 80 magic find)
 //   dd-set hold <id> <value>          the same, written again every 250 ms; "dd-set hold off" stops
@@ -2011,7 +2011,11 @@ auto RouteProgressFile() noexcept -> std::filesystem::path {
 		if (g_live.empty()) {
 			return {};
 		}
-		return Route::ProgressFile(g_live, g_slot, g_currentHero.empty() ? "_unknown" : g_currentHero);
+		// g_currentHero can be empty (a hero not started from the Campfire, or one whose save the
+		// camp hadn't seen yet); then the save folder tells who plays, as for the town scan.
+		// Progress under "_unknown" was shared by every such hero and got lost for its owner.
+		const std::string hero = CurrentHero();
+		return Route::ProgressFile(g_live, g_slot, hero.empty() ? "_unknown" : hero);
 	} catch (...) {
 		return {};
 	}

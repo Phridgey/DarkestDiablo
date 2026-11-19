@@ -215,19 +215,16 @@ click still goes by distance (`docs/campfire.md`).
 
 ### Planned (needs finding in the game's code, then checking)
 
-- **Changing values**: see "Changing values" below (game-writes branch, awaiting Fabrizio's
-  approval of the rule change).
 - **The game's current frame** (time left on a state), **the unit under the mouse**, **open
   panels**, **map seed**, **level exits and preset objects**, **the mercenary's owner link**
   (today the mercenary is found by its monster class), **where a stored item sits in the grid**.
 - **Missiles** are not in the unit list's missile block (always 0 while casting). Not needed for
   now (Sam, 2026-11-19); `dd-state tables` is the research tool if they are.
 
-## Changing values (game-writes branch)
+## Changing values
 
-Sam chose (2026-11-19) to let the API change values by writing game memory. That changes the
-CLAUDE.md rule "reading only", so it waits for Fabrizio's approval on its pull request. All
-writes go through `src/plugin/gamewrite.h`, the only file that writes:
+Both of us agreed (2026-11-19) to let the API change values by writing game memory (CLAUDE.md).
+All writes go through `src/plugin/gamewrite.h`, the only file that writes:
 
 ```cpp
 #include "gamewrite.h"
@@ -239,7 +236,7 @@ GameWrite::SetStateStat(copies, 60, Game::StatId::VelocityPercent, -20);  // a w
 GameWrite::SetStateEnd(copies, 60, endFrame);              // a shorter or longer state
 ```
 
-What it can and can't do (all status: planned, being tested with `dd-set`):
+What it can and can't do (status: mapped, being tested with `dd-set`):
 
 - **Only existing values.** A write changes a stat the unit has now. It can't give a stat the
   unit doesn't have (magic find with no magic find items, a speed bonus with no speed source),
