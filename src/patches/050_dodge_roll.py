@@ -11,8 +11,10 @@ effects, animation and timing" of Charge):
 
 - From the Barbarian's Leap: the movement ("srv" functions). It always goes the same distance
   toward the cursor (min and max range set equal) and stops at walls.
-- From the Paladin's Charge: the poses (the hero's own run), the look and sound on the hero's
+- From the Paladin's Charge: the look and sound on the hero's
   screen ("clt" functions, start sound), its speed, and it can't be interrupted by hits.
+- From the Amazon's Dodge: the pose, a sidestep (since 0.11.69; Charge's run pose didn't work
+  with claws).
 - Fast, then slow (Sam, 2026-11-18): the dash itself is quick, and the hero is slowed for a short
   time, so a dodge plus its slow never covers ground faster than running. The hero glows green
   like poison while slowed. Leap's code puts no effect on the hero, so the slow comes from the
@@ -85,9 +87,13 @@ def patch(t):
             raise RuntimeError(f"{column} {name!r} already exists; names must be unique")
     next_id = max(int(r["*Id"]) for r in skills.rows if r["*Id"].isdigit()) + 1
     charge = skills.first("skill", "Charge")
-    from_charge = ("anim", "seqtrans", "seqnum", "monanim", "cltstfunc", "cltdofunc", "cltstopfunc",
+    from_charge = ("monanim", "cltstfunc", "cltdofunc", "cltstopfunc",
                    "stsound", "castoverlay", "cltoverlaya", "cltoverlayb", "interrupt")
-    skills.add_copy("skill", "Leap", **{c: charge[c] for c in from_charge}, **{
+    # The pose: the Amazon's Dodge sidestep (Sam, 2026-11-19). Charge's run (a "sequence" of
+    # Paladin attack frames) has no frames for claws, so Assassins with claws couldn't dodge.
+    dodge = skills.first("skill", "Dodge")
+    pose = {"anim": dodge["anim"], "seqtrans": dodge["seqtrans"], "seqnum": ""}
+    skills.add_copy("skill", "Leap", **{c: charge[c] for c in from_charge}, **pose, **{
         "skill": NAME, "*Id": str(next_id), "charclass": "", "skilldesc": DESC,
         "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
         "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": str(COOLDOWN_FRAMES), "globaldelay": "",
