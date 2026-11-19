@@ -1895,7 +1895,11 @@ auto RouteProgressFile() noexcept -> std::filesystem::path {
 		if (g_live.empty()) {
 			return {};
 		}
-		return Route::ProgressFile(g_live, g_slot, g_currentHero.empty() ? "_unknown" : g_currentHero);
+		// g_currentHero can be empty (a hero not started from the Campfire, or one whose save the
+		// camp hadn't seen yet); then the save folder tells who plays, as for the town scan.
+		// Progress under "_unknown" was shared by every such hero and got lost for its owner.
+		const std::string hero = CurrentHero();
+		return Route::ProgressFile(g_live, g_slot, hero.empty() ? "_unknown" : hero);
 	} catch (...) {
 		return {};
 	}
