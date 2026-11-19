@@ -100,8 +100,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
   bigger shared stash per save. Using the town bonfire goes to the Campfire.
   The build needs the game's menu layouts and a few model files (all in `tools/vanilla_files.txt`).
   Console: `dd-camp`, `dd-slot <1-3>`, `dd-traveler`.
-- **Dodge** (`docs/dodge-roll.md`; prototype): a free dash of set length toward the cursor that
-  every class has from level 1 (Leap's movement, Charge's look, sound and speed).
+- **Dodge** is shelved (not in the game): its code is kept in `shelved/dodge/`, see `docs/dodge-roll.md`.
 - **Console** (Ctrl + backtick; the launcher sets `enable_console = true` in `d2rloader/config/d2rloader.toml`
   on every Update and Play, so after the game's first start it is on; type `debug_mode` for cheats):
   `dd` (plugin running?), `dd-tp` (TP scroll), `dd-waves` (restart the waves of the arena you
