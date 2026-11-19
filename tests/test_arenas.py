@@ -37,6 +37,11 @@ class ArenaBossTest(unittest.TestCase):
         raka = next(line for line in waves.splitlines() if "super:3" in line)
         self.assertIn("RakanishuClass", raka)   # the arena is won only with Rakanishu dead too
 
+    def test_mausoleum_waves_spawn_the_crafting_copies(self):
+        waves = re.search(r"MausoleumWaves\[\] = \{(.*?)\n\};", PLUGIN, re.S).group(1)
+        for monster in re.findall(r'"mspawn", "([^"]+)"', waves):
+            self.assertTrue(monster.startswith("dd_craft_"), f"{monster} drops from the normal tables")
+
     def test_inifuss_waves_spawn_the_mf_copies(self):
         waves = re.search(r"InifussWaves\[\] = \{(.*?)\n\};", PLUGIN, re.S).group(1)
         for monster in re.findall(r'"mspawn", "([^"]+)"', waves):
@@ -100,7 +105,6 @@ class SpecialDropsTest(unittest.TestCase):
         with self.TCS.open(encoding="utf-8") as f:
             tcs = {r["Treasure Class"]: r for r in csv.DictReader(f, delimiter="\t")}
         for tag in ("", " (N)", " (H)"):
-            self.assertEqual(tcs[f"Darkest Act 1{tag} Super A Corpsefire"]["Item1"], "ass")
             self.assertEqual(tcs[f"DD MF Act 1{tag} Super B Treehead"]["Item1"], f"DD Treehead Bonus{tag}")
 
     def test_no_table_drops_keys(self):

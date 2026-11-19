@@ -93,6 +93,11 @@ layout. `dd-units` logs every stat entry raw ("Units: hero stats").
 
 Positions are world sub-tiles, the same numbers `location player` prints in the console.
 
+### The hero's magic find
+
+Stat 80 (item_magicbonus) from the hero's stats with items counted (`GameState::Stats`, the
+list + 0xA8 array above), read by `GameMemory::HeroMagicFind`.
+
 ## The game-state API's reads (`gameapi.cpp`)
 
 The API (`docs/game-state-api.md`) reads more values on top of the unit layout above. Each one is
@@ -111,6 +116,9 @@ a named constant at the top of `gameapi.cpp`; all are mapped (from the map tools
 
 - Fire or stash: both open the stash window, so the plugin compares the hero's distance to the
   fire and to the stash chest; the nearer one was used (`AtFire` in `campfire.cpp`).
+- Magic find: the Mausoleum's rune chance. Each wave spawns the monster copies whose loot
+  tables match the hero's magic find (`StartNextWave` in `darkestdiablo_plugin.cpp`,
+  `src/patches/060_mausoleum.py`). If it can't be read, the hero counts as having none.
 - The traveler's portal: it opens on the far side of the fire from the hero (`PlacePortal` in
   `campfire.cpp`). If either position can't be read, it opens where the hero stands.
 
@@ -122,6 +130,8 @@ objects. `dd-units monsters`, `dd-units objects 39` (one row only), `dd-units it
 one kind, nearest first. `dd-units find` looks for the unit list again. All of it also goes to
 the plugin log ("Units:" lines).
 
-Type `dd-where` in the console: it prints the hero and fire positions and the last search's
-report. Compare the hero's position with `location player`. `dd-where scan` searches again.
+Type `dd-where` in the console: it prints the hero and fire positions, the hero's magic find
+(compare it with the character screen) and the last search's report. Compare the hero's
+position with `location player`. `dd-where scan` searches again. `dd-state stats` lists every
+hero stat.
 The plugin log has a "memory scan" line after each search.

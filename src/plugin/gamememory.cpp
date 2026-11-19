@@ -512,6 +512,23 @@ auto Stash() -> Pos {
 	return g_stash;
 }
 
+auto HeroMagicFind() -> Stat {
+	const GameState::Unit hero = GameState::Player();
+	if (!hero) {
+		return { 0, false, "hero not found" };
+	}
+	const auto stats = GameState::Stats(hero, true);
+	if (stats.empty()) {
+		return { 0, false, "stats unreadable" };
+	}
+	for (const GameState::StatEntry& e : stats) {
+		if (e.id == 80 && e.param == 0) {  // itemstatcost.txt: item_magicbonus
+			return { e.value, true, "read" };
+		}
+	}
+	return { 0, true, "none on the hero" };
+}
+
 auto Report() -> std::string {
 	const std::lock_guard<std::mutex> guard(g_lock);
 	const std::string build = BuildFound();

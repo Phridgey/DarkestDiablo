@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace GameMemory {
 
@@ -40,6 +41,15 @@ auto Fire() -> Pos;
 
 // The town's stash chest nearest the fire (objects.txt row 267), found with the fire.
 auto Stash() -> Pos;
+
+// The hero's magic find (itemstatcost.txt stat 80) with gear counted, read through GameState's
+// stat lists (gamestate.h). `where` says why when ok is false.
+struct Stat {
+	int         value = 0;
+	bool        ok    = false;
+	std::string where;
+};
+auto HeroMagicFind() -> Stat;
 
 // A few lines about the last scan for the plugin log.
 auto Report() -> std::string;

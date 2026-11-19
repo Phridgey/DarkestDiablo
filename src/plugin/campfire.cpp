@@ -35,8 +35,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <ctime>
 #include <exception>
 #include <mutex>
@@ -1255,7 +1257,11 @@ auto WhereCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 	std::snprintf(line, sizeof(line), "Hero %d,%d (%s). Fire %d,%d (%s).", hero.x, hero.y, hero.ok ? "read" : "not found", fire.x, fire.y, fire.ok ? "read" : "not found");
 	command->plugin->WriteConsoleMessage(line);
 	command->plugin->WriteConsoleMessage(GameMemory::Report().c_str());
-	Log(command->plugin, "Camp: dd-where: %s %s", line, GameMemory::Report().c_str());
+	const GameMemory::Stat mf = GameMemory::HeroMagicFind();
+	char mfLine[160];
+	std::snprintf(mfLine, sizeof(mfLine), "Magic find %d%% (%s).", mf.value, mf.ok ? mf.where.c_str() : ("not read: " + mf.where).c_str());
+	command->plugin->WriteConsoleMessage(mfLine);
+	Log(command->plugin, "Camp: dd-where: %s %s %s", line, mfLine, GameMemory::Report().c_str());
 	if (std::strcmp(command->args == nullptr ? "" : command->args, "scan") == 0) {
 		GameMemory::StartScan(CurrentHero());
 		command->plugin->WriteConsoleMessage("Scanning again; type dd-where in a few seconds.");
