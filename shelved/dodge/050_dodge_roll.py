@@ -1,7 +1,7 @@
 """Dodge: a quick dash every class has, modelled on how Path of Exile 2's roll plays.
 
 What we take from PoE2 is only how it behaves (see docs/dodge-roll.md): a fast move of set
-length toward the cursor, no mana cost, a 1.5 second cooldown, usable in town. None of GGG's files,
+length toward the cursor, no mana cost, a short cooldown, usable in town. None of GGG's files,
 animations or code are used.
 
 How it is built: the game has no free-form "move here fast" in its tables, only skills whose
@@ -15,6 +15,11 @@ effects, animation and timing" of Charge):
   screen ("clt" functions, start sound), its speed, and it can't be interrupted by hits.
   The dash lasts as long as running the same distance takes, so it gets the hero out of danger
   but is never a faster way to travel; the hero can act again right after (frame 2).
+
+Tried and dropped (0.11.58 to 0.11.72, see docs/dodge-roll.md): a fast dash followed by a green
+slow. A Battle Orders-style landing pulse never reaches its own caster. Other skills' start code
+(Berserk's, Blade Shield's) does put a state on the hero, but Leap's movement needs Leap's own
+start code, and the Amazon's sidestep pose stops Leap's movement too.
 
 Every class gets it the way every class gets Throw and Kick: through a free "Skill N" slot in
 charstats.txt. Put it on the right mouse button (or a skill hotkey) to use it.
@@ -31,16 +36,17 @@ NAME = "DD Dodge"
 DESC = "dd dodge"
 
 # Tuning. D2 runs at 25 frames a second. PoE2's roll: about 3.7 metres in a bit under a second.
-DISTANCE = 7          # Leap's "Range" (min and max equal, so every dodge is the same length). Leap: 8 to 30.
+DISTANCE = 8          # Leap's "Range" (min and max equal, so every dodge is the same length). Leap: 8 to 30.
+                      # Was 7; Sam (2026-11-18) wanted about 15% further, and 8 is the nearest whole step.
 SPEED = 300           # Speed %, read as "Velocity %" by Charge's code and "Leap Speed %" by Leap's (Charge: 150).
-# No travel advantage (Sam, 2026-11-18): a dodge must take as long as running its distance,
-# without standing still (Sam: no pause, and the game can't force walking). Run speed is
-# charstats "RunVelocity" (9 for every class) in the same units as Leap's range (sub-tiles a
-# second; the game shows both as yards by multiplying by 2/3). So running 7 takes 7 / 9 s =
-# about 0.78 s = 20 frames, and the dash itself is made to last that long (Leap's minimum
-# airborne frames). The hero keeps moving the whole time and can act again right after.
+# No travel advantage (Sam, 2026-11-18): a dodge must never cover ground faster than running,
+# without standing still (the game can't force walking, and nothing tried could slow the hero
+# after a dodge). Run speed is charstats "RunVelocity" (9 for every class) in the same units as
+# Leap's range (sub-tiles a second; the game shows both as yards by multiplying by 2/3). So
+# running 8 takes 8 / 9 s = 0.89 s = 23 frames, and the dash itself is made to last that long
+# (Leap's minimum airborne frames). The hero keeps moving the whole time.
 RUN_VELOCITY = 9
-MIN_FRAMES = -(-DISTANCE * 25 // RUN_VELOCITY)  # Leap's "Minimum Airborne Frames" (Leap: 8): 20.
+MIN_FRAMES = -(-DISTANCE * 25 // RUN_VELOCITY)  # Leap's "Minimum Airborne Frames" (Leap: 8): 23.
 RECOVERY_FRAME = 2    # Charge's "seqinput" (Charge: 8).
 COOLDOWN_FRAMES = 6   # Cooldown in frames (25 a second): 6 = 0.24 s, the nearest to Sam's 250 ms (was 1.5 s).
 

@@ -8,7 +8,7 @@ the Campfire, like anything spawned with the console.
 NAME = "ddtraveler"
 LOOK = "nihlathak"        # monstats row whose figure and animations it borrows
 STRING_KEY = "ddTraveler"
-STRING_ID = 91000         # above the game's string ids and clear of 050_dodge_roll.py (90000+)
+STRING_ID = 91000         # above the game's string ids and clear of the shelved Dodge patch (90000+)
 
 
 def patch(t):

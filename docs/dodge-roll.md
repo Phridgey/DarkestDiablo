@@ -1,4 +1,13 @@
-# Dodge
+# Dodge (shelved)
+
+**Shelved by Sam on 2026-11-19: Dodge is not in the game.** Its patch is kept, unused, in
+`shelved/dodge/050_dodge_roll.py`. `tools/build.py` only runs `src/patches/`, so the patch does
+nothing there. To bring Dodge back, move the file back into `src/patches/`, merge `main`, raise
+the version, and test on a new hero (only heroes made after that get the skill). The test
+builds with the slow and the claw experiments are on the branches `dodge-slow` (PR #18, closed)
+and `test-dodge-debuff`. Open problems when it was shelved: the slow after the dash, and
+Assassins holding claws (see the end of "Current version").
+
 
 Sam asked (2026-11-17) for a dodge roll like Path of Exile 2's. This page lists how PoE2's roll
 behaves, what Diablo II: Resurrected with a D2RLoader plugin can and cannot copy, and what the
@@ -58,6 +67,8 @@ less recovery. So since 0.11.9 Dodge takes:
   frame 20 so dodging is no faster than running; Sam didn't want to stand still, and the game
   can't force walking or a slow, so since 0.11.24 the dash itself lasts 20 frames (0.8 s, the
   time running its distance takes) and recovery is back at frame 2.
+- Distance 8 instead of 7 since 0.12.3 (Sam: about 15% further), so the dash lasts 23 frames
+  (0.92 s) to stay no faster than running.
 - Free (no weapon, damage or cost), works in town, every class from level 1.
 - Cooldown: 1.5 s in 0.11.13, then 250 ms (Sam, 0.11.19): 6 frames = 0.24 s (the game counts 25 frames a second).
 
@@ -70,6 +81,23 @@ cursor (or the clicked monster); no table setting or plugin service changes the 
 
 Not possible yet: **one dodge per click.** The game repeats any skill while its button is held,
 no table setting stops that, and the plugin can't see mouse buttons.
+
+Tried and dropped: **a fast dash followed by a green slow** (Sam, 2026-11-18 to 19, test builds
+0.11.58 to 0.11.72). What the tests showed:
+- A landing pulse copied from Battle Orders' shout gives its state to friendly units it touches,
+  but never to the hero who made it: no green, no slow (0.11.61).
+- Berserk's and Blade Shield's start code ("srvstfunc" 39 and 28) do put the skill's state on the
+  hero (green), but without Leap's own start code (40) Leap's movement never runs (0.11.70).
+  The green also lasted well over 10 seconds instead of about 1.8.
+- The Amazon's Dodge pose (anim S1, no sequence) also stops Leap's movement: the hero locks up
+  (0.11.71). Leap's movement needs a "sequence" pose such as Charge's run or Leap's jump.
+- Still open: whether Leap's own start code plus Charge's run plus the state gives a dash and a
+  green slow together (test build 0.11.72). Since 0.12.0 the plugin may also change buff and
+  debuff end times through `src/plugin/gamewrite.h`, which could cut an overlong slow short.
+
+Not solved yet: **claws.** Charge's run pose is built from Paladin attack frames and has none for
+claws, so an Assassin holding claws can't dodge. Blade Fury's sequence (23), which Assassins
+use with claws, is being tried (test build 0.11.72).
 
 Unknown until tested: Leap's movement runs in the game's rules and Charge's in what the hero's
 screen shows, so the hero might be drawn running toward the cursor and then snap to where Leap
