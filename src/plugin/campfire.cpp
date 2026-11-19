@@ -22,18 +22,24 @@
 #include "campfire.h"
 #include "camp.h"
 #include "gamememory.h"
+#include "gamestate.h"
+#include "gameapi.h"
 #include "route.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <exception>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 namespace Campfire {
@@ -1256,6 +1262,223 @@ auto WhereCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
+// dd-units: what the live game-state reader sees (gamestate.h). With no words: how many units of
+// each kind are loaded, the hero, and the nearest objects. "dd-units <kind> [row]" lists the
+// nearest units of one kind (players, monsters, objects, missiles, items, tiles), "dd-units find"
+// looks for the unit list again. Everything also goes to the plugin log.
+auto UnitsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	try {
+		const auto say = [&](const std::string& line) {
+			command->plugin->WriteConsoleMessage(line.c_str());
+			Log(command->plugin, "Units: %s", line.c_str());
+		};
+		std::string word, rowText;
+		{
+			std::istringstream args(command->args == nullptr ? "" : command->args);
+			args >> word >> rowText;
+		}
+		if (word == "find") {
+			GameState::Find();
+		}
+		if (!GameState::Ready()) {
+			say(GameState::Status());
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		std::string playing;
+		{
+			const Lock lock(g_mutex);
+			playing = CurrentHero();
+		}
+		GameState::Unit hero = GameState::Player(playing);
+		if (!hero) {
+			hero = GameState::Player();
+		}
+		const auto describe = [&](const GameState::Unit& u) {
+			char line[200];
+			const long long dx = u.x - hero.x, dy = u.y - hero.y;
+			std::snprintf(line, sizeof(line), "%s row %u #%u mode %u at %d,%d (%.0f away)%s", GameState::KindName(u.kind), u.row, u.id, u.mode,
+				u.x, u.y, std::sqrt(static_cast<double>(dx * dx + dy * dy)), u.placed ? "" : " not placed");
+			std::string text = line;
+			if (u.kind == GameState::Kind::Player) {
+				text += " " + u.name;
+			}
+			if (u.kind == GameState::Kind::Monster || u.kind == GameState::Kind::Player) {
+				text += " level " + std::to_string(GameState::CharacterLevel(u)) + " life " + std::to_string(GameState::Life(u)) + (u.Alive() ? "" : " dead");
+			}
+			return text;
+		};
+		static constexpr const char* Words[] = { "players", "monsters", "objects", "missiles", "items", "tiles" };
+		int kind = -1;
+		for (int k = 0; k < 6; ++k) {
+			if (word == Words[k] || word + "s" == Words[k]) {
+				kind = k;
+			}
+		}
+		if (kind < 0) {
+			say(GameState::Status());
+			std::string counts;
+			for (int k = 0; k < 6; ++k) {
+				counts += (k ? ", " : "") + std::to_string(GameState::Units(static_cast<GameState::Kind>(k)).size()) + " " + Words[k];
+			}
+			say("Loaded now: " + counts + ".");
+			say(hero ? "Hero: " + describe(hero) + ", in area " + std::to_string(GameState::Level(hero)) + " (levels.txt)" : std::string("Hero: not found."));
+			if (hero) {
+				Log(command->plugin, "Units: hero %s", GameState::StatsReport(hero).c_str());
+			}
+			const GameState::Unit fire = GameState::Nearest(GameState::Kind::Object, 39, hero.x, hero.y);
+			say(fire ? "Nearest town fire (objects row 39): " + describe(fire) : std::string("No town fire (objects row 39) loaded."));
+			word = "objects", kind = 2;
+		}
+		auto units = rowText.empty() ? GameState::Units(static_cast<GameState::Kind>(kind))
+		                             : GameState::Units(static_cast<GameState::Kind>(kind), static_cast<uint32_t>(std::strtoul(rowText.c_str(), nullptr, 10)));
+		std::sort(units.begin(), units.end(), [&](const GameState::Unit& a, const GameState::Unit& b) {
+			const long long da = (a.x - hero.x) * 1LL * (a.x - hero.x) + (a.y - hero.y) * 1LL * (a.y - hero.y);
+			const long long db = (b.x - hero.x) * 1LL * (b.x - hero.x) + (b.y - hero.y) * 1LL * (b.y - hero.y);
+			return a.placed != b.placed ? a.placed : da < db;
+		});
+		say(std::to_string(units.size()) + " " + Words[kind] + (rowText.empty() ? "" : " of row " + rowText) + "; nearest first:");
+		for (std::size_t i = 0; i < units.size() && i < 10; ++i) {
+			say("  " + describe(units[i]));
+		}
+	} catch (...) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	return D2RL::ConsoleCommandResult::Handled;
+}
+
+// dd-state: what the game-state API (gameapi.h) reads now, to check its values against the game.
+// "dd-state" hero, world, nearest monsters, objects and items; "dd-state stats" every hero stat;
+// "dd-state watch" logs changes (Game::Poll) every 250 ms until typed again; "dd-state tables"
+// lists every unit-list-shaped address in the game's code (research: where missiles live).
+std::atomic<bool> g_watching { false };
+
+void __cdecl WatchTick(const D2RL::PluginContext* context, void*) noexcept {
+	if (!g_watching) {
+		return;
+	}
+	try {
+		for (const Game::Event& e : Game::Poll()) {
+			if (e.type == Game::EventType::UnitAppeared || e.type == Game::EventType::UnitGone) {
+				continue;  // too many to log; the API still reports them
+			}
+			Log(context, "State: %s: %s row %u #%u at %d,%d (%d -> %d)", Game::EventName(e.type), GameState::KindName(e.unit.kind), e.unit.row,
+				e.unit.id, e.unit.x, e.unit.y, e.before, e.after);
+		}
+	} catch (...) {
+	}
+	Later(context, 250, WatchTick);
+}
+
+auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	try {
+		const auto say = [&](const std::string& line) {
+			command->plugin->WriteConsoleMessage(line.c_str());
+			Log(command->plugin, "State: %s", line.c_str());
+		};
+		const std::string args = command->args == nullptr ? "" : command->args;
+		if (args == "tables") {
+			say(GameState::TablesReport());
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (args == "watch") {
+			g_watching = !g_watching;
+			say(g_watching ? "Watching for changes (hero died, object used, monster died, area, hits); see the log. 'dd-state watch' stops."
+			               : "Stopped watching.");
+			if (g_watching) {
+				Game::Poll();
+				Later(command->plugin, 250, WatchTick);
+			}
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (!GameState::Ready()) {
+			say(GameState::Status());
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		const Game::HeroDetails h = Game::HeroInfo();
+		if (!h.unit) {
+			say("No hero found.");
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (args == "states") {
+			say(Game::StatesReport(h.unit));
+			const auto states = Game::States(h.unit);
+			say(std::to_string(states.size()) + " states on the hero:");
+			for (const Game::StateDetails& d : states) {
+				std::string line = "  state " + std::to_string(d.state) + " from skill " + std::to_string(d.skill) + " level " + std::to_string(d.skillLevel) +
+				                   ", ends at frame " + std::to_string(d.endFrame) + ", on for " + std::to_string(static_cast<int>(d.activeSeconds)) + " s; stats";
+				for (const GameState::StatEntry& e : d.stats) {
+					line += " " + std::to_string(e.id) + "=" + std::to_string(e.value);
+				}
+				say(line);
+			}
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (args == "stats") {
+			std::string line;
+			for (const GameState::StatEntry& e : GameState::Stats(h.unit, true)) {
+				line += " " + std::to_string(e.id) + (e.param ? "/" + std::to_string(e.param) : std::string()) + "=" + std::to_string(e.value);
+				if (line.size() > 180) {
+					say("Stats:" + line);
+					line.clear();
+				}
+			}
+			say("Stats:" + line);
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		const Game::WorldDetails w = Game::World();
+		char text[320];
+		std::snprintf(text, sizeof(text), "Hero %s, class %d, level %d, life %d/%d, mana %d/%d, exp %lld, gold %d (stash %d), at %d,%d, mode %u%s.",
+			h.name.c_str(), h.classId, h.level, h.life, h.maxLife, h.mana, h.maxMana, h.experience, h.gold, h.stashGold, h.unit.x, h.unit.y, h.unit.mode,
+			h.dead ? " DEAD" : "");
+		say(text);
+		std::snprintf(text, sizeof(text), "World: area %d, act %d, difficulty %d. Resists fire %d, cold %d, lightning %d, poison %d; magic find %d.", w.area,
+			w.act, w.difficulty, Game::Stat(h.unit, Game::StatId::FireResist).value_or(0), Game::Stat(h.unit, Game::StatId::ColdResist).value_or(0),
+			Game::Stat(h.unit, Game::StatId::LightningResist).value_or(0), Game::Stat(h.unit, Game::StatId::PoisonResist).value_or(0),
+			Game::Stat(h.unit, Game::StatId::MagicFind).value_or(0));
+		say(text);
+		std::snprintf(text, sizeof(text), "Speed: run/walk %+d%%, attack %+d%%, cast %+d%%, hit recovery %+d%%; gold find %d.",
+			Game::Stat(h.unit, Game::StatId::MoveSpeed).value_or(0) + Game::Stat(h.unit, Game::StatId::VelocityPercent).value_or(0),
+			Game::Stat(h.unit, Game::StatId::AttackSpeed).value_or(0), Game::Stat(h.unit, Game::StatId::CastSpeed).value_or(0),
+			Game::Stat(h.unit, Game::StatId::HitRecovery).value_or(0), Game::Stat(h.unit, Game::StatId::GoldFind).value_or(0));
+		say(text);
+		const auto monsters = Game::Monsters(60);
+		say(std::to_string(monsters.size()) + " live monsters within 60:");
+		for (std::size_t i = 0; i < monsters.size() && i < 6; ++i) {
+			const auto& m = monsters[i];
+			std::string kind = m.superUnique ? "super unique" : m.unique ? "unique" : m.champion ? "champion" : m.minion ? "minion" : "normal";
+			std::string ench;
+			for (const int e : m.enchantments) {
+				ench += (ench.empty() ? " enchant" : ",") + std::to_string(e);
+			}
+			std::snprintf(text, sizeof(text), "  monster row %u #%u %s, life %d/%d, at %d,%d%s", m.unit.row, m.unit.id, kind.c_str(), m.life, m.maxLife, m.unit.x,
+				m.unit.y, ench.c_str());
+			say(text);
+		}
+		const auto objects = Game::Objects(30);
+		std::string line = std::to_string(objects.size()) + " objects within 30:";
+		for (std::size_t i = 0; i < objects.size() && i < 8; ++i) {
+			line += " row " + std::to_string(objects[i].row) + " mode " + std::to_string(objects[i].mode) + ";";
+		}
+		say(line);
+		const auto items = Game::GroundItems(30);
+		line = std::to_string(items.size()) + " items on the ground within 30:";
+		for (std::size_t i = 0; i < items.size() && i < 8; ++i) {
+			line += " row " + std::to_string(items[i].unit.row) + " quality " + std::to_string(items[i].quality) + " ilvl " +
+			        std::to_string(items[i].itemLevel) + ";";
+		}
+		say(line);
+	} catch (...) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	return D2RL::ConsoleCommandResult::Handled;
+}
+
 auto CampCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
@@ -1608,7 +1831,9 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 	return context->RegisterConsoleCommand("dd-camp", CampCommand, "Show the camp of the loaded save; in town, open the Campfire panel.") &&
 		context->RegisterConsoleCommand("dd-slot", SlotCommand, "Load save slot 1, 2 or 3 (main menu only).") &&
 		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).") &&
-		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).");
+		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).") &&
+		context->RegisterConsoleCommand("dd-state", StateCommand, "Game-state API test: hero, world, monsters, objects, items; 'dd-state stats', 'dd-state states', 'dd-state watch', 'dd-state tables'.") &&
+		context->RegisterConsoleCommand("dd-units", UnitsCommand, "List the units the game has loaded: 'dd-units', 'dd-units objects 39', 'dd-units monsters', 'dd-units find' (test).");
 }
 
 auto RouteProgressFile() noexcept -> std::filesystem::path {
@@ -1832,6 +2057,9 @@ void NoteDifficulty(const D2RL::PluginContext* context, uint32_t difficulty) noe
 void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::GameplayEvent* event) noexcept {
 	if (event->difficulty > 0 && event->kind != D2RL::Lifecycle::GameplayEventKind::GameJoined) {
 		NoteDifficulty(context, event->difficulty);  // fields an event doesn't use are 0, so only a higher one counts
+	}
+	if (event->playerId != 0) {
+		Game::SetLocalPlayerId(event->playerId);  // makes Game::Hero() exact (gameapi.h)
 	}
 	try {
 		const Lock lock(g_mutex);

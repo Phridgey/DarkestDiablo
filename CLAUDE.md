@@ -27,6 +27,9 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
   `ReadProcessMemory` on our own process (a bad address fails the read instead of crashing). Reading only: never write
   to game memory and never change game code. Each value read and its address go in
   `docs/game-memory.md`, and the plugin turns the feature off if the game build differs.
+- Game information (hero, monsters, objects, items, stats, buffs/debuffs, events) comes from the
+  game-state API, `src/plugin/gameapi.h`; its guide is `docs/game-state-api.md`. Use it instead of
+  new reads of your own, and update that page in the same pull request as any API change.
 - `src/patches` can also change the game's menu layouts with `t.layout("<name>")` (parsed JSON).
 - `tools/build-plugin.cmd` — builds the plugin and places it in the mod (Windows, needs Visual Studio).
 - `tools/build.py` — builds `build/darkestdiablo/darkestdiablo.mpq/`.

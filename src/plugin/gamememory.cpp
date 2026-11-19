@@ -1,6 +1,8 @@
 // See gamememory.h and docs/game-memory.md. READ ONLY.
 #include "gamememory.h"
 
+#include "gamestate.h"
+
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -47,16 +49,14 @@ uint64_t               g_scanStarted = 0;  // GetTickCount64 when the running sc
 std::atomic<uint32_t>  g_scanPass { 0 };   // which pass of the slow search runs (1 or 2)
 std::atomic<uint32_t>  g_scannedMb { 0 };  // megabytes read so far in this pass
 
-// Where the game's unit list sits: a fixed place inside a game module, found once by the slow
-// search and saved next to the plugin (darkestdiablo-unitlist.txt), so later games read it
-// straight away.
+// Where the slow search found the game's unit list (gamestate.cpp keeps and saves it for later
+// games; this copy only serves the rest of the same search).
 struct UnitList {
 	std::wstring module;      // file name of the module that holds it
 	uintptr_t    offset = 0;  // from the module's start to the list of player units
 	std::size_t  next = 0;    // where a unit keeps the next unit of its chain
 };
 UnitList g_list;
-bool     g_listLoaded = false;
 
 template <typename T>
 auto Read(uintptr_t address, T& out) -> bool {
@@ -87,46 +87,6 @@ auto FireAt(uintptr_t unit) -> Pos {
 		return {};
 	}
 	return { static_cast<int>(x), static_cast<int>(y), true };
-}
-
-auto ListFile() -> std::wstring {
-	HMODULE self = nullptr;
-	wchar_t path[MAX_PATH] {};
-	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-	        reinterpret_cast<LPCWSTR>(&ListFile), &self) || GetModuleFileNameW(self, path, MAX_PATH) == 0) {
-		return {};
-	}
-	std::wstring file(path);
-	const auto slash = file.find_last_of(L"\\/");
-	return (slash == std::wstring::npos ? std::wstring() : file.substr(0, slash + 1)) + L"darkestdiablo-unitlist.txt";
-}
-
-void LoadList() {
-	if (g_listLoaded) {
-		return;
-	}
-	g_listLoaded = true;
-	FILE* in = _wfopen(ListFile().c_str(), L"r");
-	if (in == nullptr) {
-		return;
-	}
-	wchar_t module[MAX_PATH] {};
-	unsigned long long offset = 0, next = 0;
-	unsigned build = 0;
-	if (fwscanf(in, L"%u %259ls %llx %llx", &build, module, &offset, &next) == 4 && build == FrozenBuild) {
-		g_list = { module, static_cast<uintptr_t>(offset), static_cast<std::size_t>(next) };
-	}
-	fclose(in);
-}
-
-void SaveList() {
-	FILE* out = _wfopen(ListFile().c_str(), L"w");
-	if (out == nullptr) {
-		return;
-	}
-	fwprintf(out, L"%u %ls %llx %llx\n", FrozenBuild, g_list.module.c_str(), static_cast<unsigned long long>(g_list.offset),
-		static_cast<unsigned long long>(g_list.next));
-	fclose(out);
 }
 
 // Calls `unit(address)` for every unit of one kind (0 players, 2 objects) in the list at `base`.
@@ -175,32 +135,6 @@ auto ListedObject(uintptr_t base, std::size_t next, uint32_t wanted, Pos from) -
 
 auto ListedFire(uintptr_t base, std::size_t next, Pos hero) -> Pos {
 	return ListedObject(base, next, FireRow, hero);
-}
-
-// The quick way: hero and fire straight from the saved unit list. False if it isn't known.
-auto FromList(const std::string& name, uintptr_t& hero, Pos& heroPos, Pos& fire, Pos& stash) -> bool {
-	LoadList();
-	if (g_list.module.empty()) {
-		return false;
-	}
-	const HMODULE module = GetModuleHandleW(g_list.module.c_str());
-	if (module == nullptr) {
-		return false;
-	}
-	const uintptr_t base = reinterpret_cast<uintptr_t>(module) + g_list.offset;
-	hero = 0;
-	ForEachListed(base, TypePlayer, g_list.next, [&](uintptr_t unit) {
-		if (hero == 0 && NamedAs(unit, name) && HeroAt(unit).ok) {
-			hero = unit;
-		}
-	});
-	if (hero == 0) {
-		return false;
-	}
-	heroPos = HeroAt(hero);
-	fire = ListedFire(base, g_list.next, heroPos);
-	stash = fire.ok ? ListedObject(base, g_list.next, StashRow, fire) : Pos {};
-	return true;
 }
 
 // After the slow search found the hero: find the unit list that holds it, inside a game module,
@@ -257,7 +191,7 @@ auto FindList(uintptr_t hero, Pos heroPos) -> std::string {
 					const auto slash = leaf.find_last_of(L"\\/");
 					leaf = slash == std::wstring::npos ? leaf : leaf.substr(slash + 1);
 					g_list = { leaf, base - module, next };
-					SaveList();
+					GameState::Adopt(base, next);
 					const Pos fire = ListedFire(base, next, heroPos);
 					char line[256];
 					std::snprintf(line, sizeof(line), "unit list found: %ls + 0x%llx (next at 0x%llx), %d objects, fire %s; saved",
@@ -304,19 +238,21 @@ void ForEachChunk(F&& chunk) {
 
 void Scan(std::string name) {
 	const auto started = GetTickCount64();
-	{
-		uintptr_t hero = 0;
-		Pos heroPos, fire, stash;
-		if (FromList(name, hero, heroPos, fire, stash)) {
+	// The quick way (gamestate.h): the game's unit list, found from the game's own code.
+	if (GameState::Ready()) {
+		const GameState::Unit hero = GameState::Player(name);
+		if (hero) {
+			const GameState::Unit fire = GameState::Nearest(GameState::Kind::Object, FireRow, hero.x, hero.y);
+			const GameState::Unit stash = fire ? GameState::Nearest(GameState::Kind::Object, StashRow, fire.x, fire.y) : GameState::Unit {};
 			char line[256];
 			std::snprintf(line, sizeof(line), "read from the unit list in %llu ms: hero at %d,%d, fire at %d,%d (%s), stash at %d,%d (%s)",
-				static_cast<unsigned long long>(GetTickCount64() - started), heroPos.x, heroPos.y, fire.x, fire.y, fire.ok ? "ok" : "not found",
-				stash.x, stash.y, stash.ok ? "ok" : "not found");
+				static_cast<unsigned long long>(GetTickCount64() - started), hero.x, hero.y, fire.x, fire.y, fire ? "ok" : "not found",
+				stash.x, stash.y, stash ? "ok" : "not found");
 			const std::lock_guard<std::mutex> guard(g_lock);
-			g_heroUnit = hero;
-			g_fire = fire;
-			g_stash = stash;
-			g_report = line;
+			g_heroUnit = hero.address;
+			g_fire = fire ? Pos { fire.x, fire.y, true } : Pos {};
+			g_stash = stash ? Pos { stash.x, stash.y, true } : Pos {};
+			g_report = std::string(line) + "; " + GameState::Status();
 			g_scanning = false;
 			return;
 		}
@@ -559,6 +495,11 @@ auto Scanning() -> bool {
 auto Hero() -> Pos {
 	const std::lock_guard<std::mutex> guard(g_lock);
 	return g_heroUnit != 0 ? HeroAt(g_heroUnit) : Pos {};
+}
+
+auto HeroUnit() -> uintptr_t {
+	const std::lock_guard<std::mutex> guard(g_lock);
+	return g_heroUnit;
 }
 
 auto Fire() -> Pos {
