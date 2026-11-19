@@ -58,13 +58,8 @@ less recovery. So since 0.11.9 Dodge takes:
   frame 20 so dodging is no faster than running; Sam didn't want to stand still, and the game
   can't force walking or a slow, so since 0.11.24 the dash itself lasts 20 frames (0.8 s, the
   time running its distance takes) and recovery is back at frame 2.
-- Fast, then slow (Sam, 2026-11-18, 0.11.58): the dash is quick again (8 frames, 0.32 s), and on
-  landing the hero is slowed by 40% for 29 frames (1.16 s). Since 0.11.60 the dash goes 8
-  instead of 7 (Sam: about 15% further), so the slow lasts 36 frames (1.44 s), and the hero
-  glows green like poison (green life globe too) while slowed, so you can see it. That gives back exactly the ground the dash gained over running (see the
-  numbers in the patch). The game has no "slow the caster" setting for Leap, so the slow rides on
-  an invisible landing pulse copied from Battle Orders' shout, which gives a state to friendly
-  units it touches.
+- Distance 8 instead of 7 since 0.12.3 (Sam: about 15% further), so the dash lasts 23 frames
+  (0.92 s) to stay no faster than running.
 - Free (no weapon, damage or cost), works in town, every class from level 1.
 - Cooldown: 1.5 s in 0.11.13, then 250 ms (Sam, 0.11.19): 6 frames = 0.24 s (the game counts 25 frames a second).
 
@@ -78,14 +73,22 @@ cursor (or the clicked monster); no table setting or plugin service changes the 
 Not possible yet: **one dodge per click.** The game repeats any skill while its button is held,
 no table setting stops that, and the plugin can't see mouse buttons.
 
-Tried and failed: **a slow from a landing pulse** (0.11.58 to 0.11.61). Battle Orders' pulse
-gives its state to friendly units it touches but never to the hero who made it: no green, no
-slow. Since 0.11.65 the slow comes from Berserk's start code instead, which gives the caster the
-skill's own state. Untested: whether Leap's movement still works without Leap's start code.
+Tried and dropped: **a fast dash followed by a green slow** (Sam, 2026-11-18 to 19, test builds
+0.11.58 to 0.11.72). What the tests showed:
+- A landing pulse copied from Battle Orders' shout gives its state to friendly units it touches,
+  but never to the hero who made it: no green, no slow (0.11.61).
+- Berserk's and Blade Shield's start code ("srvstfunc" 39 and 28) do put the skill's state on the
+  hero (green), but without Leap's own start code (40) Leap's movement never runs (0.11.70).
+  The green also lasted well over 10 seconds instead of about 1.8.
+- The Amazon's Dodge pose (anim S1, no sequence) also stops Leap's movement: the hero locks up
+  (0.11.71). Leap's movement needs a "sequence" pose such as Charge's run or Leap's jump.
+- Still open: whether Leap's own start code plus Charge's run plus the state gives a dash and a
+  green slow together (test build 0.11.72). Since 0.12.0 the plugin may also change buff and
+  debuff end times through `src/plugin/gamewrite.h`, which could cut an overlong slow short.
 
-Known gap: dodging again as soon as the cooldown allows (0.24 s) chains fast dashes, and each
-new dash moves at full speed even while slowed. To rule that out the cooldown would have to be
-about 0.8 s (the time running the distance takes).
+Not solved yet: **claws.** Charge's run pose is built from Paladin attack frames and has none for
+claws, so an Assassin holding claws can't dodge. Blade Fury's sequence (23), which Assassins
+use with claws, is being tried (test build 0.11.72).
 
 Unknown until tested: Leap's movement runs in the game's rules and Charge's in what the hero's
 screen shows, so the hero might be drawn running toward the cursor and then snap to where Leap
@@ -102,6 +105,4 @@ Use a new hero (skills from `charstats.txt` are given when a hero is made).
 3. Can you act again sooner after it than before?
 4. Stand in a pack of melee monsters and next to an archer, and dash through them. Do hits land
    mid-dash?
-5. After landing, does the hero turn green and walk and run noticeably slower? Is it gone
-   after about a second and a half?
-6. Any crash or error in `d2rloader/logs/d2rloader.log`.
+5. Any crash or error in `d2rloader/logs/d2rloader.log`.
