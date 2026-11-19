@@ -215,16 +215,45 @@ click still goes by distance (`docs/campfire.md`).
 
 ### Planned (needs finding in the game's code, then checking)
 
-- **Changing values** (movement speed, buffs, debuffs, magic find): Sam asked for this
-  (2026-11-19). It needs writing to game memory, which CLAUDE.md forbids until both of us agree;
-  it is being built on its own branch with the rule change for Fabrizio to approve. Until then,
-  change these through tables (our own states and skills, like the dodge slow in
-  `src/patches/050_dodge_roll.py`) and SDK services.
 - **The game's current frame** (time left on a state), **the unit under the mouse**, **open
   panels**, **map seed**, **level exits and preset objects**, **the mercenary's owner link**
   (today the mercenary is found by its monster class), **where a stored item sits in the grid**.
 - **Missiles** are not in the unit list's missile block (always 0 while casting). Not needed for
   now (Sam, 2026-11-19); `dd-state tables` is the research tool if they are.
+
+## Changing values
+
+Both of us agreed (2026-11-19) to let the API change values by writing game memory (CLAUDE.md).
+All writes go through `src/plugin/gamewrite.h`, the only file that writes:
+
+```cpp
+#include "gamewrite.h"
+
+const Game::Unit hero = Game::Hero();
+const auto copies = GameWrite::Copies(hero);              // slow (1-2 s): once per game, keep it
+GameWrite::SetStat(copies, Game::StatId::MagicFind, 300); // only if the hero has magic find now
+GameWrite::SetStateStat(copies, 60, Game::StatId::VelocityPercent, -20);  // a weaker slow
+GameWrite::SetStateEnd(copies, 60, endFrame);              // a shorter or longer state
+```
+
+What it can and can't do (status: mapped, being tested with `dd-set`):
+
+- **Only existing values.** A write changes a stat the unit has now. It can't give a stat the
+  unit doesn't have (magic find with no magic find items, a speed bonus with no speed source),
+  because that would need the game's own memory allocator. For those, give the stat through our
+  own state or a hidden item first (tables), then tune its value with a write.
+- **Every copy.** The game keeps more than one copy of the hero: what the screen draws (what the
+  API reads) and the game rules' own copy. `Copies()` finds them all; a write to only the drawn
+  copy may show on screen but change nothing, or be undone.
+- **Writes don't stick.** The game recalculates totals when items, skills or states change, so a
+  feature that wants a value to stay writes it again on a timer (`dd-set hold`).
+- **Safety.** Writes go only to plain, writable data memory, never code, and only on the frozen
+  build. A write that misses does nothing, but a write to the right place with a silly value can
+  still break the game until restart; keep values in the game's normal ranges.
+
+Test in game: `dd-set copies` (lists the hero's copies with life and position, to tell them
+apart), `dd-set stat <id> <value>`, `dd-set hold <id> <value>` / `dd-set hold off`,
+`dd-set state <row> end <frame>`, `dd-set state <row> stat <id> <value>`. Log lines start "Write:".
 
 ## Checking it in game
 

@@ -24,6 +24,7 @@
 #include "gamememory.h"
 #include "gamestate.h"
 #include "gameapi.h"
+#include "gamewrite.h"
 #include "route.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -1538,6 +1539,120 @@ auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
+// dd-set: test the game-state WRITES (gamewrite.h).
+//   dd-set copies                     find every copy of the hero in memory (1-2 s) and list them
+//   dd-set stat <id> <value>          set a hero stat the hero already has (e.g. 80 magic find)
+//   dd-set hold <id> <value>          the same, written again every 250 ms; "dd-set hold off" stops
+//   dd-set state <row> end <frame>    change when a buff/debuff ends
+//   dd-set state <row> stat <id> <v>  change what a buff/debuff gives (e.g. Slowed's 67 velocitypercent)
+std::mutex                g_copiesLock;
+uint32_t                  g_copiesOf = 0;
+std::vector<uintptr_t>    g_copies;
+std::atomic<bool>         g_holding { false };
+std::atomic<int>          g_holdStat { 0 }, g_holdValue { 0 };
+
+auto HeroCopies(const Game::Unit& hero, bool fresh) -> std::vector<uintptr_t> {
+	const std::lock_guard<std::mutex> guard(g_copiesLock);
+	if (fresh || g_copiesOf != hero.id || g_copies.empty() || g_copies.front() != hero.address) {
+		g_copies = GameWrite::Copies(hero);
+		g_copiesOf = hero.id;
+	}
+	return g_copies;
+}
+
+void __cdecl HoldTick(const D2RL::PluginContext* context, void*) noexcept {
+	if (!g_holding) {
+		return;
+	}
+	try {
+		const Game::Unit hero = Game::Hero();
+		if (hero) {
+			GameWrite::SetStat(HeroCopies(hero, false), static_cast<uint16_t>(g_holdStat.load()), g_holdValue.load());
+		}
+	} catch (...) {
+	}
+	Later(context, 250, HoldTick);
+}
+
+auto SetCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	try {
+		const auto say = [&](const std::string& line) {
+			command->plugin->WriteConsoleMessage(line.c_str());
+			Log(command->plugin, "Write: %s", line.c_str());
+		};
+		std::istringstream in(command->args == nullptr ? "" : command->args);
+		std::string what;
+		in >> what;
+		if (what == "hold") {
+			std::string a;
+			int value = 0;
+			in >> a >> value;
+			if (a == "off" || a.empty()) {
+				g_holding = false;
+				say("Stopped holding.");
+				return D2RL::ConsoleCommandResult::Handled;
+			}
+			g_holdStat = std::atoi(a.c_str()), g_holdValue = value;
+			if (!g_holding.exchange(true)) {
+				Later(command->plugin, 250, HoldTick);
+			}
+			say("Holding stat " + a + " at " + std::to_string(value) + " every 250 ms ('dd-set hold off' stops).");
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (!GameMemory::BuildMatches() || !GameState::Ready()) {
+			say("Writes are off: not the frozen game build, or no game loaded.");
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		const Game::Unit hero = Game::Hero();
+		if (!hero) {
+			say("No hero found.");
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (what == "copies") {
+			say(GameWrite::CopiesReport(hero, HeroCopies(hero, true)));
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (what == "stat") {
+			int id = -1, value = 0;
+			if (!(in >> id >> value) || id < 0) {
+				say("Usage: dd-set stat <itemstatcost row> <value>");
+				return D2RL::ConsoleCommandResult::Handled;
+			}
+			const int n = GameWrite::SetStat(HeroCopies(hero, false), static_cast<uint16_t>(id), value);
+			say("Stat " + std::to_string(id) + " set to " + std::to_string(value) + " in " + std::to_string(n) + " places" +
+			    (n == 0 ? " (the hero has no such stat now; writes can only change existing ones)." : "."));
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (what == "state") {
+			int row = -1;
+			std::string field;
+			in >> row >> field;
+			int n = 0;
+			if (field == "end") {
+				long long frame = 0;
+				in >> frame;
+				n = GameWrite::SetStateEnd(HeroCopies(hero, false), row, static_cast<uint32_t>(frame));
+			} else if (field == "stat") {
+				int id = -1, value = 0;
+				in >> id >> value;
+				n = GameWrite::SetStateStat(HeroCopies(hero, false), row, static_cast<uint16_t>(id), value);
+			} else {
+				say("Usage: dd-set state <states.txt row> end <frame> | stat <id> <value>");
+				return D2RL::ConsoleCommandResult::Handled;
+			}
+			say("State " + std::to_string(row) + ": changed " + std::to_string(n) + " places.");
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		say("Usage: dd-set copies | stat <id> <value> | hold <id> <value> | hold off | state <row> end <frame> | state <row> stat <id> <value>");
+	} catch (...) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	return D2RL::ConsoleCommandResult::Handled;
+}
+
 auto CampCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
 	if (command == nullptr || command->plugin == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
@@ -1891,6 +2006,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		context->RegisterConsoleCommand("dd-slot", SlotCommand, "Load save slot 1, 2 or 3 (main menu only).") &&
 		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).") &&
 		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).") &&
+		context->RegisterConsoleCommand("dd-set", SetCommand, "Game-state WRITES test: dd-set copies | stat <id> <value> | hold <id> <value> | state <row> end|stat ...") &&
 		context->RegisterConsoleCommand("dd-state", StateCommand, "Game-state API test: hero, world, monsters, objects, items; 'dd-state stats', 'states', 'skills', 'items', 'players', 'watch', 'tables'.") &&
 		context->RegisterConsoleCommand("dd-units", UnitsCommand, "List the units the game has loaded: 'dd-units', 'dd-units objects 39', 'dd-units monsters', 'dd-units find' (test).");
 }
