@@ -8,7 +8,7 @@ Words used here:
 - Game folder: the frozen copy the launcher makes, wherever the player chose to put it.
 - Mod folder:  <game folder>/Mods/darkestdiablo, the files the launcher installs and updates.
 """
-import hashlib, json, os, re, shutil, string, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request, zipfile
+import contextlib, hashlib, json, os, re, shutil, string, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request, zipfile
 from pathlib import Path, PurePosixPath
 
 REPO = "Phridgey/DarkestDiablo"           # where releases come from
@@ -20,6 +20,72 @@ INSTALL_RECORD = "darkestdiablo-install.json"  # in the game folder, next to D2R
 COPY_SKIP_DIRS = {"mods"}                 # top-level folders not copied from the D2R folder
 COPY_SKIP_FILES = {"d2rhud.dll", "d2rhud_config.txt"}  # leftovers of other mods
 USER_AGENT = "DarkestDiablo-Launcher"
+
+
+# ---------------------------------------------------------------- starting other programs
+
+# The launcher .exe is one file: while it runs, it unpacks itself into a temp folder
+# (%TEMP%\_MEI...) and deletes that folder when it closes. It also tells Windows to look for
+# DLLs in that folder first, and every program it starts inherits that. So D2RLoader and the
+# game loaded DLLs (e.g. the Microsoft C runtime) from the launcher's temp folder, and when the
+# launcher closed after Play it couldn't delete the folder: "Failed to remove temporary
+# directory". Every program the launcher starts goes through clean_env() and outside_bundle().
+
+def _bundle_dir():
+    return getattr(sys, "_MEIPASS", None) if getattr(sys, "frozen", False) else None
+
+
+def _in_bundle(value, bundle):
+    try:
+        return os.path.normcase(os.path.abspath(value)).startswith(os.path.normcase(os.path.abspath(bundle)))
+    except (TypeError, ValueError):
+        return False
+
+
+def clean_env(env=None):
+    """A copy of env (default: ours) without the launcher's own unpack-folder settings."""
+    env = dict(os.environ if env is None else env)
+    bundle = _bundle_dir()
+    if not bundle:
+        return env
+    for k in list(env):
+        if k.upper().startswith("_PYI_") or k.upper() == "_MEIPASS2":
+            del env[k]
+        elif k.upper() in ("TCL_LIBRARY", "TK_LIBRARY", "TCLLIBPATH") and _in_bundle(env[k], bundle):
+            del env[k]
+    for k in [k for k in env if k.upper() == "PATH"]:
+        env[k] = os.pathsep.join(p for p in env[k].split(os.pathsep) if p and not _in_bundle(p, bundle))
+    return env
+
+
+@contextlib.contextmanager
+def outside_bundle():
+    """While inside, programs we start don't search the launcher's temp folder for DLLs."""
+    bundle = _bundle_dir()
+    if not bundle or sys.platform != "win32":
+        yield
+        return
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    k32.SetDllDirectoryW(None)
+    try:
+        yield
+    finally:
+        k32.SetDllDirectoryW(bundle)
+
+
+def popen(args, **kw):
+    """subprocess.Popen for programs outside the launcher (clean environment, see above)."""
+    kw["env"] = clean_env(kw.get("env"))
+    with outside_bundle():
+        return subprocess.Popen(args, **kw)
+
+
+def run(args, **kw):
+    """subprocess.run for programs outside the launcher (clean environment, see above)."""
+    kw["env"] = clean_env(kw.get("env"))
+    with outside_bundle():
+        return subprocess.run(args, **kw)
 
 
 # ---------------------------------------------------------------- settings
@@ -504,7 +570,7 @@ def battlenet_running():
     if sys.platform != "win32":
         return True
     try:
-        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Battle.net.exe", "/NH"], capture_output=True,
+        out = run(["tasklist", "/FI", "IMAGENAME eq Battle.net.exe", "/NH"], capture_output=True,
                              text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
         return "battle.net.exe" in out.lower()
     except OSError:
@@ -537,4 +603,5 @@ def play(game_dir):
     if not exe.is_file():
         raise RuntimeError("D2RLoader.exe is missing from the game folder.")
     enable_console(game_dir)
-    subprocess.Popen([str(exe)], cwd=str(game_dir))
+    # Through popen(): the game must not use the launcher's temp folder, which closes right after.
+    popen([str(exe)], cwd=str(game_dir))
