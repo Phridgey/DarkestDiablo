@@ -6,6 +6,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace GameMemory {
 
@@ -36,6 +37,18 @@ auto Fire() -> Pos;
 
 // The town's stash chest nearest the fire (objects.txt row 267), found with the fire.
 auto Stash() -> Pos;
+
+// One of the hero's stats (itemstatcost.txt row, e.g. 80 = magic find), with gear counted.
+// `where` says which stat list it came from, for testing. ok is false when it can't be read.
+struct Stat {
+	int         value = 0;
+	bool        ok    = false;
+	std::string where;
+};
+auto HeroStat(unsigned statId) -> Stat;
+
+// For finding the stat layout: the hero's stat lists as raw numbers, one line each (test).
+auto DumpStats() -> std::vector<std::string>;
 
 // A few lines about the last scan for the plugin log.
 auto Report() -> std::string;

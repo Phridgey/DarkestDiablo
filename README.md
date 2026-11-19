@@ -79,6 +79,10 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
     Rakanishu and Treehead are dead. Every drop is 1.4 times as likely to be magic or better (on
     top of the player's magic find), and Treehead always drops one extra set or unique.
     See `src/patches/030_inifuss.py` and `035_inifuss_loot.py`.
+  - **Mausoleum** (fork 1 crafting hunt): a round crypt hall on level 14, made with
+    compose_map's `circle` (Blizzard has no round crypt room) and ringed with crypt pillars, bone
+    piles and statues. Waypoint at the west edge. Six waves of undead that drop only runes, gems,
+    potions and gold. See `src/maps/mausoleum.json` and `src/patches/060_mausoleum.py`.
 - **No keys** drop anywhere (`src/patches/005_no_keys.py`).
 - **Bigger inventory:** every hero's bag is 10x5 instead of 10x4 (`src/patches/055_inventory_row.py`).
   The panel's background gets its extra row at build time from the game's own picture.

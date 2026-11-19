@@ -571,6 +571,147 @@ auto Stash() -> Pos {
 	return g_stash;
 }
 
+// The hero's stats. The unit points to its stat list (unit + 0x88), which keeps the stat
+// arrays as { pointer, count } pairs: one with the hero's own stats, one with everything counted
+// (gear included). Each entry is { uint16 layer, uint16 stat, int32 value }, sorted by stat.
+// (Entries are 16 bytes: see StatEntrySize.) Rather than trust one offset, every pair in the list's first 0x100 bytes that looks like a
+// sorted stat array is read, and the largest value of the stat wins (the gear-counted one).
+namespace {
+constexpr std::size_t UnitStats[] = { 0x88, 0x90, 0x80 };
+constexpr std::size_t StatListOwnerType = 0x08;
+constexpr std::size_t StatListOwnerId   = 0x0C;
+constexpr std::size_t StatEntrySize     = 16;    // { uint32 layer, uint16 stat (+0x04), int32 value (+0x08) }, checked in game
+constexpr std::size_t StatEntryStat     = 0x04;
+constexpr std::size_t StatEntryValue    = 0x08;
+
+auto LooksLikeStats(uintptr_t array, uint32_t count) -> bool {
+	if (array == 0 || count == 0 || count > 512) {
+		return false;
+	}
+	uint32_t previous = 0;
+	for (uint32_t i = 0; i < std::min<uint32_t>(count, 64); ++i) {
+		uint16_t stat = 0;
+		if (!Read(array + i * StatEntrySize + StatEntryStat, stat) || stat > 1200 || stat < previous) {
+			return false;
+		}
+		previous = stat;
+	}
+	return true;
+}
+}  // namespace
+
+auto HeroStat(unsigned statId) -> Stat {
+	const std::lock_guard<std::mutex> guard(g_lock);
+	Stat best;
+	if (g_heroUnit == 0) {
+		best.where = "hero not found yet";
+		return best;
+	}
+	uint32_t heroId = 0;
+	Read(g_heroUnit + UnitId, heroId);
+	for (const std::size_t at : UnitStats) {
+		uintptr_t list = 0;
+		uint32_t ownerType = 99, ownerId = 0;
+		if (!Read(g_heroUnit + at, list) || !Read(list + StatListOwnerType, ownerType) || !Read(list + StatListOwnerId, ownerId) ||
+		    ownerType != TypePlayer || ownerId != heroId) {
+			continue;
+		}
+		int arrays = 0;
+		for (std::size_t field = 0x10; field < 0x100; field += 8) {
+			uintptr_t array = 0;
+			uint32_t count = 0;
+			if (!Read(list + field, array) || !Read(list + field + 8, count) || !LooksLikeStats(array, count)) {
+				continue;
+			}
+			++arrays;
+			for (uint32_t i = 0; i < count; ++i) {
+				uint16_t stat = 0;
+				int32_t value = 0;
+				if (!Read(array + i * StatEntrySize + StatEntryStat, stat)) {
+					break;
+				}
+				if (stat == statId && Read(array + i * StatEntrySize + StatEntryValue, value) && (!best.ok || value > best.value)) {
+					char where[80];
+					std::snprintf(where, sizeof(where), "unit+0x%zx list+0x%zx (%u stats)", at, field, count);
+					best = { value, true, where };
+				}
+			}
+		}
+		if (arrays > 0) {
+			if (!best.ok) {  // the stat lists read fine and the hero doesn't have it
+				best = { 0, true, "not on the hero" };
+			}
+			return best;
+		}
+	}
+	best.where = "stat list not found";
+	return best;
+}
+
+auto DumpStats() -> std::vector<std::string> {
+	const std::lock_guard<std::mutex> guard(g_lock);
+	std::vector<std::string> lines;
+	char line[1200];
+	if (g_heroUnit == 0) {
+		lines.emplace_back("stat dump: hero not found");
+		return lines;
+	}
+	// The unit's own pointers that lead to something with the hero's kind and number at +0x08/+0x0C.
+	uint32_t heroId = 0;
+	Read(g_heroUnit + UnitId, heroId);
+	std::vector<uintptr_t> lists;
+	for (std::size_t at = 0x10; at < 0x200; at += 8) {
+		uintptr_t list = 0;
+		uint32_t ownerType = 99, ownerId = 0;
+		if (Read(g_heroUnit + at, list) && Read(list + StatListOwnerType, ownerType) && Read(list + StatListOwnerId, ownerId) &&
+		    ownerType == TypePlayer && ownerId == heroId) {
+			std::snprintf(line, sizeof(line), "stat dump: unit+0x%zx -> list %llx", at, static_cast<unsigned long long>(list));
+			lines.emplace_back(line);
+			if (std::find(lists.begin(), lists.end(), list) == lists.end()) {
+				lists.push_back(list);
+			}
+		}
+	}
+	for (const uintptr_t list : lists) {
+		for (std::size_t field = 0; field < 0x200; field += 0x40) {  // raw qwords
+			std::string text;
+			for (std::size_t q = 0; q < 0x40; q += 8) {
+				uint64_t v = 0;
+				Read(list + field + q, v);
+				char word[24];
+				std::snprintf(word, sizeof(word), " %llx", static_cast<unsigned long long>(v));
+				text += word;
+			}
+			std::snprintf(line, sizeof(line), "stat dump: list %llx +0x%zx:%s", static_cast<unsigned long long>(list), field, text.c_str());
+			lines.emplace_back(line);
+		}
+		for (std::size_t field = 0; field < 0x200; field += 8) {  // anything that points at stat-like entries
+			uintptr_t array = 0;
+			uint32_t count32 = 0;
+			if (!Read(list + field, array) || !Read(list + field + 8, count32)) {
+				continue;
+			}
+			const uint32_t count = std::min<uint32_t>(count32 & 0xFFFF, 400);
+			if (!LooksLikeStats(array, std::min<uint32_t>(count, 8))) {
+				continue;
+			}
+			std::string text;
+			for (uint32_t i = 0; i < count && i < 90; ++i) {
+				uint16_t stat = 0;
+				int32_t value = 0;
+				Read(array + i * StatEntrySize + StatEntryStat, stat);
+				Read(array + i * StatEntrySize + StatEntryValue, value);
+				char entry[24];
+				std::snprintf(entry, sizeof(entry), " %u=%d", stat, value);
+				text += entry;
+			}
+			std::snprintf(line, sizeof(line), "stat dump: list+0x%zx count %08x:%s", field, count32, text.c_str());
+			lines.emplace_back(line);
+		}
+	}
+	return lines;
+}
+
 auto Report() -> std::string {
 	const std::lock_guard<std::mutex> guard(g_lock);
 	const std::string build = BuildFound();

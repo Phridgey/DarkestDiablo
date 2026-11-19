@@ -332,7 +332,7 @@
   },
   {
    "type": "ButtonWidget",
-   "name": "Fork1Mausoleum",
+   "name": "Fork1MausoleumLocked",
    "fields": {
     "rect": {
      "x": 406,
@@ -346,6 +346,25 @@
     "pointSize": "$SmallFontSize",
     "textColor": "$FontColorDarkGrayBlue",
     "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "Fork1Mausoleum",
+   "fields": {
+    "rect": {
+     "x": 406,
+     "y": 520
+    },
+    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Mausoleum",
+    "pointSize": "$SmallFontSize",
+    "textColor": "$FontColorWhite",
+    "disabled": true,
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-14"
    }
   },
   {

@@ -134,7 +134,7 @@ def compose(spec):
         if len(spec["pieces"]) > 1 and (d["width"] != room + 1 or d["height"] != room + 1):
             sys.exit(f"{p['piece']} is {d['width']}x{d['height']}, expected {room + 1}x{room + 1}")
         holes = sum(1 for v in d["floors"][0] if v == 0) if d["floors"] else 0
-        if len(spec["pieces"]) > 1 and holes > (d["width"] * d["height"]) // 10:
+        if len(spec["pieces"]) > 1 and holes > (d["width"] * d["height"]) // 10 and not spec.get("circle"):  # a circle fills every cell
             # In a stitched map every room must be complete. "Theme" rooms are partial overlays;
             # stitched in as a room they leave cells with no tile inside the map, and the game
             # crashed loading the level (BC_VERIFY: hTile). A single room with empty edges is fine.
@@ -244,37 +244,55 @@ RING_MODELS = ["data/hd/env/model/act1/caves/act1_caves_rocks/rocks01.model",
                "data/hd/env/model/act1/caves/act1_caves_rocks/stalagmite05.model"]
 
 
+# The default ring: three rows of cave rocks, mounds and stalagmites (the Den's round cave).
+DEFAULT_RING = [
+    {"dist": 0.5, "step": 0.9, "scale": [1.0, 1.4], "models": RING_MODELS},
+    {"dist": 1.4, "step": 1.2, "scale": [1.3, 1.8], "models": RING_MODELS},
+    {"dist": 2.5, "step": 1.5, "scale": [1.6, 2.4], "models": RING_MODELS},
+]
+
+
 def rock_ring(spec, entities, deps, seen, next_id):
-    """Ring the circle with cave rocks, mounds and stalagmites (HD units: 10 per tile), in three
-    rows from the edge outward, each turned and sized at random (fixed seed: same map every build)."""
+    """Ring the circle with models, row by row from the edge outward. A map's "circle" may give its
+    own "ring": rows of {"dist": tiles past the edge, "step": tiles between models, "scale": [min,
+    max], "models": [paths], "turn": false to keep them facing the centre}. Default: cave rocks.
+    Random placement uses a fixed seed, so every build makes the same map. HD units: 10 per tile."""
     import math, random
     rnd = random.Random(1)
     gw = max(p["x"] for p in spec["pieces"]) + 1
     gh = max(p["y"] for p in spec["pieces"]) + 1
     W, H = gw * spec["room"] + 1, gh * spec["room"] + 1
     cx, cz, r = (W - 1) / 2 * 10, (H - 1) / 2 * 10, spec["circle"]["radius"] * 10
-    # Each model's settings (light, shadow, ground blend) as Blizzard's cave rooms use them.
+    rows = spec["circle"].get("ring") or DEFAULT_RING
+    wanted = {m for row in rows for m in row["models"]}
+    # Each model's settings (light, shadow, ground blend) as Blizzard's own Act I rooms use them.
     templates = {}
-    for f in sorted((VANILLA / "hd" / "env" / "preset" / "act1" / "caves").glob("*.json")):
+    for f in sorted((VANILLA / "hd" / "env" / "preset" / "act1").glob("*/*.json")):
         for e in json.loads(f.read_text(encoding="utf-8-sig")).get("entities") or []:
             for k in e.get("components") or []:
-                if k.get("type") == "ModelDefinitionComponent" and k.get("filename") in RING_MODELS:
+                if k.get("type") == "ModelDefinitionComponent" and k.get("filename") in wanted:
                     templates.setdefault(k["filename"], k)
-        if len(templates) == len(RING_MODELS):
+        if len(templates) == len(wanted):
             break
-    for path in RING_MODELS:
+    missing = wanted - set(templates)
+    if missing:
+        sys.exit(f"ring models not found in any Act I room: {sorted(missing)}")
+    for path in sorted(wanted):
         if path not in seen["models"]:
             seen["models"].add(path)
             deps["models"].append({"path": path})
-    for row, (dist, step, scale) in enumerate(((5, 9, (1.0, 1.4)), (14, 12, (1.3, 1.8)), (25, 15, (1.6, 2.4)))):
-        rr = r + dist
-        count = int(2 * math.pi * rr / step)
+    for n, row in enumerate(rows):
+        rr = r + row["dist"] * 10
+        count = max(1, int(2 * math.pi * rr / (row["step"] * 10)))
         for k in range(count):
-            a = 2 * math.pi * (k + rnd.random() * 0.6) / count
-            yaw = rnd.random() * 2 * math.pi
-            sc = rnd.uniform(*scale)
-            model = RING_MODELS[0] if row == 0 and rnd.random() < 0.5 else rnd.choice(RING_MODELS)
-            name = f"ring_{row}_{k}"
+            a = 2 * math.pi * (k + rnd.random() * 0.6 * row.get("jitter", 1)) / count
+            if row.get("turn", True):
+                yaw = rnd.random() * 2 * math.pi
+            else:
+                yaw = -a + math.pi / 2  # face the centre
+            sc = rnd.uniform(*row["scale"])
+            model = rnd.choice(row["models"])
+            name = f"ring_{n}_{k}"
             entities.append({"type": "Entity", "name": name, "id": next_id, "components": [
                 {"type": "TransformDefinitionComponent", "name": f"{name}_Transform",
                  "position": {"x": cx + rr * math.cos(a), "y": 0.0, "z": cz + rr * math.sin(a)},
