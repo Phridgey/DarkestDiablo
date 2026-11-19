@@ -1405,6 +1405,20 @@ auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 			say("No hero found.");
 			return D2RL::ConsoleCommandResult::Handled;
 		}
+		if (args == "states") {
+			say(Game::StatesReport(h.unit));
+			const auto states = Game::States(h.unit);
+			say(std::to_string(states.size()) + " states on the hero:");
+			for (const Game::StateDetails& d : states) {
+				std::string line = "  state " + std::to_string(d.state) + " from skill " + std::to_string(d.skill) + " level " + std::to_string(d.skillLevel) +
+				                   ", ends at frame " + std::to_string(d.endFrame) + ", on for " + std::to_string(static_cast<int>(d.activeSeconds)) + " s; stats";
+				for (const GameState::StatEntry& e : d.stats) {
+					line += " " + std::to_string(e.id) + "=" + std::to_string(e.value);
+				}
+				say(line);
+			}
+			return D2RL::ConsoleCommandResult::Handled;
+		}
 		if (args == "stats") {
 			std::string line;
 			for (const GameState::StatEntry& e : GameState::Stats(h.unit, true)) {
@@ -1427,6 +1441,11 @@ auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 			w.act, w.difficulty, Game::Stat(h.unit, Game::StatId::FireResist).value_or(0), Game::Stat(h.unit, Game::StatId::ColdResist).value_or(0),
 			Game::Stat(h.unit, Game::StatId::LightningResist).value_or(0), Game::Stat(h.unit, Game::StatId::PoisonResist).value_or(0),
 			Game::Stat(h.unit, Game::StatId::MagicFind).value_or(0));
+		say(text);
+		std::snprintf(text, sizeof(text), "Speed: run/walk %+d%%, attack %+d%%, cast %+d%%, hit recovery %+d%%; gold find %d.",
+			Game::Stat(h.unit, Game::StatId::MoveSpeed).value_or(0) + Game::Stat(h.unit, Game::StatId::VelocityPercent).value_or(0),
+			Game::Stat(h.unit, Game::StatId::AttackSpeed).value_or(0), Game::Stat(h.unit, Game::StatId::CastSpeed).value_or(0),
+			Game::Stat(h.unit, Game::StatId::HitRecovery).value_or(0), Game::Stat(h.unit, Game::StatId::GoldFind).value_or(0));
 		say(text);
 		const auto monsters = Game::Monsters(60);
 		say(std::to_string(monsters.size()) + " live monsters within 60:");
@@ -1813,7 +1832,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		context->RegisterConsoleCommand("dd-slot", SlotCommand, "Load save slot 1, 2 or 3 (main menu only).") &&
 		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).") &&
 		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).") &&
-		context->RegisterConsoleCommand("dd-state", StateCommand, "Game-state API test: hero, world, monsters, objects, items; 'dd-state stats', 'dd-state watch', 'dd-state tables'.") &&
+		context->RegisterConsoleCommand("dd-state", StateCommand, "Game-state API test: hero, world, monsters, objects, items; 'dd-state stats', 'dd-state states', 'dd-state watch', 'dd-state tables'.") &&
 		context->RegisterConsoleCommand("dd-units", UnitsCommand, "List the units the game has loaded: 'dd-units', 'dd-units objects 39', 'dd-units monsters', 'dd-units find' (test).");
 }
 

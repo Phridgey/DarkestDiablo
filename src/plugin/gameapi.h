@@ -7,10 +7,11 @@
 //   Game::Monsters(), Monster(unit)      monsters near the hero, champion/unique/minion, life
 //   Game::Objects(), Items()             map objects (fire, chests, shrines...) and items
 //   Game::World()                        area, act, difficulty
+//   Game::States(unit), HasState()       buffs and debuffs (states.txt rows), their stats and end
 //   Game::Poll()                         what changed since the last call (hero died, object
 //                                        used, monster died, unit appeared/left, area changed)
 //
-// Values marked "checked" in docs/game-state-api.md were compared with the game; the others
+// How to use it (and keep it current): docs/game-state-api.md. Values marked "checked" there were compared with the game; the others
 // come from the community's maps of the game (MapAssist, D2RMH) and dd-state prints them for
 // checking.
 #pragma once
@@ -37,7 +38,7 @@ enum : uint16_t {
 	FireResist = 39, MaxFireResist = 40, LightningResist = 41, MaxLightningResist = 42,
 	ColdResist = 43, MaxColdResist = 44, PoisonResist = 45, MaxPoisonResist = 46,
 	GoldFind = 79, MagicFind = 80, AttackSpeed = 93, MoveSpeed = 96, HitRecovery = 99,
-	BlockSpeed = 102, CastSpeed = 105,
+	BlockSpeed = 102, CastSpeed = 105, VelocityPercent = 67, AttackRate = 68,
 };
 }
 
@@ -67,6 +68,28 @@ struct HeroDetails {
 	bool        dead = false;
 };
 auto HeroInfo() -> HeroDetails;
+
+// ---- Buffs and debuffs (states) -----------------------------------------------------------
+
+// One state on a unit (states.txt row): a buff, debuff, curse or aura effect. Timed states
+// (Burst of Speed, Slowed, curses, poison...) each carry their own stat list with the stats they
+// give and the game frame they end on (25 frames a second). mapped: the layout is the classic
+// game's, unchecked on D2R; "dd-state states" prints it for checking.
+struct StateDetails {
+	int      state = -1;        // states.txt row
+	int      skill = -1;        // skills.txt row that gave it, -1 unknown
+	int      skillLevel = -1;
+	uint32_t endFrame = 0;      // game frame it ends on; 0: no end (auras, permanent)
+	double   activeSeconds = 0; // how long it has been on (seen by Poll/States calls)
+	std::vector<GameState::StatEntry> stats;  // what it adds (e.g. velocitypercent -40)
+};
+
+// The unit's states now (hero by default).
+auto States(const Unit& unit) -> std::vector<StateDetails>;
+auto HasState(const Unit& unit, int state) -> bool;
+
+// Research for "dd-state states": raw lines on what the unit's stat list links to.
+auto StatesReport(const Unit& unit) -> std::string;
 
 // ---- The world ---------------------------------------------------------------------------
 
@@ -125,6 +148,8 @@ enum class EventType {
 	HeroDied,        // the hero's mode turned to dying or dead
 	HeroAreaChanged, // the hero stands in another levels.txt area
 	HeroHit,         // the hero's life went down
+	HeroStateOn,     // the hero gained a state (buff/debuff); after = states.txt row
+	HeroStateOff,    // a state ended; before = states.txt row
 };
 
 struct Event {

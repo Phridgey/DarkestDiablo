@@ -4,6 +4,9 @@
 #include "gamememory.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <set>
 #include <atomic>
 #include <cmath>
 #include <map>
@@ -239,6 +242,158 @@ auto GroundItems(int radius) -> std::vector<ItemDetails> {
 	return out;
 }
 
+
+// ---- States ---------------------------------------------------------------------------------
+// The classic game's stat list, widened to 64 bits (matches what we checked: the unit's own stats
+// at list + 0x30, an 8-byte pointer then an 8-byte count). Each timed state has its own list that
+// points back at the unit (+0x08) and is linked from the unit's list. mapped, unchecked.
+namespace {
+
+constexpr std::size_t UnitStatList   = 0x88;
+constexpr std::size_t ListUnit       = 0x08;  // pointer: the unit the list belongs to
+constexpr std::size_t ListState      = 0x1C;  // uint32: states.txt row
+constexpr std::size_t ListEndFrame   = 0x20;  // uint32: game frame it ends on
+constexpr std::size_t ListSkill      = 0x24;  // uint32: skills.txt row
+constexpr std::size_t ListSkillLevel = 0x28;  // uint32
+constexpr std::size_t ListStats      = 0x30;  // pointer + count: the list's own stats
+constexpr int         MaxStates      = 1200;  // states.txt has fewer rows than this
+
+auto LooksPointer(uint64_t v) -> bool {
+	return v >= 0x10000 && v < 0x7FFFFFFFFFFF && (v & 7) == 0;
+}
+
+// The state lists linked from the unit's own list, found by following pointers (two hops) to
+// blocks that point back at the unit. Robust to the exact link offsets, which we haven't checked.
+auto StateLists(const Unit& unit, uintptr_t& main) -> std::vector<uintptr_t> {
+	std::vector<uintptr_t> found;
+	main = 0;
+	if (!unit || !Get(unit.address + UnitStatList, main) || !LooksPointer(main)) {
+		return found;
+	}
+	std::set<uintptr_t> seen { main };
+	std::vector<uintptr_t> todo { main };
+	for (int hop = 0; hop < 3 && !todo.empty(); ++hop) {
+		std::vector<uintptr_t> next;
+		for (const uintptr_t block : todo) {
+			uint64_t words[0x100 / 8] {};
+			if (!Get(block, words)) {
+				continue;
+			}
+			for (std::size_t i = 7; i < std::size(words); ++i) {  // past the header and own stats
+				const uintptr_t p = static_cast<uintptr_t>(words[i]);
+				if (!LooksPointer(p) || seen.count(p) != 0) {
+					continue;
+				}
+				uintptr_t owner = 0;
+				uint32_t state = 0;
+				if (Get(p + ListUnit, owner) && owner == unit.address && Get(p + ListState, state) && state > 0 && state < MaxStates) {
+					seen.insert(p);
+					found.push_back(p);
+					next.push_back(p);
+				}
+			}
+		}
+		todo = std::move(next);
+		if (found.size() > 64) {
+			break;
+		}
+	}
+	return found;
+}
+
+auto ListStatsOf(uintptr_t list) -> std::vector<GameState::StatEntry> {
+	std::vector<GameState::StatEntry> out;
+	uint64_t at = 0, count = 0;
+	if (!Get(list + ListStats, at) || !Get(list + ListStats + 8, count) || !LooksPointer(at) || count == 0 || count > 64) {
+		return out;
+	}
+	for (uint64_t i = 0; i < count; ++i) {  // 16 bytes each on our build: param, stat, value
+		uint32_t param = 0, id = 0;
+		int32_t value = 0;
+		if (Get(at + i * 16, param) && Get(at + i * 16 + 4, id) && Get(at + i * 16 + 8, value)) {
+			out.push_back({ static_cast<uint16_t>(id), static_cast<uint16_t>(param), value });
+		}
+	}
+	return out;
+}
+
+std::mutex g_stateLock;
+std::map<std::pair<uint32_t, int>, std::chrono::steady_clock::time_point> g_stateSince;  // (unit, state) -> first seen
+
+}  // namespace
+
+auto States(const Unit& unit) -> std::vector<StateDetails> {
+	std::vector<StateDetails> out;
+	uintptr_t main = 0;
+	std::set<int> have;
+	for (const uintptr_t list : StateLists(unit, main)) {
+		StateDetails d;
+		uint32_t v = 0;
+		d.state = Get(list + ListState, v) ? static_cast<int>(v) : -1;
+		if (have.count(d.state) != 0) {
+			continue;  // one entry per state
+		}
+		have.insert(d.state);
+		d.skill = Get(list + ListSkill, v) && v < 0x10000 ? static_cast<int>(v) : -1;
+		d.skillLevel = Get(list + ListSkillLevel, v) && v < 256 ? static_cast<int>(v) : -1;
+		d.endFrame = Get(list + ListEndFrame, v) ? v : 0;
+		d.stats = ListStatsOf(list);
+		out.push_back(std::move(d));
+	}
+	const auto now = std::chrono::steady_clock::now();
+	const std::lock_guard<std::mutex> guard(g_stateLock);
+	for (auto it = g_stateSince.begin(); it != g_stateSince.end();) {
+		const bool still = it->first.first != unit.id || have.count(it->first.second) != 0;
+		it = still ? std::next(it) : g_stateSince.erase(it);
+	}
+	for (StateDetails& d : out) {
+		auto [it, added] = g_stateSince.try_emplace({ unit.id, d.state }, now);
+		d.activeSeconds = std::chrono::duration<double>(now - it->second).count();
+	}
+	return out;
+}
+
+auto HasState(const Unit& unit, int state) -> bool {
+	for (const StateDetails& d : States(unit)) {
+		if (d.state == state) {
+			return true;
+		}
+	}
+	return false;
+}
+
+auto StatesReport(const Unit& unit) -> std::string {
+	uintptr_t main = 0;
+	const std::vector<uintptr_t> lists = StateLists(unit, main);
+	char line[200];
+	std::snprintf(line, sizeof(line), "stat list %llx, %zu state lists", static_cast<unsigned long long>(main), lists.size());
+	std::string text = line;
+	for (const uintptr_t list : lists) {
+		uint32_t w[12] {};
+		Get(list + 0x10, w);
+		std::snprintf(line, sizeof(line), "; %llx: words10..3c", static_cast<unsigned long long>(list - main));
+		text += line;
+		for (const uint32_t x : w) {
+			text += " " + std::to_string(x);
+		}
+	}
+	// The state bit flags: the map tools read them near list + 0xAC8; print set bits nearby.
+	for (const std::size_t at : { 0xAC8, 0xAE8, 0xB08 }) {
+		uint32_t flags[8] {};
+		if (!main || !Get(main + at, flags)) {
+			continue;
+		}
+		std::snprintf(line, sizeof(line), "; flags @%zx:", at);
+		text += line;
+		for (int i = 0; i < 8 * 32; ++i) {
+			if (flags[i / 32] & (1u << (i % 32))) {
+				text += " " + std::to_string(i);
+			}
+		}
+	}
+	return text;
+}
+
 namespace {
 
 struct Seen {
@@ -252,6 +407,7 @@ std::map<std::pair<uint32_t, uint32_t>, Seen>    g_seen;  // (kind, unit number)
 uint32_t                                         g_heroId = 0;
 uint32_t                                         g_heroMode = 0;
 int                                              g_heroArea = -1, g_heroLife = -1;
+std::set<int>                                    g_heroStates;
 
 }  // namespace
 
@@ -278,6 +434,23 @@ auto Poll() -> std::vector<Event> {
 			events.push_back({ EventType::HeroHit, hero, g_heroLife, life });
 		}
 	}
+	std::set<int> states;
+	for (const StateDetails& d : States(hero)) {
+		states.insert(d.state);
+	}
+	if (!first) {
+		for (const int st : states) {
+			if (g_heroStates.count(st) == 0) {
+				events.push_back({ EventType::HeroStateOn, hero, 0, st });
+			}
+		}
+		for (const int st : g_heroStates) {
+			if (states.count(st) == 0) {
+				events.push_back({ EventType::HeroStateOff, hero, st, 0 });
+			}
+		}
+	}
+	g_heroStates = std::move(states);
 	g_heroId = hero.id, g_heroMode = hero.mode, g_heroArea = area >= 0 ? area : g_heroArea, g_heroLife = life;
 	for (auto& [key, seen] : g_seen) {
 		seen.fresh = false;
@@ -327,6 +500,8 @@ auto EventName(EventType type) -> const char* {
 		case EventType::HeroDied: return "hero died";
 		case EventType::HeroAreaChanged: return "hero changed area";
 		case EventType::HeroHit: return "hero hit";
+		case EventType::HeroStateOn: return "hero state on";
+		case EventType::HeroStateOff: return "hero state off";
 	}
 	return "event";
 }
