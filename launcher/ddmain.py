@@ -135,7 +135,7 @@ def ensure_vanilla(game_dir, ws, progress):
                            "Download the launcher again.")
     progress(0, 0, "Reading the game files the build needs (first time only, a few minutes)")
     vanilla.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run([str(exe), str(game_dir), str(vanilla), *patterns], capture_output=True, text=True,
+    r = ddcore.run([str(exe), str(game_dir), str(vanilla), *patterns], capture_output=True, text=True,
                        creationflags=NO_WINDOW)
     if r.returncode != 0:
         raise RuntimeError(f"Reading the game files failed: {(r.stderr or r.stdout).strip()[-400:]}")
@@ -150,7 +150,7 @@ def find_visual_studio():
         "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
     if not vswhere.is_file():
         return None
-    r = subprocess.run([str(vswhere), "-latest", "-products", "*", "-requires",
+    r = ddcore.run([str(vswhere), "-latest", "-products", "*", "-requires",
                         "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
                        capture_output=True, text=True, creationflags=NO_WINDOW)
     path = r.stdout.strip().splitlines()
@@ -183,7 +183,7 @@ def run_build(ws, progress):
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"  # the python.exe copy must unpack itself, not reuse ours
     log_path = ws / "build.log"
     with open(log_path, "w", encoding="utf-8", errors="replace") as log:
-        p = subprocess.Popen(["cmd", "/c", str(ws / "tools" / "build-plugin.cmd")], cwd=str(ws), env=env,
+        p = ddcore.popen(["cmd", "/c", str(ws / "tools" / "build-plugin.cmd")], cwd=str(ws), env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
                              creationflags=NO_WINDOW)
         tail = []
