@@ -32,13 +32,27 @@ for (const Game::StateDetails& s : Game::States(hero.unit)) {
 }
 const bool frozen = Game::HasState(hero.unit, 1);  // states.txt row 1 = "freeze"
 
-// Champions and uniques near the hero, nearest first.
-for (const Game::MonsterDetails& m : Game::Monsters(40)) {
+// Champions and uniques the hero fights (not town NPCs, summons or the mercenary), nearest first.
+for (const Game::MonsterDetails& m : Game::Enemies(40)) {
 	if (m.champion || m.unique) { /* ... */ }
 }
 
-// The town fire (objects.txt row 39), if loaded.
+// The town fire (objects.txt row 39), if loaded; or every unused shrine nearby.
 const auto fires = Game::Objects(60, 39);
+for (const Game::Unit& shrine : Game::Objects(40, Game::ObjectKind::Shrine)) {
+	if (!Game::Used(shrine)) { /* ... */ }
+}
+
+// The hero's skills (skills.txt rows) and what the mouse buttons hold.
+const Game::SkillSet skills = Game::HeroSkills();
+// skills.right, skills.left, skills.skills[i].id / .baseLevel
+
+// The mercenary, what the hero wears and carries, and the hero's corpse after a death.
+if (const auto merc = Game::Mercenary(); merc && merc->alive) { /* merc->life, merc->unit */ }
+const auto belt = Game::HeroItems(Game::ItemPlace::Belt);  // potions in the belt
+for (const Game::PlayerDetails& p : Game::Players()) {
+	if (p.corpse) { /* the body to walk back to */ }
+}
 ```
 
 React to changes from one place, on a timer (the plugin's `Later` helper in `campfire.cpp`):
@@ -49,6 +63,7 @@ for (const Game::Event& e : Game::Poll()) {
 		case Game::EventType::HeroDied:     /* permanent death */ break;
 		case Game::EventType::ObjectUsed:   /* e.unit.row: which object; e.after: its new mode */ break;
 		case Game::EventType::HeroStateOn:  /* e.after: the states.txt row that started */ break;
+		case Game::EventType::MercDied:     /* the mercenary fell */ break;
 		default: break;
 	}
 }
@@ -90,6 +105,25 @@ checked here.
 | Area (levels.txt Id) | checked (town: 1) |
 | Level, life, max life | checked (0.11.54) |
 | Mana, experience, gold, stash gold | mapped (same stat list as life) |
+| `Game::PlayerModeName(mode)`: idle, walk, run, cast, dead...; `Game::InCombatMode(mode)` (attacking, casting, hit, blocking) | mapped (the classic game's player modes) |
+
+### Skills: `Game::HeroSkills()`
+
+`SkillSet`: `skills` (every skill the hero has, each with `id` = skills.txt row and `baseLevel` =
+points put in it, without items), `left` and `right` (the skills on the mouse buttons), `found`
+(false when the skill list wasn't found).
+
+| Value | Status |
+| --- | --- |
+| The skill list, each skill's row | mapped: found by its shape (it must hold Attack, no repeats, and the left and right skills), map tools' place (hero + 0x100) tried first |
+| Left and right skill | mapped (same list) |
+| Points in each skill (`baseLevel`) | mapped: the map tools' place (skill + 0x40), unchecked; `dd-state skills` prints the nearby numbers to find the right one |
+
+### Players: `Game::Players()`
+
+Every player unit loaded, one per player: `name`, `classId`, `level`, `hero` (the local player),
+`dead`, `corpse` (a dead player unit that is not the hero: the body left after a death). Status:
+mapped; checking a corpse needs a death in game.
 
 `Game::SetLocalPlayerId(id)` (from the SDK's `GameplayEvent::playerId`) makes `Hero()` exact in
 multiplayer-style games; `campfire.cpp` already passes it on.
@@ -119,11 +153,14 @@ frame, which is planned; until then use `activeSeconds` against the state's know
 | Act, difficulty | mapped |
 | Map seed, game name | planned |
 
-### Monsters: `Game::Monsters(radius = 60, aliveOnly = true)`, `Game::Monster(unit)`
+### Monsters: `Game::Monsters(radius = 60, aliveOnly = true)`, `Game::Monster(unit)`, `Game::Enemies(radius = 60)`, `Game::Mercenary()`
 
 | Value | Status |
 | --- | --- |
 | Every loaded monster, position, monstats.txt row | checked |
+| `cls` (`Game::ClassOf(row)`): `Enemy`, `Npc` (town people, guards), `Mercenary`, `Summon` (golems, skeletons, wolves, valkyrie...), `Critter` (rats, birds, cows) | from the tables (see below) |
+| `Enemies()`: live monsters of class `Enemy` only | from the tables |
+| `Mercenary()`: the one hired fighter loaded (single player), alive or dead | mapped (by class; the game's owner link isn't read) |
 | Alive or dead (mode 0 dying, 12 dead) | mapped |
 | Champion, unique, super unique, minion, possessed, ghostly | mapped |
 | Enchantments (monumod.txt rows), super unique row | mapped |
@@ -134,15 +171,25 @@ frame, which is planned; until then use `activeSeconds` against the state's know
 | Value | Status |
 | --- | --- |
 | Every loaded object, position, objects.txt row (39 town fire, 267 stash, 119 waypoint) | checked |
-| Mode: 0 idle, 1 being used, 2 used/open (chests, shrines, doors) | mapped |
+| Mode: 0 idle, 1 being used, 2 used/open (chests, shrines, doors); `Game::Used(unit)` | mapped |
+| Kind (`Game::KindOf(row)`, `Game::Objects(radius, ObjectKind)`): `Shrine`, `Chest` (also urns, caskets, bookshelves), `Waypoint`, `Portal` (town and red portals), `Door`, `Well`, `Stash`, `Fire`, `Other` | from the tables |
 
-### Items: `Game::GroundItems(radius = 60)`, `Game::Item(unit)`
+**Kinds from the tables.** Monster classes and object kinds come from `monstats.txt` (`npc`,
+`Align`, hireling rows) and `objects.txt` (`SubClass`, `IsDoor`). `tools/gen_game_tables.py`
+turns them into `build/plugin-gen/gametables.h` on every `tools\build-plugin.cmd`; nothing from
+the tables is committed. Rows the mod adds past the end of the vanilla tables count as `Enemy`
+and `Other`.
+
+### Items: `Game::GroundItems(radius = 60)`, `Game::Item(unit)`, `Game::HeroItems(place)`
 
 | Value | Status |
 | --- | --- |
 | Every loaded item, row, position on the ground | mapped |
 | Where it is (`ItemPlace`: stored, equipped, belt, ground, cursor, socketed) | mapped |
-| Quality, owner's unit number, item level, flags (identified, socketed, ethereal) | mapped |
+| Quality, owner's unit number, item level, flags (`Identified()`, `Socketed()`, `Ethereal()`) | mapped |
+| `bodySlot` of a worn item (1 head ... 10 gloves, 11-12 weapon swap) | mapped (item data + 0x54) |
+| `page` of a stored item (0 inventory, 3 cube, 4 stash) | mapped (item data + 0x55) |
+| `HeroItems()`: every item whose owner is the hero (worn, inventory, cube, stash, belt, cursor) | mapped (needs the owner number to be right) |
 
 For the local player's own items, the SDK's InventoryService is checked and preferred.
 
@@ -154,7 +201,12 @@ For the local player's own items, the SDK's InventoryService is checked and pref
 | `HeroHit` | life before / after | mapped |
 | `HeroAreaChanged` | area before / after | mapped |
 | `HeroStateOn` / `HeroStateOff` | the states.txt row (after / before) | mapped |
+| `HeroHealed` | life before / after | mapped |
+| `HeroLevelUp` | level before / after | mapped (the SDK's own level-up event also exists) |
+| `HeroGoldChanged` | gold carried before / after | mapped |
+| `SkillChanged` | right mouse skill before / after (skills.txt rows) | mapped |
 | `MonsterDied` | mode before / after | mapped (the SDK's own monster-death event also exists) |
+| `MercDied` | mode before / after; sent instead of `MonsterDied` for the mercenary | mapped |
 | `ObjectUsed` | mode before / after (chest opened, shrine taken, door opened) | mapped |
 | `UnitAppeared` / `UnitGone` | a monster, object or item came into or left the loaded area | mapped |
 
@@ -169,8 +221,8 @@ click still goes by distance (`docs/campfire.md`).
   change these through tables (our own states and skills, like the dodge slow in
   `src/patches/050_dodge_roll.py`) and SDK services.
 - **The game's current frame** (time left on a state), **the unit under the mouse**, **open
-  panels**, **map seed**, **level exits and preset objects**, **the mercenary**, **skills** (left
-  and right skill, skill levels).
+  panels**, **map seed**, **level exits and preset objects**, **the mercenary's owner link**
+  (today the mercenary is found by its monster class), **where a stored item sits in the grid**.
 - **Missiles** are not in the unit list's missile block (always 0 while casting). Not needed for
   now (Sam, 2026-11-19); `dd-state tables` is the research tool if they are.
 
@@ -178,10 +230,15 @@ click still goes by distance (`docs/campfire.md`).
 
 Open the console in game:
 
-- `dd-state`: the hero, world, resistances, magic find, speeds, the nearest monsters (kind, life,
-  enchantments), objects (row, mode) and items on the ground.
+- `dd-state`: the hero (with mode name and left/right skill), world, resistances, magic find,
+  speeds, the nearest monsters (class, kind, life, enchantments), objects (kind, row, mode) and
+  items on the ground.
 - `dd-state stats`: every hero stat as `id=value` (`id/param=value` for stats with a param).
 - `dd-state states`: the hero's buffs and debuffs, plus raw research lines.
+- `dd-state skills`: the hero's skills as `row/points`, the left and right skill, and the raw
+  numbers of each skill (to find where the points live if `baseLevel` is wrong).
+- `dd-state items`: every item the hero owns, with place, slot, page, quality and item level.
+- `dd-state players`: every player (the hero, a corpse) and the mercenary.
 - `dd-state watch`: logs each `Game::Poll()` change as "State:" lines; type it again to stop.
 - `dd-state tables`: research for where missiles live.
 

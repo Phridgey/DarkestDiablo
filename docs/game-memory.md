@@ -93,6 +93,20 @@ layout. `dd-units` logs every stat entry raw ("Units: hero stats").
 
 Positions are world sub-tiles, the same numbers `location player` prints in the console.
 
+## The game-state API's reads (`gameapi.cpp`)
+
+The API (`docs/game-state-api.md`) reads more values on top of the unit layout above. Each one is
+a named constant at the top of `gameapi.cpp`; all are mapped (from the map tools), not yet checked:
+
+| Value | Where | Size |
+| --- | --- | --- |
+| Act, difficulty | unit + 0x20 -> act + 0x28; act + 0x78 -> + 0x830 | 4 bytes, 1 byte |
+| Monster kind flags, enchantments, super unique row | unit data + 0x1A, + 0x20 (9 bytes), + 0x2A | 1, 9, 2 bytes |
+| Item quality, owner's unit number, flags, item level | item data + 0x00, + 0x0C, + 0x18, + 0x3C | 4 bytes each |
+| Item body slot (worn), page (stored) | item data + 0x54, + 0x55 | 1 byte each |
+| Skill list: { first, left, right } skill | unit + 0x100 tried first, else the first pointer in the unit's first 0x200 bytes that holds a skill list (Attack in it, no repeats, left and right in it) | pointers |
+| A skill's skills.txt row; next skill; points | skill + 0x00 -> record + 0x00; skill + 0x08; skill + 0x40 | 2 bytes; pointer; 4 bytes |
+
 ## What uses them
 
 - Fire or stash: both open the stash window, so the plugin compares the hero's distance to the
