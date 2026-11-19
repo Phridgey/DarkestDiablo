@@ -86,13 +86,17 @@ auto ReadUnit(uintptr_t address, Kind kind) -> Unit {
 	uintptr_t path = 0;
 	if (Get(address + UnitPath, path) && Pointer(path)) {
 		if (Dynamic(kind)) {
-			uint16_t x = 0, y = 0;
+			uint16_t x = 0, y = 0, fx = 0, fy = 0;  // fx, fy: the fraction of a sub-tile, in 65536ths
 			unit.placed = Get(path + DynamicX, x) && Get(path + DynamicY, y) && Plausible(x, y);
 			unit.x = x, unit.y = y;
+			Get(path + DynamicX - 2, fx);
+			Get(path + DynamicY - 2, fy);
+			unit.fx = x + fx / 65536.0, unit.fy = y + fy / 65536.0;
 		} else {
 			uint32_t x = 0, y = 0;
 			unit.placed = Get(path + StaticX, x) && Get(path + StaticY, y) && Plausible(x, y);
 			unit.x = static_cast<int>(x), unit.y = static_cast<int>(y);
+			unit.fx = unit.x, unit.fy = unit.y;
 		}
 		if (!unit.placed) {
 			unit.x = unit.y = 0;
@@ -413,6 +417,11 @@ auto Ready() -> bool {
 	return FindLocked();
 }
 
+auto Known() -> bool {
+	const std::lock_guard<std::mutex> guard(g_lock);
+	return g_list != 0;
+}
+
 auto Find() -> bool {
 	const std::lock_guard<std::mutex> guard(g_lock);
 	g_list = 0;
@@ -481,6 +490,10 @@ auto Nearest(Kind kind, uint32_t row, int x, int y) -> Unit {
 		});
 	}
 	return found;
+}
+
+auto At(uintptr_t address, Kind kind) -> Unit {
+	return Pointer(address) ? ReadUnit(address, kind) : Unit {};
 }
 
 auto Refresh(const Unit& unit) -> Unit {
@@ -633,6 +646,59 @@ auto Level(const Unit& unit) -> int {
 		return -1;
 	}
 	return static_cast<int>(id);
+}
+
+auto ReadBytes(uintptr_t address, void* out, std::size_t size) -> bool {
+	SIZE_T got = 0;
+	return Pointer(address & ~uintptr_t(7)) && ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(address), out, size, &got) && got == size;
+}
+
+auto Stats(const Unit& unit, bool withItems) -> std::vector<StatEntry> {
+	// The first readable stats array is the unit's own (list + 0x30 on our build), the last the
+	// total with items and skills (list + 0xA8). Both hold 16-byte entries.
+	const auto arrays = StatArrays(unit);
+	std::vector<StatEntry> out;
+	if (arrays.empty()) {
+		return out;
+	}
+	for (const Stat& st : Decode(withItems ? arrays.back().second : arrays.front().second, true)) {
+		out.push_back({ st.id, st.param, st.value });
+	}
+	return out;
+}
+
+// Research (dd-state tables): every address the game's code reads units from, counted loosely
+// (a chain counts the units whose kind matches its block), to find where missiles live.
+auto TablesReport() -> std::string {
+	std::map<uintptr_t, Candidate> found;
+	int codeMb = 0;
+	CodeCandidates(found, codeMb);
+	std::string text = std::to_string(found.size()) + " addresses in " + std::to_string(codeMb) + " MB of code";
+	int shown = 0;
+	for (const auto& [list, why] : found) {
+		if (!Writable(list)) {
+			continue;
+		}
+		for (const std::size_t next : NextTries) {
+			int counts[Kinds] {}, wrong = 0;
+			for (uint32_t k = 0; k < Kinds; ++k) {
+				Walk(list, next, static_cast<Kind>(k), [&](uintptr_t at) {
+					uint32_t type = 99;
+					(Get(at + UnitType, type) && type == k ? counts[k] : wrong) += 1;
+				}, 3000);
+			}
+			const int total = counts[0] + counts[1] + counts[2] + counts[3] + counts[4] + counts[5];
+			if (total > 0 && wrong <= total / 4 && shown < 12) {
+				++shown;
+				char line[256];
+				std::snprintf(line, sizeof(line), "; %s next %llx: %d players %d monsters %d objects %d missiles %d items %d tiles (%d wrong, %d uses%s)",
+					Where(list).c_str(), static_cast<unsigned long long>(next), counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], wrong,
+					why.uses, list == g_list ? ", in use" : "");
+				text += line;
+			}
+		}
+	}
+	return text;
 }
 
 auto KindName(Kind kind) -> const char* {

@@ -33,6 +33,7 @@ struct Unit {
 	uint32_t  id = 0;         // the game's number for this unit
 	uint32_t  mode = 0;       // what it is doing (monsters: 0 dying, 12 dead; objects: 0 idle, 1 opening, 2 open)
 	int       x = 0, y = 0;   // world sub-tiles, as "location player" prints them
+	double    fx = 0, fy = 0; // the same with the fraction of a sub-tile (players, monsters, missiles)
 	bool      placed = false; // x, y read (false for items in an inventory)
 	std::string name;         // players only: the hero's name
 
@@ -43,6 +44,9 @@ struct Unit {
 // True once the unit list is found. The first call (in game, with units loaded) looks for it;
 // later calls are free. At the menus there are no units, so it stays false until a game starts.
 auto Ready() -> bool;
+
+// True when the unit list is already found. Never looks for it (for every-frame callers).
+auto Known() -> bool;
 
 // Looks for the unit list again (after a failure, or for the dd-units test command).
 auto Find() -> bool;
@@ -63,6 +67,9 @@ auto Player(const std::string& name = {}) -> Unit;
 constexpr uint32_t AnyRow = 0xFFFFFFFF;
 auto Nearest(Kind kind, uint32_t row, int x, int y) -> Unit;
 
+// The unit of that kind at an address another reader found (e.g. GameMemory::HeroUnit). None: Unit().
+auto At(uintptr_t address, Kind kind) -> Unit;
+
 // Reads a unit again (its mode and position now). Gone: Unit().
 auto Refresh(const Unit& unit) -> Unit;
 
@@ -77,6 +84,22 @@ auto StatsReport(const Unit& unit) -> std::string;
 
 // The levels.txt Id of the area (map) the unit stands in, or -1 when unknown (checked in town: 1).
 auto Level(const Unit& unit) -> int;
+
+// One stat entry: the stat's number (itemstatcost.txt row), its param (e.g. a skill), its value.
+struct StatEntry {
+	uint16_t id = 0;
+	uint16_t param = 0;
+	int32_t  value = 0;
+};
+
+// Every stat of a player or monster: its own (withItems false) or with items and skills added.
+auto Stats(const Unit& unit, bool withItems) -> std::vector<StatEntry>;
+
+// Reads raw game memory (for gameapi.cpp). False when unreadable. Never writes.
+auto ReadBytes(uintptr_t address, void* out, std::size_t size) -> bool;
+
+// Research: every unit-list-shaped address in the game's code, with units per kind (dd-state tables).
+auto TablesReport() -> std::string;
 
 // Used by the slow search in gamememory.cpp when it finds the list its own way.
 void Adopt(uintptr_t list, std::size_t next);

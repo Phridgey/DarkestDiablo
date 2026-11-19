@@ -497,6 +497,11 @@ auto Hero() -> Pos {
 	return g_heroUnit != 0 ? HeroAt(g_heroUnit) : Pos {};
 }
 
+auto HeroUnit() -> uintptr_t {
+	const std::lock_guard<std::mutex> guard(g_lock);
+	return g_heroUnit;
+}
+
 auto Fire() -> Pos {
 	const std::lock_guard<std::mutex> guard(g_lock);
 	return g_fire;

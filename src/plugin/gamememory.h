@@ -5,6 +5,7 @@
 // in docs/game-memory.md. The feature is off unless D2R.exe is the frozen build in D2R_VERSION.
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace GameMemory {
@@ -30,6 +31,9 @@ auto Scanning() -> bool;
 
 // The hero's position now (read fresh from the unit the last scan found).
 auto Hero() -> Pos;
+
+// The hero's unit found by the last scan (0: none yet), for gamestate.h readers.
+auto HeroUnit() -> uintptr_t;
 
 // The town fire's position (found by the last scan; it never moves).
 auto Fire() -> Pos;
