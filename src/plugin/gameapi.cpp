@@ -4,6 +4,10 @@
 #include "gamememory.h"
 
 #include <algorithm>
+#include <array>
+#include <iterator>
+#include <optional>
+#include <string>
 #include <chrono>
 #include <cstdio>
 #include <set>
@@ -29,6 +33,11 @@ constexpr std::size_t ItemQuality     = 0x00;  // uint32
 constexpr std::size_t ItemOwner       = 0x0C;  // uint32: holder's unit number
 constexpr std::size_t ItemFlags       = 0x18;  // uint32
 constexpr std::size_t ItemLevel       = 0x3C;  // uint32
+constexpr std::size_t ItemBodySlot    = 0x54;  // uint8: where it is worn (equipped items)
+constexpr std::size_t ItemPage        = 0x55;  // uint8: 0 inventory, 3 cube, 4 stash (stored items)
+constexpr std::size_t UnitSkillsGuess = 0x100; // pointer: the skill list (map tools); checked by shape
+constexpr std::size_t SkillNext       = 0x08;  // skill -> the next skill of the list
+constexpr std::size_t SkillHardPoints = 0x40;  // uint32: points put in it (map tools; see SkillsReport)
 constexpr uint8_t     FlagSuperUnique = 0x02, FlagChampion = 0x04, FlagUnique = 0x08, FlagMinion = 0x10, FlagPossessed = 0x20, FlagGhostly = 0x40;
 
 std::atomic<uint32_t> g_localId { 0 };
@@ -56,6 +65,74 @@ auto Dead(const Unit& u) -> bool {
 	return DeadMode(u.kind, u.mode);
 }
 
+auto Pointer(uintptr_t p) -> bool {
+	return p >= 0x10000 && p < 0x7FFFFFFF0000ULL && (p & 7) == 0;
+}
+
+// ---- The skill list, found by its shape --------------------------------------------------
+// The hero's unit points at a skill list: { first skill, left skill, right skill, used skill }.
+// Each skill points at its skills.txt record (which starts with the skill's row number) and at
+// the next skill. The map tools put the list at unit + 0x100; our build moved other things
+// (the stat list), so every pointer in the unit's first 0x200 bytes is tried, 0x100 first. The
+// list must hold Attack (row 0), have no repeats, and hold the left and right skills.
+
+struct SkillChain {
+	std::vector<uintptr_t> nodes;
+	std::vector<int>       ids;
+};
+
+auto ReadSkillChain(uintptr_t first, SkillChain& chain) -> bool {
+	for (uintptr_t skill = first; skill != 0;) {
+		uintptr_t txt = 0, next = 0;
+		uint16_t id = 0;
+		if (!Pointer(skill) || chain.nodes.size() >= 400 || !Get(skill, txt) || !Pointer(txt) || !Get(txt, id) || id >= 2048 ||
+			!Get(skill + SkillNext, next) || std::find(chain.ids.begin(), chain.ids.end(), id) != chain.ids.end()) {
+			return false;
+		}
+		chain.nodes.push_back(skill);
+		chain.ids.push_back(id);
+		skill = next;
+	}
+	return !chain.nodes.empty();
+}
+
+auto LooksLikeSkillList(uintptr_t list, SkillChain& chain) -> bool {
+	std::array<uintptr_t, 3> head {};
+	if (!Pointer(list) || !Get(list, head) || !ReadSkillChain(head[0], chain) || chain.ids.size() < 3 ||
+		std::find(chain.ids.begin(), chain.ids.end(), 0) == chain.ids.end()) {
+		return false;
+	}
+	for (const uintptr_t hand : { head[1], head[2] }) {
+		if (hand != 0 && std::find(chain.nodes.begin(), chain.nodes.end(), hand) == chain.nodes.end()) {
+			return false;
+		}
+	}
+	return true;
+}
+
+std::atomic<int> g_skillsAt { -1 };  // where in the unit the skill list pointer sits, once found
+
+auto FindSkillList(const Unit& hero, SkillChain& chain, uintptr_t& list) -> bool {
+	const auto tryAt = [&](std::size_t offset) {
+		chain = {};
+		return Get(hero.address + offset, list) && LooksLikeSkillList(list, chain);
+	};
+	if (const int at = g_skillsAt.load(); at >= 0 && tryAt(static_cast<std::size_t>(at))) {
+		return true;
+	}
+	if (tryAt(UnitSkillsGuess)) {
+		g_skillsAt = static_cast<int>(UnitSkillsGuess);
+		return true;
+	}
+	for (std::size_t offset = 0x18; offset < 0x200; offset += 8) {
+		if (offset != UnitSkillsGuess && tryAt(offset)) {
+			g_skillsAt = static_cast<int>(offset);
+			return true;
+		}
+	}
+	return false;
+}
+
 }  // namespace
 
 auto Stat(const Unit& unit, uint16_t stat, uint16_t param, bool withItems) -> std::optional<int> {
@@ -65,6 +142,50 @@ auto Stat(const Unit& unit, uint16_t stat, uint16_t param, bool withItems) -> st
 		}
 	}
 	return std::nullopt;
+}
+
+auto PlayerModeName(uint32_t mode) -> const char* {
+	static const char* const names[] = { "dying", "idle", "walk", "run", "hit", "town idle", "town walk", "attack", "attack", "block",
+		"cast", "throw", "kick", "skill", "skill", "skill", "skill", "dead", "sequence", "knocked back" };
+	return mode < std::size(names) ? names[mode] : "unknown";
+}
+
+auto InCombatMode(uint32_t mode) -> bool {
+	return mode == 4 || (mode >= 7 && mode <= 16) || mode == 19;
+}
+
+auto ClassOf(uint32_t row) -> MonsterClass {
+	return row < std::size(Tables::MonsterClasses) ? Tables::MonsterClasses[row] : MonsterClass::Enemy;
+}
+
+auto ClassName(MonsterClass c) -> const char* {
+	switch (c) {
+		case MonsterClass::Enemy: return "enemy";
+		case MonsterClass::Npc: return "npc";
+		case MonsterClass::Mercenary: return "mercenary";
+		case MonsterClass::Summon: return "summon";
+		case MonsterClass::Critter: return "critter";
+	}
+	return "monster";
+}
+
+auto KindOf(uint32_t row) -> ObjectKind {
+	return row < std::size(Tables::ObjectKinds) ? Tables::ObjectKinds[row] : ObjectKind::Other;
+}
+
+auto KindName(ObjectKind k) -> const char* {
+	switch (k) {
+		case ObjectKind::Other: return "other";
+		case ObjectKind::Shrine: return "shrine";
+		case ObjectKind::Chest: return "chest";
+		case ObjectKind::Waypoint: return "waypoint";
+		case ObjectKind::Portal: return "portal";
+		case ObjectKind::Door: return "door";
+		case ObjectKind::Well: return "well";
+		case ObjectKind::Stash: return "stash";
+		case ObjectKind::Fire: return "fire";
+	}
+	return "object";
 }
 
 void SetLocalPlayerId(uint32_t id) {
@@ -118,6 +239,90 @@ auto HeroInfo() -> HeroDetails {
 	return h;
 }
 
+auto HeroSkills() -> SkillSet {
+	SkillSet set;
+	const Unit hero = Hero();
+	SkillChain chain;
+	uintptr_t list = 0;
+	if (!hero || !FindSkillList(hero, chain, list)) {
+		return set;
+	}
+	set.found = true;
+	for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
+		uint32_t points = 0;
+		SkillDetails skill;
+		skill.id = chain.ids[i];
+		if (Get(chain.nodes[i] + SkillHardPoints, points) && points <= 99) {
+			skill.baseLevel = static_cast<int>(points);
+		}
+		set.skills.push_back(skill);
+	}
+	std::array<uintptr_t, 3> head {};
+	if (Get(list, head)) {
+		for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
+			set.left = chain.nodes[i] == head[1] ? chain.ids[i] : set.left;
+			set.right = chain.nodes[i] == head[2] ? chain.ids[i] : set.right;
+		}
+	}
+	return set;
+}
+
+auto SkillsReport() -> std::string {
+	const Unit hero = Hero();
+	SkillChain chain;
+	uintptr_t list = 0;
+	if (!hero) {
+		return "Skills: no hero.";
+	}
+	if (!FindSkillList(hero, chain, list)) {
+		return "Skills: no skill list found in the hero's first 0x200 bytes.";
+	}
+	std::array<uintptr_t, 3> head {};
+	Get(list, head);
+	char text[160];
+	std::snprintf(text, sizeof(text), "Skills: list at hero + 0x%X, %zu skills. Each skill row: its 4-byte numbers at +0x20..+0x5C (-1: large):",
+		g_skillsAt.load(), chain.nodes.size());
+	std::string out = text;
+	for (std::size_t i = 0; i < chain.nodes.size() && i < 40; ++i) {
+		std::array<uint32_t, 16> raw {};
+		Get(chain.nodes[i] + 0x20, raw);
+		out += "\n  skill " + std::to_string(chain.ids[i]) + (chain.nodes[i] == head[1] ? " (left)" : "") +
+		       (chain.nodes[i] == head[2] ? " (right)" : "") + ":";
+		for (const uint32_t v : raw) {
+			out += " " + std::to_string(v > 0xFFFF ? -1 : static_cast<int>(v));
+		}
+	}
+	return out;
+}
+
+auto Players() -> std::vector<PlayerDetails> {
+	std::vector<PlayerDetails> out;
+	const Unit hero = Hero();
+	for (const Unit& u : GameState::Units(Kind::Player)) {
+		if (!u.placed) {
+			continue;  // the game's copies of a player
+		}
+		const bool isHero = hero && u.address == hero.address;
+		const auto same = std::find_if(out.begin(), out.end(), [&](const PlayerDetails& p) { return p.unit.id == u.id; });
+		if (same != out.end()) {
+			if (!isHero) {
+				continue;
+			}
+			out.erase(same);
+		}
+		PlayerDetails p;
+		p.unit = u;
+		p.name = u.name;
+		p.classId = static_cast<int>(u.row);
+		p.level = GameState::CharacterLevel(u);
+		p.hero = isHero;
+		p.dead = Dead(u);
+		p.corpse = p.dead && !isHero;
+		out.push_back(std::move(p));
+	}
+	return out;
+}
+
 auto World() -> WorldDetails {
 	WorldDetails w;
 	const Unit hero = Hero();
@@ -144,6 +349,7 @@ auto Monster(const Unit& unit) -> MonsterDetails {
 		return m;
 	}
 	m.alive = !Dead(unit);
+	m.cls = ClassOf(unit.row);
 	uintptr_t data = 0;
 	uint8_t flags = 0;
 	if (Get(unit.address + UnitData, data) && data != 0 && Get(data + MonsterFlags, flags)) {
@@ -186,6 +392,28 @@ auto Monsters(int radius, bool aliveOnly) -> std::vector<MonsterDetails> {
 	return out;
 }
 
+auto Enemies(int radius) -> std::vector<MonsterDetails> {
+	std::vector<MonsterDetails> out = Monsters(radius, true);
+	out.erase(std::remove_if(out.begin(), out.end(), [](const MonsterDetails& m) { return m.cls != MonsterClass::Enemy; }), out.end());
+	return out;
+}
+
+auto Mercenary() -> std::optional<MonsterDetails> {
+	std::optional<MonsterDetails> best;
+	for (const MonsterDetails& m : Monsters(-1, false)) {  // nearest first; a live one wins
+		if (m.cls == MonsterClass::Mercenary && (!best || (m.alive && !best->alive))) {
+			best = m;
+		}
+	}
+	return best;
+}
+
+auto Objects(int radius, ObjectKind kind) -> std::vector<Unit> {
+	std::vector<Unit> out = Objects(radius, GameState::AnyRow);
+	out.erase(std::remove_if(out.begin(), out.end(), [&](const Unit& u) { return KindOf(u.row) != kind; }), out.end());
+	return out;
+}
+
 auto Objects(int radius, uint32_t row) -> std::vector<Unit> {
 	std::vector<Unit> out;
 	const Unit hero = Hero();
@@ -222,6 +450,13 @@ auto Item(const Unit& unit) -> ItemDetails {
 		}
 		if (Get(data + ItemLevel, level) && level <= 120) {
 			i.itemLevel = static_cast<int>(level);
+		}
+		uint8_t slot = 0, page = 0;
+		if (i.place == ItemPlace::Equipped && Get(data + ItemBodySlot, slot) && slot <= 12) {
+			i.bodySlot = slot;
+		}
+		if (i.place == ItemPlace::Stored && Get(data + ItemPage, page) && page <= 4) {
+			i.page = page;
 		}
 	}
 	return i;
@@ -394,6 +629,29 @@ auto StatesReport(const Unit& unit) -> std::string {
 	return text;
 }
 
+auto HeroItems() -> std::vector<ItemDetails> {
+	std::vector<ItemDetails> out;
+	const Unit hero = Hero();
+	if (!hero) {
+		return out;
+	}
+	for (const Unit& u : GameState::Units(Kind::Item)) {
+		if (u.mode != 3 && u.mode != 5) {  // not on the ground or falling
+			ItemDetails i = Item(u);
+			if (i.ownerId == hero.id) {
+				out.push_back(i);
+			}
+		}
+	}
+	return out;
+}
+
+auto HeroItems(ItemPlace place) -> std::vector<ItemDetails> {
+	std::vector<ItemDetails> out = HeroItems();
+	out.erase(std::remove_if(out.begin(), out.end(), [&](const ItemDetails& i) { return i.place != place; }), out.end());
+	return out;
+}
+
 namespace {
 
 struct Seen {
@@ -407,6 +665,7 @@ std::map<std::pair<uint32_t, uint32_t>, Seen>    g_seen;  // (kind, unit number)
 uint32_t                                         g_heroId = 0;
 uint32_t                                         g_heroMode = 0;
 int                                              g_heroArea = -1, g_heroLife = -1;
+int                                              g_heroLevel = -1, g_heroGold = -1, g_rightSkill = -1;
 std::set<int>                                    g_heroStates;
 
 }  // namespace
@@ -423,6 +682,9 @@ auto Poll() -> std::vector<Event> {
 	const bool first = !g_polled || hero.id != g_heroId;
 	const int area = GameState::Level(hero);
 	const int life = Stat(hero, StatId::Life, 0, false).value_or(-1);
+	const int level = Stat(hero, StatId::Level, 0, false).value_or(-1);
+	const int gold = Stat(hero, StatId::Gold, 0, false).value_or(0);
+	const int right = HeroSkills().right;
 	if (!first) {
 		if (!DeadMode(Kind::Player, g_heroMode) && Dead(hero)) {
 			events.push_back({ EventType::HeroDied, hero, static_cast<int>(g_heroMode), static_cast<int>(hero.mode) });
@@ -432,6 +694,18 @@ auto Poll() -> std::vector<Event> {
 		}
 		if (life >= 0 && g_heroLife >= 0 && life < g_heroLife) {
 			events.push_back({ EventType::HeroHit, hero, g_heroLife, life });
+		}
+		if (life >= 0 && g_heroLife >= 0 && life > g_heroLife) {
+			events.push_back({ EventType::HeroHealed, hero, g_heroLife, life });
+		}
+		if (level > 0 && g_heroLevel > 0 && level > g_heroLevel) {
+			events.push_back({ EventType::HeroLevelUp, hero, g_heroLevel, level });
+		}
+		if (g_heroGold >= 0 && gold != g_heroGold) {
+			events.push_back({ EventType::HeroGoldChanged, hero, g_heroGold, gold });
+		}
+		if (right >= 0 && g_rightSkill >= 0 && right != g_rightSkill) {
+			events.push_back({ EventType::SkillChanged, hero, g_rightSkill, right });
 		}
 	}
 	std::set<int> states;
@@ -452,6 +726,7 @@ auto Poll() -> std::vector<Event> {
 	}
 	g_heroStates = std::move(states);
 	g_heroId = hero.id, g_heroMode = hero.mode, g_heroArea = area >= 0 ? area : g_heroArea, g_heroLife = life;
+	g_heroLevel = level, g_heroGold = gold, g_rightSkill = right >= 0 ? right : g_rightSkill;
 	for (auto& [key, seen] : g_seen) {
 		seen.fresh = false;
 	}
@@ -469,7 +744,8 @@ auto Poll() -> std::vector<Event> {
 			const Unit& was = it->second.unit;
 			if (!first && was.mode != u.mode) {
 				if (kind == Kind::Monster && !Dead(was) && Dead(u)) {
-					events.push_back({ EventType::MonsterDied, u, static_cast<int>(was.mode), static_cast<int>(u.mode) });
+					const EventType died = ClassOf(u.row) == MonsterClass::Mercenary ? EventType::MercDied : EventType::MonsterDied;
+					events.push_back({ died, u, static_cast<int>(was.mode), static_cast<int>(u.mode) });
 				} else if (kind == Kind::Object) {
 					events.push_back({ EventType::ObjectUsed, u, static_cast<int>(was.mode), static_cast<int>(u.mode) });
 				}
@@ -502,6 +778,11 @@ auto EventName(EventType type) -> const char* {
 		case EventType::HeroHit: return "hero hit";
 		case EventType::HeroStateOn: return "hero state on";
 		case EventType::HeroStateOff: return "hero state off";
+		case EventType::HeroHealed: return "hero healed";
+		case EventType::HeroLevelUp: return "hero level up";
+		case EventType::HeroGoldChanged: return "gold changed";
+		case EventType::SkillChanged: return "right skill changed";
+		case EventType::MercDied: return "mercenary died";
 	}
 	return "event";
 }
