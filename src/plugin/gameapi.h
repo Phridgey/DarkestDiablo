@@ -8,6 +8,11 @@
 //   Game::Objects(), Items()             map objects (fire, chests, shrines...) and items
 //   Game::World()                        area, act, difficulty
 //   Game::States(unit), HasState()       buffs and debuffs (states.txt rows), their stats and end
+//   Game::HeroSkills()                   the hero's skills, left and right skill
+//   Game::Mercenary(), Players()         the hired mercenary; every player and corpse
+//   Game::HeroItems()                    what the hero wears and carries (stash, cube, belt)
+//   Game::ClassOf(row), KindOf(row)      enemy / NPC / mercenary / summon / critter;
+//                                        shrine / chest / waypoint / portal / door / well
 //   Game::Poll()                         what changed since the last call (hero died, object
 //                                        used, monster died, unit appeared/left, area changed)
 //
@@ -17,6 +22,7 @@
 #pragma once
 
 #include "gamestate.h"
+#include "gametables.h"  // generated into build/plugin-gen by tools/gen_game_tables.py
 
 #include <cstdint>
 #include <optional>
@@ -69,6 +75,47 @@ struct HeroDetails {
 };
 auto HeroInfo() -> HeroDetails;
 
+// A player's mode by name: 0 dying, 1 idle, 2 walk, 3 run, 4 hit, 5 town idle, 6 town walk,
+// 7-8 attack, 9 block, 10 cast, 11 throw, 12 kick, 13-16 skill, 17 dead, 18 sequence, 19 knocked back.
+auto PlayerModeName(uint32_t mode) -> const char*;
+
+// True while the hero is fighting: attacking, casting, blocking, kicking, hit or knocked back.
+auto InCombatMode(uint32_t mode) -> bool;
+
+// ---- Skills ------------------------------------------------------------------------------
+
+struct SkillDetails {
+	int id = -1;         // skills.txt row (0 Attack, 36 Fire Bolt...)
+	int baseLevel = -1;  // points the hero put in it (not counting items); -1 unknown
+};
+
+struct SkillSet {
+	std::vector<SkillDetails> skills;  // every skill the hero has, the basic ones (Attack, Throw...) too
+	int left = -1, right = -1;         // the skill on each mouse button (skills.txt rows)
+	bool found = false;                // false: the skill list wasn't found on this build
+};
+
+// The hero's skills. The skill list is found by its shape the first time (docs/game-state-api.md).
+auto HeroSkills() -> SkillSet;
+
+// Research for "dd-state skills": where the skill list was found and each skill's raw numbers.
+auto SkillsReport() -> std::string;
+
+// ---- Players -----------------------------------------------------------------------------
+
+struct PlayerDetails {
+	Unit        unit;
+	std::string name;
+	int         classId = -1;
+	int         level = -1;
+	bool        hero = false;    // the local player
+	bool        dead = false;
+	bool        corpse = false;  // a dead player unit that is not the hero (the body left after a death)
+};
+
+// Every player unit loaded: the hero, its corpse, other players in a multiplayer game.
+auto Players() -> std::vector<PlayerDetails>;
+
 // ---- Buffs and debuffs (states) -----------------------------------------------------------
 
 // One state on a unit (states.txt row): a buff, debuff, curse or aura effect. Timed states
@@ -102,8 +149,14 @@ auto World() -> WorldDetails;
 
 // ---- Monsters ----------------------------------------------------------------------------
 
+// From monstats.txt (gametables.h): Enemy, Npc (town people, guards), Mercenary (hired
+// fighters), Summon (golems, skeletons, wolves, valkyrie...), Critter (rats, birds, cows).
+auto ClassOf(uint32_t monsterRow) -> MonsterClass;
+auto ClassName(MonsterClass c) -> const char*;
+
 struct MonsterDetails {
 	Unit unit;
+	MonsterClass cls = MonsterClass::Enemy;
 	bool alive = false;
 	bool champion = false, unique = false, superUnique = false, minion = false, possessed = false, ghostly = false;
 	int  superUniqueId = -1;        // superuniques.txt row, when superUnique
@@ -115,11 +168,28 @@ auto Monster(const Unit& unit) -> MonsterDetails;
 // Monsters within `radius` sub-tiles of the hero (all loaded ones when radius < 0), nearest first.
 auto Monsters(int radius = 60, bool aliveOnly = true) -> std::vector<MonsterDetails>;
 
+// Only the ones the hero fights (MonsterClass::Enemy), alive, nearest first.
+auto Enemies(int radius = 60) -> std::vector<MonsterDetails>;
+
+// The hero's mercenary (single player: the one hired fighter loaded), alive or dead. None: nothing.
+auto Mercenary() -> std::optional<MonsterDetails>;
+
 // ---- Objects -----------------------------------------------------------------------------
 
 // Objects within `radius` sub-tiles of the hero, nearest first; row = objects.txt row or AnyRow.
 // unit.mode: 0 idle, 1 being used, 2 used/open (chests, shrines, doors).
 auto Objects(int radius = 60, uint32_t row = GameState::AnyRow) -> std::vector<Unit>;
+
+// From objects.txt (gametables.h): shrine, chest (also urns, caskets, bookshelves), waypoint,
+// portal (town portals, red portals), door, well, stash, town fire, other.
+auto KindOf(uint32_t objectRow) -> ObjectKind;
+auto KindName(ObjectKind k) -> const char*;
+
+// Objects of one kind within `radius` sub-tiles of the hero, nearest first.
+auto Objects(int radius, ObjectKind kind) -> std::vector<Unit>;
+
+// True once a chest, shrine, door or well has been used (its mode is 2).
+inline auto Used(const Unit& object) -> bool { return object.mode == 2; }
 
 // ---- Items -------------------------------------------------------------------------------
 
@@ -132,8 +202,19 @@ struct ItemDetails {
 	uint32_t  ownerId = 0;   // the unit number of who holds it (0 on the ground)
 	int       itemLevel = -1;
 	uint32_t  flags = 0;     // 0x10 identified, 0x800 socketed, 0x400000 ethereal (classic flags)
+	int       bodySlot = -1; // equipped: 1 head, 2 amulet, 3 body, 4 right hand, 5 left hand, 6 right ring,
+	                         // 7 left ring, 8 belt, 9 boots, 10 gloves, 11-12 weapon swap
+	int       page = -1;     // stored: 0 inventory, 3 cube, 4 stash
+	auto Identified() const -> bool { return (flags & 0x10) != 0; }
+	auto Socketed() const -> bool { return (flags & 0x800) != 0; }
+	auto Ethereal() const -> bool { return (flags & 0x400000) != 0; }
 };
 auto Item(const Unit& unit) -> ItemDetails;
+
+// Everything the hero owns that is loaded: worn, in the inventory, cube, stash and belt, and on
+// the cursor. With `place`, only that place (e.g. ItemPlace::Belt for the potions in the belt).
+auto HeroItems() -> std::vector<ItemDetails>;
+auto HeroItems(ItemPlace place) -> std::vector<ItemDetails>;
 
 // Items on the ground within `radius` sub-tiles of the hero, nearest first.
 auto GroundItems(int radius = 60) -> std::vector<ItemDetails>;
@@ -150,6 +231,11 @@ enum class EventType {
 	HeroHit,         // the hero's life went down
 	HeroStateOn,     // the hero gained a state (buff/debuff); after = states.txt row
 	HeroStateOff,    // a state ended; before = states.txt row
+	HeroHealed,      // the hero's life went up (before/after: life)
+	HeroLevelUp,     // the hero's level went up (before/after: level)
+	HeroGoldChanged, // the gold the hero carries changed (before/after: gold)
+	SkillChanged,    // the right mouse skill changed (before/after: skills.txt rows)
+	MercDied,        // the mercenary died (instead of MonsterDied)
 };
 
 struct Event {
