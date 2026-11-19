@@ -1,0 +1,157 @@
+{
+  "name": "darkest_mausoleum",
+  "folder": "act1/crypt",
+  "room": 8,
+  "comment": "Mausoleum arena (fork 1 crafting hunt): one round crypt hall, 24 tiles across. Blizzard has no round crypt room, so this is made: 4x4 of Blizzard's four-way crypt rooms (cryptnsew) give the floor and crypt terrain, 'circle' makes it one round open floor (radius 12) and rings it with crypt pillars, bone piles and statues. The waypoint stands at the west edge (tile 5,16); the fight comes from the east.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 3,
+      "y": 0,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 3,
+      "y": 1,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 2,
+      "y": 2,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 3,
+      "y": 2,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 0,
+      "y": 3,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 1,
+      "y": 3,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 2,
+      "y": 3,
+      "piece": "act1/crypt/cryptnsew"
+    },
+    {
+      "x": 3,
+      "y": 3,
+      "piece": "act1/crypt/cryptnsew"
+    }
+  ],
+  "circle": {
+    "radius": 12,
+    "ring": [
+      {
+        "dist": 0.4,
+        "step": 2.4,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "models": [
+          "data/hd/env/model/act1/crypt/act1_crypt_pillars/pillar_outer01.model"
+        ],
+        "turn": false,
+        "jitter": 0
+      },
+      {
+        "dist": 0.9,
+        "step": 1.6,
+        "scale": [
+          0.9,
+          1.3
+        ],
+        "models": [
+          "data/hd/env/model/global/prop/act1/crypts/wallbonepile01.model",
+          "data/hd/env/model/global/prop/act1/crypts/pillarbonepile01.model",
+          "data/hd/env/model/global/prop/act3/jungle_dungeon/act3_jungle_dungeon_remains/bone03.model",
+          "data/hd/env/model/global/prop/act3/jungle_dungeon/act3_jungle_dungeon_remains/skull02.model"
+        ]
+      },
+      {
+        "dist": 2.0,
+        "step": 4.5,
+        "scale": [
+          1.0,
+          1.2
+        ],
+        "models": [
+          "data/hd/env/model/global/prop/act1/graveyard/act1_graveyard_props/statue01.model"
+        ],
+        "turn": false,
+        "jitter": 0.3
+      }
+    ]
+  },
+  "close_edges": true,
+  "extra_objects": [
+    {
+      "type": 2,
+      "id": 52,
+      "tile": [
+        5,
+        16
+      ],
+      "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52), with its HD prefab, as in the other arenas.",
+      "hd_prefab": {
+        "prefab": "data/hd/env/model/act1/outdoors/act1_outdoors_props/pf_waypoint01.json",
+        "offset": [
+          9,
+          10
+        ],
+        "models": [
+          "data/hd/env/model/act1/outdoors/act1_outdoors_props/waypoint01.model",
+          "data/hd/objects/waypoint_portals/waypoint_outside_act_1/model/torso.model"
+        ]
+      }
+    }
+  ]
+}

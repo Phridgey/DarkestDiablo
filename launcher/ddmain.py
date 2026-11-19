@@ -27,6 +27,7 @@ VS_PAGE = "https://visualstudio.microsoft.com/vs/community/"
 DEFAULT_VANILLA = ["data/global/excel/", "data/local/lng/strings/", "data/global/dataversionbuild.txt",
                    "data/global/tiles/act1/", "data/hd/env/preset/act1/",
                    "data/global/ui/layouts/", "data/hd/items/items.json", "data/hd/objects/objects.json",
+                   "data/hd/objects/env_wood/rogue_bonfire.json",
                    "data/hd/env/model/global/prop/act1/town/prefab/pf_town_campfire01.json",
                    "data/hd/env/preset/act1/town/townn1.json",
                    "data/hd/env/preset/act1/town/towne1.json",

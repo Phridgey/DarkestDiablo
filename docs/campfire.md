@@ -122,6 +122,15 @@ Nothing of Blizzard's is in the repo.
 
 ## Tried in the game so far
 
+- 0.11.52: a 40% bigger click box (objects.txt Left/Top/Width/Height, both table copies)
+  changed nothing in game: in the new graphics the mouse is tested against the fire's 3D
+  model. 0.11.53 adds a hidden copy of the fire's logs model, 40% bigger, to
+  `hd/objects/env_wood/rogue_bonfire.json`. Sam: "much better". Hidden models do take clicks.
+  At 1.4 times the size it reached about a hero's length past the stones; 0.11.55 uses 1.15 so it
+  ends near the outer edge of the stones (`click_scale` in `040_campfire.py`). Sam: no change at
+  all, so the reach comes from the objects.txt box after all (it seems to count once the fire has
+  the extra model part). 0.11.57 cuts the box to 150 x 116 (not yet tried).
+
 Worked (17 Nov 2026): the save slot screen and picking a slot; landing on the Campfire after a
 slot pick and after leaving a game; making a hero there; clicking a hero's class to load it
 (bench, main menu, Play); the Options, Delete and Exit buttons showing; noting what a hero wears.
