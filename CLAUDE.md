@@ -124,8 +124,9 @@ Plain, jargon-free language in docs and commit messages.
   that varies, make one widget per case and show the right one (`tools/camp_layouts.py`).
 - D2RLoader 1.3.1's `OverlayService` (`overlay.h`) does not work: it calls the draw callback
   every frame and accepts every draw call without an error, but nothing reaches the screen
-  (tested 2026-11-20, wave counter 0.15.1). For on-screen text in a game, add hidden widgets to
-  the game's HUD layout (`hudpanelhd`, root `HUDPanel`, always open in a game) and show the right
-  one (`src/patches/130_wave_counter.py`, `src/plugin/waveoverlay.cpp`).
+  (tested 2026-11-20, wave counter 0.15.1). The game's HUD panel can't be used either:
+  `findPanel("HUDPanel")` gives Unavailable (0.15.4), and a layout's `"visible": false` is
+  ignored (widgets start shown). For on-screen text in a game, use a small panel of our own
+  and show the right ready-made widget (`src/plugin/waveoverlay.cpp`).
 - The plugin hears the menus too: `FrontEndNavigation:ToFrontEnd` comes before the main menu
   loads, `CharacterCreate:Select:<Class>` and `CharacterCreate:Create` on the hero screen.
