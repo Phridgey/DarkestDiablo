@@ -54,7 +54,9 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
    A new file in `build/darkestdiablo` reaches players only once it is in `SHIPPED`
    (`launcher/ddcore.py`).
 6. To ship releases (later): `python tools/release.py <version> --publish` from an up-to-date `main`
-   build. Updates are deltas of whole changed files; never edit or delete a published release.
+   build. Updates are deltas of whole changed files; never edit or delete a published release
+   (one exception: the `launcher` pre-release holds only the newest launcher .exe, and the Launcher
+   workflow replaces its files on every launcher change to `main`; launchers update themselves from it).
 
 ## Working together (both people's Claude sessions)
 Players and both of us get the mod built from `main`, so content only counts once it is there.
