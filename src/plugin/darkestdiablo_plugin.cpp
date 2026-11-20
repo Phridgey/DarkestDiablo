@@ -804,6 +804,9 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		context->LogInfo(message);
 		Trace(context, message);
 	}
+	if (std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 && std::strcmp(text, "HUDPanel") == 0) {
+		WaveOverlay::OnHudOpened(context);  // the counter's widgets start visible: hide them
+	}
 	if (DevTools::OnUiMessage(context, target, command, text) || Campfire::OnUiMessage(context, target, command, text)) {
 		return Action::Consume;
 	}

@@ -22,6 +22,10 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool;
 // The hero is in a game: the HUD is (re)made, so all counter widgets are hidden once.
 void OnPlayerReady() noexcept;
 
+// UI thread, from the UI-message listener: the game opened its HUD ("OpenPanel:HUDPanel").
+// Hides every counter widget right away and shows what should be up.
+void OnHudOpened(const D2RL::PluginContext* context) noexcept;
+
 // `wave` of `total` waves have spawned (0 = none yet). `nextWaveInMs` is the time until the next
 // wave spawns, or -1 if no more waves come.
 void SetWaves(int wave, int total, int nextWaveInMs) noexcept;
