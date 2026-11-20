@@ -137,9 +137,13 @@ void __cdecl Apply(const D2RL::PluginContext* context, void*) noexcept {
 			SetVisible(context, panel, "DDPlateShort", false);
 			SetVisible(context, panel, "DDPlateTall", false);
 			g_shown = State {};
-			if (found == 0 && !g_loggedMissing) {
-				g_loggedMissing = true;
-				context->LogWarn("Wave counter: no counter widgets in the HUD (is the mod's hudpanelhd.json in place?).");
+			char message[128] {};
+			std::snprintf(message, sizeof(message), "Wave counter: hid %d of %d wave widgets in the HUD.", found, MaxWaves * (MaxWaves + 1) / 2);
+			if (found == 0) {
+				context->LogWarn(message);
+			} else if (!g_loggedMissing) {
+				g_loggedMissing = true;  // once per run is enough when it works
+				context->LogInfo(message);
 			}
 		}
 		const State want = Desired();
