@@ -5,7 +5,8 @@ Build the .exe:   tools\\build-launcher.cmd
 
 First run: finds the D2R install, asks where the Darkest Diablo game folder goes, copies the
 game there (the normal install is never changed), sets up D2RLoader, then installs the mod.
-After that: shows Update when there is something new, otherwise Play.
+After that: shows Update when there is something new, otherwise Play. On every start it first
+checks for a newer launcher and updates itself (ddself.py).
 
 Two channels (the "channel" setting in %APPDATA%\\DarkestDiablo\\launcher.json):
 - "main" (the default for now): builds the newest commit on main on this PC (ddmain.py).
@@ -23,6 +24,7 @@ from tkinter import filedialog, font as tkfont, messagebox, simpledialog
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ddcore  # noqa: E402
 import ddmain  # noqa: E402
+import ddself  # noqa: E402
 import build_stdlib  # noqa: E402,F401  (bundles what the repo's build scripts import)
 
 W, H = 760, 520
@@ -60,7 +62,7 @@ class Launcher:
         self.draw_backdrop()
         self.root.after(50, self.pump)
         self.root.after(40, self.tick_embers)
-        self.start()
+        self.check_self_update()
 
     # ------------------------------------------------------------ drawing
 
@@ -238,6 +240,33 @@ class Launcher:
         self.menu([("Try again", self.start), ("Quit", self.root.destroy)], top=340)
 
     # ------------------------------------------------------------ flow
+
+    def check_self_update(self):
+        """First thing on start: is there a newer launcher on GitHub? (ddself.py)"""
+        if not ddself.can_update():
+            return self.start()
+        self.clear()
+        self.text(240, "Checking for a newer launcher...", TEXT_DIM, self.f_small)
+        self.run(ddself.check, done=lambda info: self.update_self(info) if info else self.start(),
+                 failed=lambda _e: self.start())
+
+    def update_self(self, info):
+        self.progress_screen("Updating the launcher")
+
+        def failed(e):
+            messagebox.showwarning("Darkest Diablo", f"Couldn't update the launcher, so this one is used for now.\n\n{e}")
+            self.start()
+
+        def done(new):
+            try:
+                ddself.install_and_restart(new)
+            except Exception as e:
+                return failed(e)
+            self.set_progress(1, 1, "Done. Opening the new launcher...")
+            self.root.after(300, self.root.destroy)
+
+        self.run(lambda: ddself.download(info, lambda d, t: self.report(d, t, "Downloading the new launcher")),
+                 done=done, failed=failed)
 
     def start(self):
         game = self.settings.get("game_dir")

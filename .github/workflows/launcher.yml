@@ -1,5 +1,7 @@
 # Builds DarkestDiabloLauncher.exe on Windows (with the game file reader, tools/extract.cpp, inside).
-# - On every push to main that changes the launcher, the .exe is kept as a downloadable artifact.
+# - On every push to main that changes the launcher, the .exe is kept as a downloadable artifact
+#   and put on the `launcher` pre-release, where players' launchers find it and update
+#   themselves (launcher/ddself.py, docs/updates.md).
 # - On every published release (tools/release.py --publish), the .exe is attached to that release,
 #   so players always find the launcher next to the newest update.
 # - Run it by hand (Actions > Launcher > Run workflow) to get the .exe as a downloadable artifact.
@@ -17,6 +19,11 @@ on:
 permissions:
   contents: write
 
+# Two pushes close together publish one after the other, newest last.
+concurrency:
+  group: launcher-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: windows-latest
@@ -30,6 +37,15 @@ jobs:
       - name: Build the game file reader
         shell: cmd
         run: tools\build-extract.cmd
+      - name: Stamp the build number (main and releases only)
+        if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+        shell: pwsh
+        run: |
+          @(
+            '"""Written by the Launcher workflow. See ddself.py."""'
+            'BUILD = ${{ github.run_number }}'
+            'COMMIT = "${{ github.sha }}"'
+          ) | Set-Content -Encoding utf8 launcher/build_info.py
       - name: Build the launcher
         shell: cmd
         run: tools\build-launcher.cmd
@@ -58,3 +74,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.release.tag_name }}" build/launcher/DarkestDiabloLauncher.exe --clobber
+      - name: Publish for the launcher's self-update
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $exe = "build/launcher/DarkestDiabloLauncher.exe"
+          $info = [ordered]@{
+            build  = ${{ github.run_number }}
+            commit = "${{ github.sha }}"
+            sha256 = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+            size   = (Get-Item $exe).Length
+          }
+          $info | ConvertTo-Json | Set-Content -Encoding utf8 build/launcher/launcher.json
+          gh release view launcher *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create launcher --prerelease --latest=false --target "${{ github.sha }}" `
+              --title "Launcher (newest build from main)" `
+              --notes "The newest DarkestDiabloLauncher.exe, replaced automatically on every launcher change to main. Launchers update themselves from here. This is not a mod release."
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          # The .exe first: launcher.json must never describe a file that isn't there yet.
+          gh release upload launcher $exe --clobber
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          gh release upload launcher build/launcher/launcher.json --clobber
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          gh api -X PATCH "repos/${{ github.repository }}/git/refs/tags/launcher" -f sha="${{ github.sha }}" -F force=true | Out-Null
