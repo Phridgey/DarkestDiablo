@@ -961,7 +961,11 @@ static auto WaveHudCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext
 		return D2RL::ConsoleCommandResult::Failed;
 	}
 	WaveOverlay::Demo();
-	command->plugin->WriteConsoleMessage("Wave counter: a fake 5-wave run starts now (no monsters).");
+	char message[128] {};
+	std::snprintf(message, sizeof(message), "Wave counter: a fake 5-wave run starts now (no monsters). Overlay frames so far: %llu.",
+		static_cast<unsigned long long>(WaveOverlay::FramesDrawn()));
+	command->plugin->WriteConsoleMessage(message);
+	command->plugin->LogInfo(message);
 	return D2RL::ConsoleCommandResult::Handled;
 }
 

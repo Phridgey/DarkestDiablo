@@ -19,6 +19,22 @@ std::atomic<int>     g_total { 0 };
 std::atomic<int64_t> g_nextWaveAt { -1 };  // steady-clock ms when the next wave spawns, -1 = none
 std::atomic<int64_t> g_since { 0 };        // steady-clock ms when Cleared() or Demo() began
 
+// Diagnostics (0.15.1): the first draw call, the screen size the loader gives, and each kind of
+// failed drawing call are logged once, so the log tells whether drawing runs at all.
+std::atomic<bool>    g_loggedFirstFrame { false };
+std::atomic<bool>    g_loggedFirstDraw { false };
+std::atomic<uint32_t> g_loggedFailures { 0 };  // bit per drawing call kind
+std::atomic<uint64_t> g_frames { 0 };
+
+void LogFailure(const D2RL::PluginContext* context, int kind, const char* what, D2RL::Overlay::Result result) noexcept {
+	if (result == D2RL::Overlay::Result::Success || (g_loggedFailures.fetch_or(1U << kind) & (1U << kind)) != 0) {
+		return;
+	}
+	char message[128] {};
+	std::snprintf(message, sizeof(message), "Wave counter: %s failed (code %d).", what, static_cast<int>(result));
+	context->LogWarn(message);
+}
+
 constexpr int64_t ClearedShowMs  = 5000;
 constexpr int     DemoWaves      = 5;
 constexpr int64_t DemoIntervalMs = 10000;
@@ -40,7 +56,9 @@ struct Painter {
 			.textLength = static_cast<uint32_t>(std::strlen(text)),
 		};
 		D2RL::Overlay::TextMetrics metrics { .structSize = D2RL::Overlay::TextMetricsSize };
-		if (g_overlay->measureText(context, &request, &metrics) != D2RL::Overlay::Result::Success) {
+		const auto result = g_overlay->measureText(context, &request, &metrics);
+		LogFailure(context, 0, "measureText", result);
+		if (result != D2RL::Overlay::Result::Success) {
 			return size * 0.5F * static_cast<float>(std::strlen(text));  // a rough guess
 		}
 		return metrics.width;
@@ -59,7 +77,7 @@ struct Painter {
 				.text       = text,
 				.textLength = static_cast<uint32_t>(std::strlen(text)),
 			};
-			(void)g_overlay->drawText(context, &request);
+			LogFailure(context, 1, "drawText", g_overlay->drawText(context, &request));
 		}
 	}
 
@@ -71,7 +89,7 @@ struct Painter {
 			.color      = { 0.03F, 0.02F, 0.02F, 0.72F * alpha },
 			.rounding   = height * 0.18F,
 		};
-		(void)g_overlay->drawFilledRectangle(context, &fill);
+		LogFailure(context, 2, "drawFilledRectangle", g_overlay->drawFilledRectangle(context, &fill));
 		const D2RL::Overlay::RectangleRequest edge {
 			.structSize = D2RL::Overlay::RectangleRequestSize,
 			.canvas     = frame->canvas,
@@ -80,7 +98,7 @@ struct Painter {
 			.rounding   = fill.rounding,
 			.thickness  = 1.5F,
 		};
-		(void)g_overlay->drawRectangle(context, &edge);
+		LogFailure(context, 3, "drawRectangle", g_overlay->drawRectangle(context, &edge));
 	}
 };
 
@@ -154,11 +172,24 @@ void __cdecl Draw(const D2RL::PluginContext* context, const D2RL::Overlay::Frame
 	if (frame == nullptr || g_overlay == nullptr) {
 		return;
 	}
+	++g_frames;
+	if (!g_loggedFirstFrame.exchange(true)) {
+		char message[160] {};
+		std::snprintf(message, sizeof(message), "Wave counter: first overlay frame (screen %.0f x %.0f, text size %.1f, flags %u).",
+			frame->screenWidth, frame->screenHeight, frame->defaultTextSize, frame->flags);
+		context->LogInfo(message);
+	}
 	Lines lines;
 	if (!Compute(lines)) {
 		return;
 	}
 	const Painter paint { context, frame };
+	if (!g_loggedFirstDraw.exchange(true)) {
+		char message[160] {};
+		std::snprintf(message, sizeof(message), "Wave counter: drawing \"%s\" (screen %.0f x %.0f, frame %llu).", lines.title,
+			frame->screenWidth, frame->screenHeight, static_cast<unsigned long long>(frame->frameNumber));
+		context->LogInfo(message);
+	}
 	const float scale   = frame->screenHeight / 1080.0F;  // sizes below are for a 1080p screen
 	const float titleSz = 34.0F * scale;
 	const float subSz   = 24.0F * scale;
@@ -227,6 +258,11 @@ void Hide() noexcept {
 void Demo() noexcept {
 	g_since = NowMs();
 	g_mode  = static_cast<int>(Mode::Demo);
+	g_loggedFirstDraw = false;  // log the next drawn frame again
+}
+
+auto FramesDrawn() noexcept -> uint64_t {
+	return g_frames.load();
 }
 
 }  // namespace WaveOverlay
