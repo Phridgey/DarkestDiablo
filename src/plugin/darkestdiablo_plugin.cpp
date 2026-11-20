@@ -894,6 +894,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		return;
 	}
 	if (event->kind == Kind::LocalPlayerReady) {
+		WaveOverlay::OnPlayerReady();
 		RunConsole(context, "cheat waypoints");
 		return;
 	}
@@ -961,11 +962,7 @@ static auto WaveHudCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext
 		return D2RL::ConsoleCommandResult::Failed;
 	}
 	WaveOverlay::Demo();
-	char message[128] {};
-	std::snprintf(message, sizeof(message), "Wave counter: a fake 5-wave run starts now (no monsters). Overlay frames so far: %llu.",
-		static_cast<unsigned long long>(WaveOverlay::FramesDrawn()));
-	command->plugin->WriteConsoleMessage(message);
-	command->plugin->LogInfo(message);
+	command->plugin->WriteConsoleMessage("Wave counter: a fake 5-wave run starts now (no monsters).");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 

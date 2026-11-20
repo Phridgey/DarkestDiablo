@@ -126,8 +126,10 @@ Plain, jargon-free language in docs and commit messages.
   8x8 open square; the Pit's wide areas are open rooms joined edge to edge.
 - A plugin can show, hide and find widgets (WidgetService) but not change their text. For text
   that varies, make one widget per case and show the right one (`tools/camp_layouts.py`).
-- Text that changes all the time (counters, timers) can instead be drawn with D2RLoader's
-  `OverlayService` (`overlay.h`): text, lines and boxes over the game's UI, redrawn every frame,
-  in the loader's own font, display only (no clicks). Example: `src/plugin/waveoverlay.cpp`.
+- D2RLoader 1.3.1's `OverlayService` (`overlay.h`) does not work: it calls the draw callback
+  every frame and accepts every draw call without an error, but nothing reaches the screen
+  (tested 2026-11-20, wave counter 0.15.1). For on-screen text in a game, add hidden widgets to
+  the game's HUD layout (`hudpanelhd`, root `HUDPanel`, always open in a game) and show the right
+  one (`src/patches/130_wave_counter.py`, `src/plugin/waveoverlay.cpp`).
 - The plugin hears the menus too: `FrontEndNavigation:ToFrontEnd` comes before the main menu
   loads, `CharacterCreate:Select:<Class>` and `CharacterCreate:Create` on the hero screen.

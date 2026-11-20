@@ -4,20 +4,24 @@ While an arena runs, the top of the screen shows which wave you are on, Brotato 
 
 - **Wave 2 / 5**: waves spawned so far out of the arena's total.
 - **Next wave in 5 … 1**: shown during the last 5 seconds before each wave (red from 3).
-  Before the first wave it reads "Starts in 1".
 - **Final wave: clear the arena**: after the last wave has spawned.
-- **Arena cleared**: for 5 seconds when the Town Portal scroll is given, then it fades out.
+- **Arena cleared**: for 5 seconds when the Town Portal scroll is given.
 
 Leaving the arena or the game hides it.
 
 ## How it works
 
-`src/plugin/waveoverlay.cpp` draws with D2RLoader's `OverlayService` (SDK `overlay.h`): every frame
-the loader calls our draw function after the game's own UI, and we draw a dark box with gold and
-white text. Because it is drawn fresh each frame, the numbers can change freely (layout widgets
-can't change their text, see CLAUDE.md). Sizes are set for a 1080p screen and scale with the
-window height. The text uses the loader's font, not Diablo's; the V1 service offers no other font
-and no images.
+The plugin can show and hide widgets but not change their text, so every text the counter can
+show is a ready-made widget: `src/patches/130_wave_counter.py` adds them, hidden, to the game's own
+HUD layout (`hudpanelhd.json`, panel `HUDPanel`, which is open whenever you are in a game), in a
+box `DDWaveCounter` at the top centre of the screen. Names: `DDWave<k>of<n>` (every k <= n <= 15),
+`DDNext1`..`DDNext5`, `DDFinal`, `DDCleared`, and two dark plates `DDPlateShort` / `DDPlateTall`.
+They use the game's own font and tooltip frame.
+
+`src/plugin/waveoverlay.cpp` decides what should be up; a small timer thread checks five times a
+second and asks the UI thread to show and hide the right widgets when that changes (and once a
+second re-shows them, in case the game remade the HUD). When the hero enters a game every
+counter widget is hidden once.
 
 The arena code tells it what to show:
 
@@ -25,10 +29,13 @@ The arena code tells it what to show:
 - `WaveOverlay::Cleared()` when the arena is cleared,
 - `WaveOverlay::Hide()` from `ResetArena()` (left the arena, left the game).
 
-If the loader has no overlay service, the mod runs as before without the counter (log line
-"Wave counter: overlay service missing").
+An arena with more than 15 waves shows no counter: raise `MAX_WAVES` in the patch and `MaxWaves`
+in `waveoverlay.h` together.
+
+D2RLoader's `OverlayService` (drawing text every frame) was tried first (0.15.0, 0.15.1): the
+loader called our drawing every frame and accepted every call, but nothing reached the screen.
 
 ## Testing
 
-Console `dd-wavehud` plays a fake 5-wave run of the counter anywhere (no monsters spawn): wave 1
-after a second, then one every 10 seconds, then "Arena cleared".
+Console `dd-wavehud` plays a fake 5-wave run of the counter anywhere in a game (no monsters
+spawn): wave 1 after a second, then one every 10 seconds, then "Arena cleared".
