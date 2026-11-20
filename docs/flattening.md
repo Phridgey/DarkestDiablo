@@ -1,0 +1,52 @@
+# Flattening difficulties (the plan, decided 2026-11-20)
+
+Fabrizio's direction for the whole mod. Both of our Claude sessions follow it: new work should fit
+it, and nothing should be built that only makes sense with Normal / Nightmare / Hell.
+The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khHspp
+
+## Rules (settled)
+- **No difficulties.** There is no Normal, Nightmare or Hell for the player. A run is one pass
+  through Acts I to V. The game always runs on Normal underneath.
+- **About 18 character levels per act.** After Andariel a hero should be level 18, give or take 2;
+  after Act II about 36, and so on (about 90 at the end of Act V).
+- **One world per camp.** Route progress belongs to the camp, not to each hero. Clearing a stop's
+  objective opens the next tier for the whole camp. The route map is the same for every hero.
+- **Free re-runs, limited by level.** Any open stop can be played again, until the hero is
+  **more than 2 levels above the stop's level** (its monster level). That hero is then locked out
+  of it; other heroes can still go. To keep farming, swap heroes.
+- **Forks have no pick limit.** Every option of a fork opens once its tier is reached.
+- **Winning a stop** is still its objective (Griswold, the target unique, the Countess, Andariel...).
+- **No first-time bonuses** (the +25% magic find for a stop's first pick goes).
+- **Potions:** 3 per clear stay, and can be farmed.
+- **Death:** a dead hero is gone; the camp carries on.
+- **Quitting mid-stop starts it over.** The resume and give-up rules (route.h) go away: the good
+  rewards are at the end, and a hero who doesn't clear doesn't win back what they spent.
+- Why: resistances and immunities are fixed per encounter, so players learn which hero suits which
+  stop and bring another hero when one is resisted.
+
+## The work, in order
+1. **Level curve.** A target level for every stop. Act I: Den 2-3, Blood Raven 5, fork 1 at 8-10,
+   Tristram 12, fork 2 at 14-15, Andariel 18. The same number drives the 2-level lockout.
+2. **Experience.** Add up each stop's experience (monsters per wave times their worth at that
+   level) and tune it so a full Act I ends at level 18 +/- 2. A script reports the expected
+   character level after each stop.
+3. **Monster strength.** Monster power comes from the monster-level table (monlvl.txt), which has
+   Normal, Nightmare and Hell columns. Rebuild its Normal columns: Normal values at low levels,
+   Nightmare in the middle, Hell high, blended at the joins. Resistances and immunities are per
+   monster type, and each act has its own types, so each act takes them from the difficulty we pick.
+4. **Treasure.**
+   - Base items mostly scale by themselves: the game moves a monster's loot table up within its
+     family as monster level rises, and the families run through all three difficulties.
+   - Our own loot tables (Mausoleum, magic-find copies, Countess, Griswold...) are cut off from that
+     (their group and level are cleared), so they must be rebuilt to follow level.
+   - Sockets: each item type's most sockets depend on item level (itemtypes.txt, two thresholds per
+     type, 25 and 40 by default). Move them so 4+ sockets don't arrive too early.
+   - Rune caps per stop are re-anchored per act.
+5. **Penalties and rewards.** Normal-only removes the -40 / -100 resistance penalties and the
+   quest rewards given once per difficulty (skill and stat points, socket quest, ...). Both need
+   a replacement.
+
+## Still to decide (ask Fabrizio)
+- What replaces the resistance penalty: a penalty that grows by act, or more elemental damage?
+- Item levels for 4, 5 and 6 sockets.
+- The highest rune per act (Act I today: Eth; Amn from the Countess).
