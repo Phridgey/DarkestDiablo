@@ -127,10 +127,10 @@ auto FirePos() -> GameMemory::Pos {
 	return GameMemory::Fire();
 }
 
-// A red portal already standing within `near` sub-tiles of (x, y): the town keeps it while loaded.
-auto FindPortal(int x, int y, int near, int& foundX, int& foundY) -> bool {
+// A red portal already standing within `radius` sub-tiles of (x, y): the town keeps it while loaded.
+auto FindPortal(int x, int y, int radius, int& foundX, int& foundY) -> bool {
 	for (const Game::Unit& o : Game::Objects(-1, static_cast<uint32_t>(PortalRow))) {
-		if (o.placed && Distance(o.x, o.y, x, y) <= near) {
+		if (o.placed && Distance(o.x, o.y, x, y) <= radius) {
 			foundX = o.x, foundY = o.y;
 			return true;
 		}
