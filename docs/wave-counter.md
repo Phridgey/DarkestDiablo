@@ -12,18 +12,15 @@ Leaving the arena or the game hides it.
 ## How it works
 
 The plugin can show and hide widgets but not change their text, so every text the counter can
-show is a ready-made widget: `src/patches/130_wave_counter.py` adds them, hidden, to the game's own
-HUD layout (`hudpanelhd.json`, panel `HUDPanel`, which is open whenever you are in a game), placed
-at the top centre of the screen. They must be direct children of `HUDPanel`: the plugin's widget
-search doesn't find widgets inside a box of their own (0.15.2), and the layout's "visible" field
-is ignored, so the plugin hides them all when a game starts. Names: `DDWave<k>of<n>` (every k <= n <= 15),
-`DDNext1`..`DDNext5`, `DDFinal`, `DDCleared`, and two dark plates `DDPlateShort` / `DDPlateTall`.
-They use the game's own font and tooltip frame.
+show is a ready-made widget in a small panel of our own, `darkestdiablo/WaveCounter`, anchored at
+the top centre of the screen. `src/plugin/waveoverlay.cpp` writes its layout at load (`Layout()`)
+and registers it as a resource. Names: `DDWave<k>of<n>` (every k <= n <= 15), `DDNext1`..`DDNext5`,
+`DDFinal`, `DDCleared`, and two dark plates `DDPlateShort` / `DDPlateTall`, in the game's own font
+and tooltip frame. The panel has no click catcher, so the game under it keeps taking clicks.
 
-`src/plugin/waveoverlay.cpp` decides what should be up; a small timer thread checks five times a
-second and asks the UI thread to show and hide the right widgets when that changes (and once a
-second re-shows them, in case the game remade the HUD). When the hero enters a game every
-counter widget is hidden once.
+A small timer thread checks five times a second what should be up and asks the UI thread to
+update when that changes: it opens the panel (and hides all its texts, since widgets start
+shown), shows the right ones, and closes the panel when nothing is to be shown.
 
 The arena code tells it what to show:
 
@@ -31,11 +28,15 @@ The arena code tells it what to show:
 - `WaveOverlay::Cleared()` when the arena is cleared,
 - `WaveOverlay::Hide()` from `ResetArena()` (left the arena, left the game).
 
-An arena with more than 15 waves shows no counter: raise `MAX_WAVES` in the patch and `MaxWaves`
-in `waveoverlay.h` together.
+An arena with more than 15 waves shows no counter: raise `MaxWaves` in `waveoverlay.h`.
 
-D2RLoader's `OverlayService` (drawing text every frame) was tried first (0.15.0, 0.15.1): the
-loader called our drawing every frame and accepted every call, but nothing reached the screen.
+## What didn't work (D2RLoader 1.3.1)
+
+- `OverlayService` (drawing text every frame), 0.15.0-0.15.1: the loader called our drawing every
+  frame and accepted every call, but nothing reached the screen.
+- Hidden widgets added to the game's HUD layout (`hudpanelhd`), 0.15.2-0.15.4: the layout's
+  `"visible": false` is ignored, and `findPanel("HUDPanel")` gives Unavailable, so they could
+  never be hidden.
 
 ## Testing
 
