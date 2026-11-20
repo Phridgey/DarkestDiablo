@@ -12,7 +12,7 @@ limit. Every map is a copy with no stairs (reached by the route map, left by Tow
 | 2 | Stony Tomb | fork: crafting | 22-24 | (crafting hunt: as the Act I hunts) |
 | 3 | Maggot Lair 3, shortened | forced | 26-28 | the Staff of Kings is picked up |
 | 3 | Claw Viper Temple 2 | forced | 26-28 | the Amulet of the Viper is picked up |
-| 4 | Arcane Sanctuary | fork: crafting | 30-32 | (crafting hunt) |
+| 4 | Arcane Sanctuary, one arm only | fork: crafting | 30-32 | the Summoner dies |
 | 4 | Ancient Tunnels, shortened | fork: MF | 30-32 | (MF run: as the Act I MF runs) |
 | 4 | Canyon of the Magi | fork: XP | 30-32 | (XP grind) |
 | 5 | Duriel | forced | 35-36 | Duriel dies |
@@ -29,4 +29,10 @@ limit. Every map is a copy with no stairs (reached by the route map, left by Tow
   plays the game's own event (the wall breaks open), leading to Duriel. Only the tomb before that
   room is cut. To check while building: how the game picks the true tomb (it is random per game
   in the base game) and what the event needs, so our copy of that room plays it.
-- Radament's book: once-per-difficulty quest rewards are tripled (3 skill points).
+- **Radament** drops his usual Book of Skill, worth 3 skill points instead of 1 (quest rewards
+  given once per difficulty are tripled). One book, not three: the game's book only works while
+  its quest is open, so a second and third copy would do nothing. Reading it completes the quest
+  as usual (1 point) and the plugin adds the other 2.
+- **Arcane Sanctuary** is cut down to one of the four arms of its cross: a straight path from the
+  hero's arrival to the Summoner's platform at the far end. Monsters only spawn ahead of the hero,
+  never behind. The Summoner always waits at the end; his death clears the stop.
