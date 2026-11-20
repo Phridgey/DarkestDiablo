@@ -4,12 +4,16 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
-#include <cstring>
+#include <string>
+#include <thread>
 
 namespace WaveOverlay {
 namespace {
 
-const D2RL::OverlayService* g_overlay = nullptr;
+constexpr char HudPanel[] = "HUDPanel";  // hudpanelhd.json's root name
+
+const D2RL::WidgetService* g_widgets = nullptr;
+const D2RL::ThreadService* g_threads = nullptr;
 
 enum class Mode : int { Hidden = 0, Waves = 1, Cleared = 2, Demo = 3 };
 
@@ -18,232 +22,196 @@ std::atomic<int>     g_wave { 0 };
 std::atomic<int>     g_total { 0 };
 std::atomic<int64_t> g_nextWaveAt { -1 };  // steady-clock ms when the next wave spawns, -1 = none
 std::atomic<int64_t> g_since { 0 };        // steady-clock ms when Cleared() or Demo() began
-
-// Diagnostics (0.15.1): the first draw call, the screen size the loader gives, and each kind of
-// failed drawing call are logged once, so the log tells whether drawing runs at all.
-std::atomic<bool>    g_loggedFirstFrame { false };
-std::atomic<bool>    g_loggedFirstDraw { false };
-std::atomic<uint32_t> g_loggedFailures { 0 };  // bit per drawing call kind
-std::atomic<uint64_t> g_frames { 0 };
-
-void LogFailure(const D2RL::PluginContext* context, int kind, const char* what, D2RL::Overlay::Result result) noexcept {
-	if (result == D2RL::Overlay::Result::Success || (g_loggedFailures.fetch_or(1U << kind) & (1U << kind)) != 0) {
-		return;
-	}
-	char message[128] {};
-	std::snprintf(message, sizeof(message), "Wave counter: %s failed (code %d).", what, static_cast<int>(result));
-	context->LogWarn(message);
-}
+std::atomic<bool>    g_hideAll { true };    // hide every counter widget at the next update
+std::atomic<int>     g_applied { 0 };      // the state last put on screen (Encode), set on the UI thread
+std::atomic<bool>    g_queued { false };   // an update is waiting for the UI thread
 
 constexpr int64_t ClearedShowMs  = 5000;
 constexpr int     DemoWaves      = 5;
 constexpr int64_t DemoIntervalMs = 10000;
+constexpr int64_t RefreshMs      = 1000;   // re-show what should be up, in case the HUD was remade
 
 auto NowMs() noexcept -> int64_t {
 	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-struct Painter {
-	const D2RL::PluginContext*  context;
-	const D2RL::Overlay::Frame* frame;
-
-	auto Measure(const char* text, float size) const noexcept -> float {
-		const D2RL::Overlay::MeasureTextRequest request {
-			.structSize = D2RL::Overlay::MeasureTextRequestSize,
-			.canvas     = frame->canvas,
-			.textSize   = size,
-			.text       = text,
-			.textLength = static_cast<uint32_t>(std::strlen(text)),
-		};
-		D2RL::Overlay::TextMetrics metrics { .structSize = D2RL::Overlay::TextMetricsSize };
-		const auto result = g_overlay->measureText(context, &request, &metrics);
-		LogFailure(context, 0, "measureText", result);
-		if (result != D2RL::Overlay::Result::Success) {
-			return size * 0.5F * static_cast<float>(std::strlen(text));  // a rough guess
-		}
-		return metrics.width;
-	}
-
-	void Text(const char* text, float centreX, float top, float size, D2RL::Overlay::Color color) const noexcept {
-		const float left = centreX - Measure(text, size) * 0.5F;
-		const float shadow = size / 16.0F;
-		for (int pass = 0; pass < 2; ++pass) {  // a dark shadow first, so it reads on bright ground
-			const D2RL::Overlay::TextRequest request {
-				.structSize = D2RL::Overlay::TextRequestSize,
-				.canvas     = frame->canvas,
-				.position   = { left + (pass == 0 ? shadow : 0.0F), top + (pass == 0 ? shadow : 0.0F) },
-				.color      = pass == 0 ? D2RL::Overlay::Color { 0.0F, 0.0F, 0.0F, color.alpha * 0.9F } : color,
-				.textSize   = size,
-				.text       = text,
-				.textLength = static_cast<uint32_t>(std::strlen(text)),
-			};
-			LogFailure(context, 1, "drawText", g_overlay->drawText(context, &request));
-		}
-	}
-
-	void Box(float centreX, float top, float width, float height, float alpha) const noexcept {
-		const D2RL::Overlay::FilledRectangleRequest fill {
-			.structSize = D2RL::Overlay::FilledRectangleRequestSize,
-			.canvas     = frame->canvas,
-			.rect       = { centreX - width * 0.5F, top, centreX + width * 0.5F, top + height },
-			.color      = { 0.03F, 0.02F, 0.02F, 0.72F * alpha },
-			.rounding   = height * 0.18F,
-		};
-		LogFailure(context, 2, "drawFilledRectangle", g_overlay->drawFilledRectangle(context, &fill));
-		const D2RL::Overlay::RectangleRequest edge {
-			.structSize = D2RL::Overlay::RectangleRequestSize,
-			.canvas     = frame->canvas,
-			.rect       = fill.rect,
-			.color      = { 0.55F, 0.45F, 0.25F, 0.8F * alpha },  // dull gold, like the game's frames
-			.rounding   = fill.rounding,
-			.thickness  = 1.5F,
-		};
-		LogFailure(context, 3, "drawRectangle", g_overlay->drawRectangle(context, &edge));
-	}
+// What should be on screen. title: 0 none, -1 "Arena cleared", else wave * 100 + total.
+// sub: 0 none, -1 "Final wave", 1..5 the countdown.
+struct State {
+	int title = 0;
+	int sub   = 0;
 };
 
-constexpr D2RL::Overlay::Color Gold  { 0.85F, 0.75F, 0.48F, 1.0F };
-constexpr D2RL::Overlay::Color White { 0.95F, 0.95F, 0.92F, 1.0F };
-constexpr D2RL::Overlay::Color Red   { 0.95F, 0.25F, 0.18F, 1.0F };
+auto Encode(State s) noexcept -> int {
+	return (s.title + 1) * 100 + (s.sub + 1);
+}
 
-// What to show this frame: the title line and, if any, the line under it.
-struct Lines {
-	char  title[64] {};
-	char  sub[64] {};
-	bool  urgent = false;  // the last seconds: the countdown turns red
-	float alpha  = 1.0F;
-};
-
-void WaveLines(Lines& out, int wave, int total, int64_t msToNext) noexcept {
-	if (wave <= 0) {
-		std::snprintf(out.title, sizeof(out.title), "Wave 1 / %d", total);
-	} else {
-		std::snprintf(out.title, sizeof(out.title), "Wave %d / %d", wave, total);
+void WaveState(State& out, int wave, int total, int64_t msToNext) noexcept {
+	if (total < 1 || total > MaxWaves) {
+		return;  // no widgets for this many waves
 	}
+	const int shown = wave < 1 ? 1 : (wave > total ? total : wave);
+	out.title = shown * 100 + total;
 	if (msToNext >= 0 && msToNext <= CountdownSeconds * 1000) {
 		const int seconds = static_cast<int>((msToNext + 999) / 1000);  // 4.2 s left shows 5
-		std::snprintf(out.sub, sizeof(out.sub), wave <= 0 ? "Starts in %d" : "Next wave in %d", seconds < 1 ? 1 : seconds);
-		out.urgent = seconds <= 3;
-	} else if (msToNext < 0 && wave >= total && total > 0) {
-		std::snprintf(out.sub, sizeof(out.sub), "Final wave: clear the arena");
+		out.sub = seconds < 1 ? 1 : seconds;
+	} else if (msToNext < 0 && wave >= total) {
+		out.sub = -1;
 	}
 }
 
-auto Compute(Lines& out) noexcept -> bool {
+auto Desired() noexcept -> State {
+	State out;
 	const int64_t now = NowMs();
 	switch (static_cast<Mode>(g_mode.load())) {
 	case Mode::Waves: {
 		const int64_t at = g_nextWaveAt.load();
-		WaveLines(out, g_wave.load(), g_total.load(), at < 0 ? -1 : (at > now ? at - now : 0));
-		return true;
+		WaveState(out, g_wave.load(), g_total.load(), at < 0 ? -1 : (at > now ? at - now : 0));
+		break;
 	}
-	case Mode::Cleared: {
-		const int64_t shown = now - g_since.load();
-		if (shown > ClearedShowMs) {
+	case Mode::Cleared:
+		if (now - g_since.load() > ClearedShowMs) {
 			g_mode = static_cast<int>(Mode::Hidden);
-			return false;
+		} else {
+			out.title = -1;
 		}
-		std::snprintf(out.title, sizeof(out.title), "Arena cleared");
-		const int64_t fade = ClearedShowMs - shown;  // fade out over the last second
-		out.alpha = fade < 1000 ? static_cast<float>(fade) / 1000.0F : 1.0F;
-		return true;
-	}
+		break;
 	case Mode::Demo: {
 		const int64_t t = now - g_since.load() + DemoIntervalMs - 1000;  // wave 1 a second after start
 		const int wave = static_cast<int>(t / DemoIntervalMs);
-		if (wave > DemoWaves) {  // ran past the last wave: show the clear for a few seconds
-			const int64_t shown = t - (DemoWaves + 1) * DemoIntervalMs;
-			if (shown > ClearedShowMs) {
+		if (wave > DemoWaves) {  // past the last wave: show the clear for a few seconds
+			if (t - (DemoWaves + 1) * DemoIntervalMs > ClearedShowMs) {
 				g_mode = static_cast<int>(Mode::Hidden);
-				return false;
+			} else {
+				out.title = -1;
 			}
-			std::snprintf(out.title, sizeof(out.title), "Arena cleared");
-			return true;
+		} else {
+			WaveState(out, wave, DemoWaves, wave < DemoWaves ? (wave + 1) * DemoIntervalMs - t : -1);
 		}
-		WaveLines(out, wave, DemoWaves, wave < DemoWaves ? (wave + 1) * DemoIntervalMs - t : -1);
-		return true;
+		break;
 	}
 	default:
-		return false;
+		break;
+	}
+	return out;
+}
+
+auto TitleName(int title) -> std::string {
+	return title == -1 ? "DDCleared" : "DDWave" + std::to_string(title / 100) + "of" + std::to_string(title % 100);
+}
+
+auto SubName(int sub) -> std::string {
+	return sub == -1 ? "DDFinal" : "DDNext" + std::to_string(sub);
+}
+
+// UI thread. Returns false if the HUD isn't there (not in a game).
+auto SetVisible(const D2RL::PluginContext* context, D2RL::Widgets::WidgetHandle panel, const std::string& name, bool visible) noexcept -> bool {
+	D2RL::Widgets::WidgetHandle handle = D2RL::Widgets::InvalidHandle;
+	return g_widgets->findWidget(context, panel, name.c_str(), &handle) == D2RL::Widgets::Result::Success &&
+		g_widgets->setWidgetVisible(context, handle, visible) == D2RL::Widgets::Result::Success;
+}
+
+State g_shown;               // UI thread only: what is on screen now
+bool  g_loggedMissing = false;
+
+void __cdecl Apply(const D2RL::PluginContext* context, void*) noexcept {
+	g_queued = false;
+	D2RL::Widgets::WidgetHandle panel = D2RL::Widgets::InvalidHandle;
+	if (g_widgets->findPanel(context, HudPanel, &panel) != D2RL::Widgets::Result::Success) {
+		return;  // not in a game; try again next time
+	}
+	try {
+		if (g_hideAll.exchange(false)) {
+			int found = 0;
+			for (int n = 1; n <= MaxWaves; ++n) {
+				for (int k = 1; k <= n; ++k) {
+					found += SetVisible(context, panel, TitleName(k * 100 + n), false) ? 1 : 0;
+				}
+			}
+			for (int s = -1; s <= CountdownSeconds; ++s) {
+				if (s != 0) {
+					SetVisible(context, panel, SubName(s), false);
+				}
+			}
+			SetVisible(context, panel, "DDCleared", false);
+			SetVisible(context, panel, "DDPlateShort", false);
+			SetVisible(context, panel, "DDPlateTall", false);
+			g_shown = State {};
+			if (found == 0 && !g_loggedMissing) {
+				g_loggedMissing = true;
+				context->LogWarn("Wave counter: no counter widgets in the HUD (is the mod's hudpanelhd.json in place?).");
+			}
+		}
+		const State want = Desired();
+		// Hide what changed, then show what is wanted (again, so a remade HUD gets it back).
+		if (g_shown.title != 0 && g_shown.title != want.title) {
+			SetVisible(context, panel, TitleName(g_shown.title), false);
+		}
+		if (g_shown.sub != 0 && g_shown.sub != want.sub) {
+			SetVisible(context, panel, SubName(g_shown.sub), false);
+		}
+		const bool tall = want.title != 0 && want.sub != 0;
+		const bool shortPlate = want.title != 0 && want.sub == 0;
+		SetVisible(context, panel, "DDPlateTall", tall);
+		SetVisible(context, panel, "DDPlateShort", shortPlate);
+		if (want.title != 0) {
+			SetVisible(context, panel, TitleName(want.title), true);
+		}
+		if (want.sub != 0) {
+			SetVisible(context, panel, SubName(want.sub), true);
+		}
+		g_shown = want;
+		g_applied = Encode(want);
+	} catch (...) {
 	}
 }
 
-void __cdecl Draw(const D2RL::PluginContext* context, const D2RL::Overlay::Frame* frame, void*) noexcept {
-	if (frame == nullptr || g_overlay == nullptr) {
-		return;
-	}
-	++g_frames;
-	if (!g_loggedFirstFrame.exchange(true)) {
-		char message[160] {};
-		std::snprintf(message, sizeof(message), "Wave counter: first overlay frame (screen %.0f x %.0f, text size %.1f, flags %u).",
-			frame->screenWidth, frame->screenHeight, frame->defaultTextSize, frame->flags);
-		context->LogInfo(message);
-	}
-	Lines lines;
-	if (!Compute(lines)) {
-		return;
-	}
-	const Painter paint { context, frame };
-	if (!g_loggedFirstDraw.exchange(true)) {
-		char message[160] {};
-		std::snprintf(message, sizeof(message), "Wave counter: drawing \"%s\" (screen %.0f x %.0f, frame %llu).", lines.title,
-			frame->screenWidth, frame->screenHeight, static_cast<unsigned long long>(frame->frameNumber));
-		context->LogInfo(message);
-	}
-	const float scale   = frame->screenHeight / 1080.0F;  // sizes below are for a 1080p screen
-	const float titleSz = 34.0F * scale;
-	const float subSz   = 24.0F * scale;
-	const float centreX = frame->screenWidth * 0.5F;
-	const float top     = 18.0F * scale;
-	const float pad     = 14.0F * scale;
-	const bool  hasSub  = lines.sub[0] != '\0';
-	float width = paint.Measure(lines.title, titleSz);
-	if (hasSub) {
-		const float subWidth = paint.Measure(lines.sub, subSz);
-		width = subWidth > width ? subWidth : width;
-	}
-	const float height = pad * 2.0F + titleSz + (hasSub ? subSz + 6.0F * scale : 0.0F);
-	paint.Box(centreX, top, width + pad * 3.0F, height, lines.alpha);
-	D2RL::Overlay::Color title = Gold;
-	title.alpha = lines.alpha;
-	paint.Text(lines.title, centreX, top + pad, titleSz, title);
-	if (hasSub) {
-		paint.Text(lines.sub, centreX, top + pad + titleSz + 6.0F * scale, subSz, lines.urgent ? Red : White);
+// Its own thread: about 5 times a second, asks the UI thread to update when the wanted state
+// changed, and once a second while something is up.
+void Ticker(const D2RL::PluginContext* context) noexcept {
+	int64_t lastRefresh = 0;
+	for (;;) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		const State want = Desired();
+		const int64_t now = NowMs();
+		const bool changed = Encode(want) != g_applied.load() || g_hideAll.load();
+		const bool refresh = want.title != 0 && now - lastRefresh >= RefreshMs;
+		if ((changed || refresh) && !g_queued.exchange(true)) {
+			lastRefresh = now;
+			if (g_threads->runOnUiThread(context, Apply, nullptr) != D2RL::Threads::Result::Success) {
+				g_queued = false;
+			}
+		}
 	}
 }
 
 }  // namespace
 
 auto Load(const D2RL::PluginContext* context) noexcept -> bool {
-	if (context->QueryService(&g_overlay) != D2RL::ServiceQueryResult::Success || !D2RL::HasOverlayServiceField(g_overlay, D2RL::OverlayServiceRequiredSize)) {
-		g_overlay = nullptr;
-		context->LogWarn("Wave counter: overlay service missing; no wave counter on screen.");
+	if (context->QueryService(&g_widgets) != D2RL::ServiceQueryResult::Success || !D2RL::HasWidgetServiceField(g_widgets, D2RL::WidgetServiceRequiredSize) ||
+		context->QueryService(&g_threads) != D2RL::ServiceQueryResult::Success || !D2RL::HasThreadServiceField(g_threads, D2RL::ThreadServiceRequiredSize)) {
+		context->LogWarn("Wave counter: widget or thread service missing; no wave counter on screen.");
 		return true;
 	}
-	const D2RL::Overlay::CallbackRegistration registration {
-		.structSize = D2RL::Overlay::CallbackRegistrationSize,
-		.phase      = D2RL::Overlay::Phase::AfterGameUi,
-		.priority   = 0,
-		.callback   = Draw,
-	};
-	D2RL::Overlay::CallbackHandle handle = D2RL::Overlay::InvalidCallbackHandle;
-	const auto result = g_overlay->registerFrameCallback(context, &registration, &handle);
-	if (result != D2RL::Overlay::Result::Success) {
-		char message[96] {};
-		std::snprintf(message, sizeof(message), "Wave counter: could not register the overlay (code %d).", static_cast<int>(result));
-		context->LogWarn(message);
-		g_overlay = nullptr;
-		return true;  // the mod still works without it
+	try {
+		std::thread(Ticker, context).detach();
+	} catch (...) {
+		context->LogWarn("Wave counter: could not start its timer.");
+		return true;
 	}
-	context->LogInfo("Wave counter: overlay ready.");
+	context->LogInfo("Wave counter: ready.");
 	return true;
 }
 
+void OnPlayerReady() noexcept {
+	g_hideAll = true;
+}
+
 void SetWaves(int wave, int total, int nextWaveInMs) noexcept {
-	g_wave        = wave;
-	g_total       = total;
-	g_nextWaveAt  = nextWaveInMs < 0 ? -1 : NowMs() + nextWaveInMs;
-	g_mode        = static_cast<int>(Mode::Waves);
+	g_wave       = wave;
+	g_total      = total;
+	g_nextWaveAt = nextWaveInMs < 0 ? -1 : NowMs() + nextWaveInMs;
+	g_mode       = static_cast<int>(Mode::Waves);
 }
 
 void Cleared() noexcept {
@@ -258,11 +226,6 @@ void Hide() noexcept {
 void Demo() noexcept {
 	g_since = NowMs();
 	g_mode  = static_cast<int>(Mode::Demo);
-	g_loggedFirstDraw = false;  // log the next drawn frame again
-}
-
-auto FramesDrawn() noexcept -> uint64_t {
-	return g_frames.load();
 }
 
 }  // namespace WaveOverlay
