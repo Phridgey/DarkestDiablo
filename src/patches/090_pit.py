@@ -20,7 +20,10 @@ SIZE = ("24", "24")                 # map width - 1, height - 1 (the Pit level 2
 SLOT = "6"
 NO_MONSTERS = ("MonDen", "MonDen(N)", "MonDen(H)", "MonUMin", "MonUMax", "MonUMin(N)", "MonUMax(N)", "MonUMin(H)", "MonUMax(H)")
 WAVE_TYPES = ["skeleton3", "fallen3", "corruptrogue3", "cr_archer3"]
-UNIQUE_LEVEL_BONUS = 3              # unique monsters are 3 levels above the area
+# The guaranteed pick only offers uniques and sets of the area's level or lower. With the usual
+# +3 for unique monsters, a target spawned at the area's level picked a unique too high for it,
+# and the game gave a rare instead (a Pit run on 2026-11-19 got no unique or set).
+UNIQUE_LEVEL_BONUS = 0
 
 _spec = importlib.util.spec_from_file_location("inifuss_loot", Path(__file__).with_name("035_inifuss_loot.py"))
 inifuss = importlib.util.module_from_spec(_spec)

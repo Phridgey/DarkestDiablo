@@ -811,7 +811,7 @@
   },
   {
    "type": "ButtonWidget",
-   "name": "Fork2Malus",
+   "name": "Fork2MalusLocked",
    "fields": {
     "rect": {
      "x": 782,
@@ -825,6 +825,25 @@
     "pointSize": "$SmallFontSize",
     "textColor": "$FontColorDarkGrayBlue",
     "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "Fork2Malus",
+   "fields": {
+    "rect": {
+     "x": 782,
+     "y": 940
+    },
+    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Horadric Malus",
+    "pointSize": "$SmallFontSize",
+    "textColor": "$FontColorWhite",
+    "disabled": true,
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-28"
    }
   },
   {

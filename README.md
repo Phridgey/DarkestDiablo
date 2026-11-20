@@ -63,7 +63,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
   10 s whatever is still alive. When the last wave has spawned and everything is dead (every
   boss included, any kill order), a Town Portal scroll goes into the inventory. Entering a stop
   the hero may not enter (cleared, e.g. back through that portal) starts no waves.
-  - **Den of Evil:** a wide cave of 2x2 open cave rooms (`src/maps/den_of_evil.json`) on a spare
+  - **Den of Evil:** a round grotto made from one cave room (`src/maps/den_of_evil.json`) on a spare
     cave level (13), not the real Den, so the Den quest (and Akara's free respec) never happens.
     The fight is in the bottom-left hall: Fallen from both ends, zombies from the north, shamans
     close by, then Corpsefire and his pack. Corpsefire always drops a Book of Skill (the quest's
@@ -88,11 +88,14 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
   - **Tristram** (forced): the game's own Tristram map and Cain's rescue, with waves instead of its
     own monsters, cleared by killing Griswold (the last wave).
     +40% magic find in the zone; Griswold drops 6 white items. See `src/patches/080_tristram.py`.
-  - **Pit** (fork 2 MF run): the real Pit level 2 (level 16) on the Den's room, 5 packs each led by
+  - **Pit** (fork 2 MF run): the real Pit level 2 (level 16) on a copy of its own room, 5 packs each led by
     a unique; a random one of them is the target (guaranteed unique or set; killing it wins).
     See `src/maps/pit.json` and `src/patches/090_pit.py`.
   - **Countess** (fork 2 crafting hunt): the game's own Tower Cellar 5 map, as waves; she drops 5 runes, Ith to
     Amn. Cleared when she dies. See `src/patches/100_countess.py`.
+  - **Horadric Malus** (fork 2 XP grind): a cut-down Barracks, a large hall (two rooms opened into
+    one, compose_map's `open`) leading into the Smith's forge; waves worth 40% more experience;
+    cleared when the Smith dies. See `src/maps/malus.json` and `src/patches/110_malus.py`.
 - **No keys** drop anywhere (`src/patches/005_no_keys.py`).
 - **No health potions** drop anywhere or are sold; everything else in those tables drops as often
   as before (`src/patches/006_no_health_potions.py`). Instead each cleared stop earns 3, put in the

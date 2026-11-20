@@ -22,6 +22,10 @@ The shared whiteboard has the same plan as a picture; this file is the reference
   On a fork, quitting with nothing more to come (the last wave out) gives the pick up: it counts
   as done, with no reward. Main-line stops (Den, Blood Raven, Tristram) are never locked out:
   they resume with their last wave.
+- Waves spawn just past the edge of the screen and walk in (decided 2026-11-19): no monster
+  appears in view, and the hero is never buried under a fresh pack. Exception: on maps without a
+  known open floor (Tristram, the Countess), bosses still appear near the hero, so they never
+  fail to spawn.
 - Every stop gives +25% magic find the first time it is picked.
 
 ## Stop types
@@ -36,7 +40,7 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 (MF runs and XP grinds).
 
 ## Act I
-Status (2026-11-19): every stop below is built except the Horadric Malus and Andariel. Each is a
+Status (2026-11-19): every stop below is built except Andariel. Each is a
 waves arena (see "The run"); the numbers are under "Drop and experience numbers".
 
 1. **Den of Evil** — forced quest. A skill point on the first clear (no Akara respec).
@@ -49,8 +53,9 @@ waves arena (see "The run"); the numbers are under "Drop and experience numbers"
    The whole zone has +40% magic find.
 5. Fork (2 picks): **Pit** (MF: the real Pit level 2; 5 packs led by uniques, a random one is the
    target and drops a guaranteed unique or set) · **Countess** (crafting hunt: Tower Cellar 5; she
-   drops 5 runes, Ith to Amn) · **Horadric Malus** (XP grind; finishing earns an imbue; planned: a
-   large hall leading into the Smith's forge, +40% experience, cleared when the Smith dies)
+   drops 5 runes, Ith to Amn) · **Horadric Malus** (XP grind: a cut-down Barracks, a large hall
+   leading into the Smith's forge; +40% experience; cleared when the Smith dies; the Malus is
+   Charsi's quest, her imbue)
 6. **Andariel** — act boss. Open question: forced final stop?
 
 ## Healing (decided 2026-11-19)
@@ -68,12 +73,13 @@ Every multiplier and drop rate we have agreed on, in one place. "Built" means it
 | Crypt (XP grind) | +40% experience from kills; drops as in the base game; every pack led by a random unique of its type (no minions); killing one of those uniques, picked at random and not marked, clears the stop | built |
 | Tristram, the whole zone | +40% magic find (on top of the hero's; done through the zone's loot tables) | built |
 | Griswold | 6 white weapon or armor drops (never magic; sockets and ethereal possible, superior not); a monster drops 6 items at most, so none of his own loot | built |
-| Horadric Malus (XP grind) | +33% experience (to confirm: the Crypt went with +40%) | planned |
+| Horadric Malus (XP grind) | +40% experience from the waves' kills; drops as in the base game; cleared when the Smith dies | built |
 | Countess (crafting hunt) | She drops 5 runes, Ith to Amn, at the game's own odds between them except Amn (3% at most), then 1 of her usual item picks; the game's own Tower Cellar 5 map, with waves of its monster types, then her; cleared when she dies | built |
 | Pit (MF run) | Like Rakanishu & Treehead: every monster's drops 1.4 times as likely to be magic or better; 5 packs of the Pit's monsters, each led by a unique; one unique, picked at random, drops a guaranteed unique or set, and killing it clears the stop | built |
 | MF runs (Rakanishu & Treehead, Pit) | Every drop 1.4 times as likely to be magic or better; charms 3 times as likely (+200%) | built |
 | Den of Evil, first clear | 1 skill point (no respec) | built |
 | Health potions | None drop and shops sell none; every cleared stop earns 3 (light in Normal, greater in Nightmare, super in Hell), put in the hero's stash in town (the bag if full); what doesn't fit stays owed and piles up | built |
+| Mana potions | Drop half as often as in the base game (`src/patches/007_fewer_mana_potions.py`); everything else in the same loot tables is unchanged | built |
 | Akara | No longer heals: the plugin writes life and mana back when talking to her fills them (a full rejuvenation drunk next to her is undone too) | built |
 | Rakanishu & Treehead (MF run) | Treehead: one guaranteed unique or set (a set if no unique fits), plus his normal table drops | built |
 | Mausoleum: rune chance per kill | 5% at 0 magic find, 10% at 250, then on up in a straight line (+1% per 50 MF), 100% at most | built |

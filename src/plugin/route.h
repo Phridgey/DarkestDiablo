@@ -50,7 +50,7 @@ inline constexpr Stop Stops[] = {
 	{ "tristram",  "NodeTristram",   3, 38, 38 },  // the game's own Tristram; cleared by killing Griswold
 	{ "pit",       "Fork2Pit",       4, 16, 16 },  // MF run: the real Pit level 2 as an arena
 	{ "countess",  "Fork2Countess",  4, 25, 25 },  // crafting hunt: the game's Tower Cellar 5
-	{ "malus",     "Fork2Malus",     4, -1, -1 },
+	{ "malus",     "Fork2Malus",     4, 28, 28 },  // XP grind: a cut-down Barracks; the Smith ends it
 	{ "andariel",  "NodeAndariel",   5, -1, -1 },
 };
 

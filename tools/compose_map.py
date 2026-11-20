@@ -118,12 +118,19 @@ def ds1_write(m):
 
 
 # ---------------------------------------------------------------- compose
+def room_size(spec):
+    """A room's size in tiles, (width, height): "room" is one number (square rooms) or [w, h]
+    (e.g. the Barracks' 10x14 rooms)."""
+    r = spec["room"]
+    return (r[0], r[1]) if isinstance(r, list) else (r, r)
+
+
 def norm_tile(f):
     return f.lower().replace("\\", "/").rsplit(".", 1)[0]
 
 
 def compose(spec):
-    room = spec["room"]
+    rw, rh = room_size(spec)
     keep = {k.lower() for k in spec.get("keep_monsters", [])}
     placed = []
     for p in spec["pieces"]:
@@ -131,10 +138,11 @@ def compose(spec):
         if not f.exists():
             sys.exit(f"{f} is missing. Extract data/global/tiles and data/hd/env/preset for '{spec['folder']}' into vanilla/.")
         d = ds1_parse(f.read_bytes())
-        if len(spec["pieces"]) > 1 and (d["width"] != room + 1 or d["height"] != room + 1):
-            sys.exit(f"{p['piece']} is {d['width']}x{d['height']}, expected {room + 1}x{room + 1}")
+        if len(spec["pieces"]) > 1 and (d["width"] != rw + 1 or d["height"] != rh + 1):
+            sys.exit(f"{p['piece']} is {d['width']}x{d['height']}, expected {rw + 1}x{rh + 1}")
         holes = sum(1 for v in d["floors"][0] if v == 0) if d["floors"] else 0
-        if len(spec["pieces"]) > 1 and holes > (d["width"] * d["height"]) // 10 and not spec.get("circle"):  # a circle fills every cell
+        if (len(spec["pieces"]) > 1 and holes > (d["width"] * d["height"]) // 10 and not spec.get("circle")  # a circle fills every cell
+                and p["piece"] not in spec.get("allow_holes", [])):  # rooms that are walled-in with void around
             # In a stitched map every room must be complete. "Theme" rooms are partial overlays;
             # stitched in as a room they leave cells with no tile inside the map, and the game
             # crashed loading the level (BC_VERIFY: hTile). A single room with empty edges is fine.
@@ -143,7 +151,7 @@ def compose(spec):
         placed.append((p, d))
     gw = max(p["x"] for p, _ in placed) + 1
     gh = max(p["y"] for p, _ in placed) + 1
-    W, H = gw * room + 1, gh * room + 1
+    W, H = gw * rw + 1, gh * rh + 1
     if len(placed) == 1:  # one whole map (e.g. an outdoor preset), any size
         W, H = placed[0][1]["width"], placed[0][1]["height"]
     cells = W * H
@@ -158,7 +166,7 @@ def compose(spec):
          "walls": [[0] * cells for _ in range(nw)], "orients": [[0] * cells for _ in range(nw)],
          "floors": [[0] * cells for _ in range(nf)], "shadow": [0] * cells, "objects": []}
     for p, d in placed:
-        ox, oy = p["x"] * room, p["y"] * room
+        ox, oy = p["x"] * rw, p["y"] * rh
         for y in range(d["height"]):
             for x in range(d["width"]):
                 s, t = y * d["width"] + x, (oy + y) * W + (ox + x)
@@ -172,17 +180,57 @@ def compose(spec):
                 if d["shadow"][s]:
                     m["shadow"][t] = d["shadow"][s]
         monsters = p["piece"].lower() in keep
+        drop_monsters = set(spec.get("drop_monsters", []))  # e.g. one monster spot of a kept room
         drop = set(spec.get("drop_objects", []))  # e.g. a room's treasure chests
         for o in d["objects"]:
             if o["type"] == 2 and o["id"] in drop:
                 continue
-            if o["type"] == 2 or (monsters and o["type"] == 1):
+            if o["type"] == 2 or (monsters and o["type"] == 1 and o["id"] not in drop_monsters):
                 m["objects"].append({**o, "x": o["x"] + ox * 5, "y": o["y"] + oy * 5})
     # Extra objects from the layout, e.g. a waypoint: {"type": 2, "id": <objpreset Index>, "tile": [x, y]}
     # Placed at sub-tile tile*5+4, as the game's own maps place their waypoints.
     for o in spec.get("extra_objects", []):
         tx, ty = o["tile"]
         m["objects"].append({"type": o["type"], "id": o["id"], "x": tx * 5 + 4, "y": ty * 5 + 4, "flags": 0})
+    # "open": [x0, y0, x1, y1] (tiles, inclusive) makes one big room of the rooms in that box: no
+    # walls inside it, floor everywhere inside, the rooms' own walls kept on its edge. build_hd
+    # leaves out the models inside it too. Objects stay.
+    box = spec.get("open")
+    if box:
+        x0, y0, x1, y1 = box
+        base = m["floors"][0]
+        inner = [base[y * W + x] for y in range(y0 + 1, y1) for x in range(x0 + 1, x1)]
+        counts = {}
+        for v in inner:
+            if v and not v & 0x20000:
+                counts[v] = counts.get(v, 0) + 1
+        floor = max(counts, key=counts.get)
+        for y in range(y0 + 1, y1):
+            for x in range(x0 + 1, x1):
+                i = y * W + x
+                for l in range(len(m["walls"])):
+                    m["walls"][l][i] = m["orients"][l][i] = 0
+                m["shadow"][i] = 0
+                for a in m["floors"][1:]:
+                    a[i] = 0
+                if not base[i] or base[i] & 0x20000:
+                    base[i] = floor
+        # The box's edge is its wall. Where the rooms left a gap in it (between two rooms' walls),
+        # the gap is made unwalkable, so nobody walks out of the hall.
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if x in (x0, x1) or y in (y0, y1):
+                    i = y * W + x
+                    if not any(m["walls"][l][i] for l in range(len(m["walls"]))) and base[i]:
+                        base[i] |= 0x20000
+    # Cells with no floor at all (rooms walled in with void around them, "allow_holes") get the
+    # first floor tile marked unwalkable, so the map has no empty cells.
+    if spec.get("allow_holes") and m["floors"]:
+        base = m["floors"][0]
+        fill = next((v for v in base if v and not v & 0x20000), 0)
+        for i, v in enumerate(base):
+            if not v and fill:
+                base[i] = fill | 0x20000
     # "circle": {"radius": R} makes one round open cavern from the stitched rooms: floor inside a
     # circle of R tiles around the map's centre, solid rock (unwalkable) outside, and walls only
     # along the edge (for the automap; "walls": false leaves them out).
@@ -206,6 +254,14 @@ def compose(spec):
             seen_walls = [m["walls"][0][i] for i in range(cells) if m["walls"] and m["orients"][0][i] == o and m["walls"][0][i]]
             if seen_walls:
                 wall_tiles[o] = max(set(seen_walls), key=seen_walls.count)
+        # Rooms without straight walls (the open cave rooms) borrow them: "wall_from" names rooms
+        # of the same tile set that have them (e.g. a cave theme room).
+        for piece in cr.get("wall_from", []):
+            d = ds1_parse((VANILLA / "global" / "tiles" / (piece + ".ds1")).read_bytes())
+            for o in (1, 2):
+                seen_walls = [w[i] for w, ow in zip(d["walls"], d["orients"]) for i in range(len(w)) if ow[i] == o and w[i]]
+                if seen_walls and o not in wall_tiles:
+                    wall_tiles[o] = max(set(seen_walls), key=seen_walls.count)
         cx, cy, r = (W - 1) / 2, (H - 1) / 2, cr["radius"]
         for y in range(H):
             for x in range(W):
@@ -283,7 +339,8 @@ def rock_ring(spec, entities, deps, seen, next_id):
     rnd = random.Random(1)
     gw = max(p["x"] for p in spec["pieces"]) + 1
     gh = max(p["y"] for p in spec["pieces"]) + 1
-    W, H = gw * spec["room"] + 1, gh * spec["room"] + 1
+    rw, rh = room_size(spec)
+    W, H = gw * rw + 1, gh * rh + 1
     cx, cz, r = (W - 1) / 2 * 10, (H - 1) / 2 * 10, spec["circle"]["radius"] * 10
     rows = spec["circle"].get("ring") or DEFAULT_RING
     wanted = {m for row in rows for m in row["models"]}
@@ -325,8 +382,18 @@ def rock_ring(spec, entities, deps, seen, next_id):
     return next_id
 
 
+def inside_open(box, e):
+    """Is this entity inside the "open" box (not on its edge)? HD units: 10 per tile."""
+    x0, y0, x1, y1 = box
+    for k in e.get("components") or []:
+        if k.get("type") == "TransformDefinitionComponent" and k.get("position"):
+            x, z = k["position"]["x"] / 10, k["position"]["z"] / 10
+            return x0 + 0.6 < x < x1 - 0.6 and y0 + 0.6 < z < y1 - 0.6
+    return False
+
+
 def build_hd(spec):
-    room = spec["room"]
+    rw, rh = room_size(spec)
     deps = {k: [] for k in KINDS}
     seen = {k: set() for k in KINDS}
     entities, terrain, biome, next_id = [], None, "", 1000000000
@@ -348,7 +415,7 @@ def build_hd(spec):
         if not f.exists():
             sys.exit(f"{f} is missing (the room's HD file).")
         hd = json.loads(f.read_text(encoding="utf-8-sig"))
-        dx, dz, suffix = p["x"] * room * 10, p["y"] * room * 10, f"p{p['x']}_{p['y']}"
+        dx, dz, suffix = p["x"] * rw * 10, p["y"] * rh * 10, f"p{p['x']}_{p['y']}"
         for k in KINDS:
             for d in (hd.get("dependencies") or {}).get(k) or []:
                 if d.get("path") not in seen[k]:
@@ -358,6 +425,8 @@ def build_hd(spec):
             c = move(e, dx, dz, suffix)
             if spec.get("circle") and is_solid_model(c):
                 continue  # the circle gets its own rock ring below
+            if spec.get("open") and is_solid_model(c) and inside_open(spec["open"], c):
+                continue  # the open box's inner walls and pillars
             entities.append(c)
         ground = move(hd["terrain"], dx, dz, suffix)
         if terrain is None:
