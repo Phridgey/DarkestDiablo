@@ -30,4 +30,7 @@ void Hide() noexcept;
 // Test: runs a fake 5-wave arena on screen (no monsters), 10 s per wave. Console `dd-wavehud`.
 void Demo() noexcept;
 
+// How many times the loader has called our draw function (diagnostics; shown by dd-wavehud).
+auto FramesDrawn() noexcept -> uint64_t;
+
 }
