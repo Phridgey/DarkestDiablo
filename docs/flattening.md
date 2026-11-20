@@ -35,6 +35,7 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
 - **Highest rune per act** (decided 2026-11-20, replacing every earlier Act I limit): Act I Ral,
   Act II Shael, Act III Lem, Act IV Ohm (Act V: no limit set yet). Every rune source in an act
   stays at or below its cap, at the game's own odds between runes.
+- **Every XP grind** (in every act) gives +40% experience and gold piles worth 3 times as much.
 - Why: resistances and immunities are fixed per encounter, so players learn which hero suits which
   stop and bring another hero when one is resisted.
 

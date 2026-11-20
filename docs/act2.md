@@ -29,6 +29,9 @@ limit. Every map is a copy with no stairs (reached by the route map, left by Tow
   plays the game's own event (the wall breaks open), leading to Duriel. Only the tomb before that
   room is cut. To check while building: how the game picks the true tomb (it is random per game
   in the base game) and what the event needs, so our copy of that room plays it.
+- **XP grinds** (Sewers 3 with Radament, Canyon of the Magi) follow the rule for every XP grind:
+  +40% experience and every gold pile worth 3 times as much (as the Crypt and the Malus,
+  `src/patches/115_xp_gold.py`).
 - **Radament** drops his usual Book of Skill, worth 3 skill points instead of 1 (quest rewards
   given once per difficulty are tripled). One book, not three: the game's book only works while
   its quest is open, so a second and third copy would do nothing. Reading it completes the quest
