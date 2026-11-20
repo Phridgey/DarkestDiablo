@@ -10,7 +10,10 @@
 namespace WaveOverlay {
 namespace {
 
-constexpr char HudPanel[] = "HUDPanel";  // hudpanelhd.json's root name
+// hudpanelhd.json's root is named "HUDPanel" (type HUDPanelHD); both names are tried, and the
+// one that works is remembered.
+constexpr const char* HudPanelNames[] = { "HUDPanel", "HUDPanelHD", "hudpanelhd" };
+std::atomic<int>      g_hudName { -1 };
 
 const D2RL::WidgetService* g_widgets = nullptr;
 const D2RL::ThreadService* g_threads = nullptr;
@@ -113,11 +116,44 @@ auto SetVisible(const D2RL::PluginContext* context, D2RL::Widgets::WidgetHandle 
 
 State g_shown;               // UI thread only: what is on screen now
 bool  g_loggedMissing = false;
+bool  g_loggedFirstApply = false;
+uint32_t g_loggedFindCodes = 0;  // bit per findPanel result already logged
+
+// UI thread. Finds the HUD panel under any of its names; logs each new failure code once.
+auto FindHud(const D2RL::PluginContext* context, D2RL::Widgets::WidgetHandle* panel) noexcept -> bool {
+	const int known = g_hudName.load();
+	if (known >= 0 && g_widgets->findPanel(context, HudPanelNames[known], panel) == D2RL::Widgets::Result::Success) {
+		return true;
+	}
+	for (int i = 0; i < static_cast<int>(sizeof(HudPanelNames) / sizeof(HudPanelNames[0])); ++i) {
+		const auto result = g_widgets->findPanel(context, HudPanelNames[i], panel);
+		if (result == D2RL::Widgets::Result::Success) {
+			if (g_hudName.exchange(i) != i) {
+				char message[96] {};
+				std::snprintf(message, sizeof(message), "Wave counter: found the HUD panel as \"%s\".", HudPanelNames[i]);
+				context->LogInfo(message);
+			}
+			return true;
+		}
+		const uint32_t bit = 1U << (static_cast<uint32_t>(result) & 31U);
+		if ((g_loggedFindCodes & bit) == 0) {
+			g_loggedFindCodes |= bit;
+			char message[96] {};
+			std::snprintf(message, sizeof(message), "Wave counter: findPanel(\"%s\") gave code %d.", HudPanelNames[i], static_cast<int>(result));
+			context->LogInfo(message);
+		}
+	}
+	return false;
+}
 
 void __cdecl Apply(const D2RL::PluginContext* context, void*) noexcept {
 	g_queued = false;
+	if (!g_loggedFirstApply) {
+		g_loggedFirstApply = true;
+		context->LogInfo("Wave counter: first update on the UI thread.");
+	}
 	D2RL::Widgets::WidgetHandle panel = D2RL::Widgets::InvalidHandle;
-	if (g_widgets->findPanel(context, HudPanel, &panel) != D2RL::Widgets::Result::Success) {
+	if (!FindHud(context, &panel)) {
 		return;  // not in a game; try again next time
 	}
 	try {
@@ -182,8 +218,16 @@ void Ticker(const D2RL::PluginContext* context) noexcept {
 		const bool refresh = want.title != 0 && now - lastRefresh >= RefreshMs;
 		if ((changed || refresh) && !g_queued.exchange(true)) {
 			lastRefresh = now;
-			if (g_threads->runOnUiThread(context, Apply, nullptr) != D2RL::Threads::Result::Success) {
+			const auto result = g_threads->runOnUiThread(context, Apply, nullptr);
+			if (result != D2RL::Threads::Result::Success) {
 				g_queued = false;
+				static bool logged = false;
+				if (!logged) {
+					logged = true;
+					char message[96] {};
+					std::snprintf(message, sizeof(message), "Wave counter: runOnUiThread gave code %d.", static_cast<int>(result));
+					context->LogWarn(message);
+				}
 			}
 		}
 	}
@@ -209,6 +253,13 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 
 void OnPlayerReady() noexcept {
 	g_hideAll = true;
+}
+
+void OnHudOpened(const D2RL::PluginContext* context) noexcept {
+	g_hideAll = true;
+	if (g_widgets != nullptr && g_threads != nullptr) {
+		Apply(context, nullptr);  // the UI-message listener runs on the UI thread
+	}
 }
 
 void SetWaves(int wave, int total, int nextWaveInMs) noexcept {
