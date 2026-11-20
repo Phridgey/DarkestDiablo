@@ -9,7 +9,8 @@ This one is the Forgotten Tower's last floor turned into a small quest map:
    goatmen, archers) come out as you go. They have 80% of the Den monsters' life, damage,
    defense, hit chance and experience.
 3. An elite waits in each side room (west and east), with a few minions. Each drops a Tower
-   seal (1x2): the West and the East Tower Seal.
+   seal (1x2): the West and the East Tower Seal. Only the elite drops it (his minions are
+   ordinary Tower monsters), and the hero keeps at most one of each: a second copy vanishes.
 4. The north room (the Countess's) is empty except for an altar (the Tower's tome). Walk up to
    it or click it with both seals in your inventory: the seals vanish and Blood Raven comes out.
 5. Killing her gives a Town Portal scroll, as in the arenas.
@@ -38,8 +39,9 @@ The elites' superunique rows and the seal codes reach the plugin as `towerelite 
 lines in `d2rloader/loot_data.txt`.
 
 ## Engine limits (and the workarounds)
-- **No real linked portal.** The red portal is the Tristram portal's look (objects.txt row
-  189, a dummy). The plugin sends the hero with `goto 31` when they step into it.
+- **No real linked portal.** The red portal is the game's permanent red portal (objects.txt
+  row 60, as to the Cow Level; the Tristram portal, 189, closed after a few seconds). Spawned by
+  the console it leads nowhere by itself. The plugin sends the hero with `goto 31` when they step into it.
 - **`cheat ospawn` places at the hero's feet.** The hero is moved to the spot and straight back
   (`location`) to put up the red portal and the altar.
 - **No object-click event.** The altar fires when the hero reaches it, which clicking it does.

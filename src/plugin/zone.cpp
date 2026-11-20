@@ -1,7 +1,7 @@
 // The Tower zone (prototype). See zone.h and docs/linear-zone.md.
 //
-// Town: about 1.5 s after the hero arrives, a red portal (objects.txt row 189, CainPortal: the
-// red Tristram portal, a dummy the game never operates) is put up a few steps from the fire.
+// Town: about 1.5 s after the hero arrives, a red portal (objects.txt row 60, PortalPermanent: the
+// red portal that stays open, as to the Cow Level; it has no destination of its own) is put up a few steps from the fire.
 // "cheat ospawn" places objects at the hero's feet, so the hero is moved there and straight back
 // ("location"), as the traveler's portal does (campfire.cpp). When the hero walks into the portal
 // the plugin sends them to the zone with "goto". The game can't make a real linked portal.
@@ -70,7 +70,7 @@ constexpr int AltarShow     = 60;      // sub-tiles: the altar is put up when th
 constexpr int AltarReach    = 4;       // sub-tiles: the hero at the altar ("clicking" it walks them there)
 constexpr int AltarRow      = 8;       // objects.txt row: TowerTome (the Tower's book on a stand)
 constexpr uint32_t RavenRow = 267;     // monstats row of bloodraven
-constexpr int PortalRow     = 189;     // objects.txt row: CainPortal (red)
+constexpr int PortalRow     = 60;      // objects.txt row: PortalPermanent (red, stays open; CainPortal 189 closed after a few seconds)
 constexpr int FireRow       = 39;      // objects.txt row: the town fire
 constexpr int PortalFromFireX = -9;    // where the red portal stands, in sub-tiles from the fire
 constexpr int PortalFromFireY = 6;
@@ -178,7 +178,7 @@ void SpawnPortalAt(const D2RL::PluginContext* context, int x, int y, int heroX, 
 	char command[64];
 	std::snprintf(command, sizeof(command), "location %d,%d", x, y);
 	RunConsole(context, command);
-	RunConsole(context, "cheat ospawn 189");  // objects.txt row 189: CainPortal (red)
+	RunConsole(context, "cheat ospawn 60");  // objects.txt row 60: PortalPermanent (red, stays open)
 	std::snprintf(command, sizeof(command), "location %d,%d", heroX, heroY);
 	RunConsole(context, command);
 }
@@ -224,7 +224,7 @@ void __cdecl NotePortal(const D2RL::PluginContext* context, void* visit) noexcep
 		g_armed = hero && Distance(hero.x, hero.y, fx, fy) > PortalArm;
 		Log(context, "Zone: red portal found at %d,%d.", fx, fy);
 	} else {
-		context->LogWarn("Zone: the red portal did not appear (\"cheat ospawn 189\" refused?).");
+		context->LogWarn("Zone: the red portal did not appear (\"cheat ospawn 60\" refused?).");
 	}
 }
 
@@ -377,6 +377,7 @@ void __cdecl CheckSeals(const D2RL::PluginContext* context, void*) noexcept {
 	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 	const std::vector<Found> found = FindSeals(context, player);
 	using C = D2RL::Items::ItemContainer;
+	bool kept[2] = { false, false };  // one of each seal at most: any further copy vanishes
 	for (const Found& f : found) {
 		if (f.where == C::Cursor || f.where == C::Ground) {
 			continue;  // in the hand or on the floor: wait until it is put somewhere
@@ -392,8 +393,13 @@ void __cdecl CheckSeals(const D2RL::PluginContext* context, void*) noexcept {
 		}
 		if (!earned) {
 			Destroy(context, player, f, "carried over from an earlier game");
+		} else if (kept[f.seal]) {
+			Destroy(context, player, f, "only one of each seal");
 		} else if (f.where == C::PersonalStash || f.where == C::SharedStash || f.where == C::Cube || f.where == C::CustomPage) {
+			kept[f.seal] = true;
 			MoveBack(context, player, f);
+		} else {
+			kept[f.seal] = true;
 		}
 	}
 }
@@ -582,7 +588,7 @@ auto PortalCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* comman
 		}
 		g_portalUp = true, g_portalX = hero.x, g_portalY = hero.y, g_armed = false;
 	}
-	RunConsole(command->plugin, "cheat ospawn 189");
+	RunConsole(command->plugin, "cheat ospawn 60");
 	const GameMemory::Pos fire = FirePos();
 	char line[128];
 	std::snprintf(line, sizeof(line), "Red portal at %d,%d; from the fire: %d,%d.", hero.x, hero.y,
