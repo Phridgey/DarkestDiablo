@@ -655,9 +655,11 @@ auto FireLayoutJson() -> std::string {
 		const int plateX = s.x + (s.w - 300) / 2;
 		// The name plate: a dark framed plaque with the name in gold and "Level N Class" under it.
 		const int plaqueX = s.x + (s.w - 380) / 2;
-		// The picked hero's plate glows red behind its frame, like the Enter button (Sam).
-		kids += "{\"type\":\"RectangleWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - 18) +
-			",\"y\":1432,\"width\":416,\"height\":164},\"color\":[0.85,0.05,0.02,0.55]}},";
+		// The picked hero's plate has a soft gold glow behind its frame, like the Enter button (Sam).
+		// The picture is drawn at build time (src/patches/042_campfire_glow.py): the plate's size
+		// plus a 56 margin on each side.
+		kids += "{\"type\":\"ImageWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - 56) +
+			",\"y\":1394},\"filename\":\"PANEL\\\\DarkestDiablo\\\\HeroGlow\"}},";
 		kids += "{\"type\":\"NineTileImageWidget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\","
 			"\"backgroundColor\":[0.0,0.0,0.0,0.8],\"tileScale\":1.0,\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":1450,\"width\":380,\"height\":128}},\"children\":["
 			"{\"type\":\"TextBoxWidget\",\"name\":\"Name" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
@@ -691,17 +693,18 @@ auto FireLayoutJson() -> std::string {
 		"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
 	static constexpr char Large[] = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonLarge";
 	if (!g_camp.heroes.empty()) {
-		// Enter: the game's largest button, drawn bigger. Grey until a hero is picked; then the
-		// button itself is red, with a red glow behind it.
+		// Enter: the game's largest button, drawn bigger. Grey until a hero is picked; then it is
+		// lit: warm stone, gold text and a soft gold glow behind it.
 		const auto enter = [&](const char* name, bool ready) {
 			std::string out = std::string("{\"type\":\"Widget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":1740}},\"children\":[";
 			if (ready) {
-				out += "{\"type\":\"RectangleWidget\",\"name\":\"Glow\",\"fields\":{\"rect\":{\"x\":-432,\"y\":-14,\"width\":864,\"height\":190},\"color\":[0.85,0.05,0.02,0.55]}},";
+				// The button's size (824x162) plus a 72 margin on each side (042_campfire_glow.py).
+				out += "{\"type\":\"ImageWidget\",\"name\":\"Glow\",\"fields\":{\"rect\":{\"x\":-484,\"y\":-72},\"filename\":\"PANEL\\\\DarkestDiablo\\\\EnterGlow\"}},";
 			}
 			out += std::string("{\"type\":\"ButtonWidget\",\"name\":\"Button\",\"fields\":{\"rect\":{\"x\":-412,\"y\":0,\"scale\":1.35},\"filename\":\"") + Large +
 				"\",\"textString\":\"ENTER\",\"onClickMessage\":\"" + act + "enter\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"
 				"\"text/style\":\"$StyleFEButtonText\",\"pointSize\":\"$XExtraLargeFontSize\"," +
-				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.22,\"b\":0.16,\"a\":1.0},\"textColor\":\"$FontColorWhite\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
+				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.94,\"b\":0.80,\"a\":1.0},\"textColor\":\"$FontColorGoldYellow\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
 			return out;
 		};
 		kids += enter("EnterIdle", false) + "," + enter("EnterReady", true) + ",";
