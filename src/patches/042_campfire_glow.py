@@ -6,9 +6,14 @@ box (the size of the plate or the button) with a warm gold halo fading out aroun
 plugin (FireLayoutJson in src/plugin/campfire.cpp) shows them as ImageWidgets at these sizes,
 so keep the sizes below in step with the plugin.
 
+The shimmer: a small soft glint (bright, and a dimmer one for its trail) that the plugin moves
+around the plate and the button by showing one copy at a time (ShimmerStep in campfire.cpp).
+
 Pictures (both graphics qualities; the low one is half size):
   PANEL\\DarkestDiablo\\HeroGlow   -> hd/global/ui/panel/darkestdiablo/heroglow(.lowend).sprite
   PANEL\\DarkestDiablo\\EnterGlow  -> hd/global/ui/panel/darkestdiablo/enterglow(.lowend).sprite
+  PANEL\\DarkestDiablo\\Glint      -> hd/global/ui/panel/darkestdiablo/glint(.lowend).sprite
+  PANEL\\DarkestDiablo\\GlintDim   -> hd/global/ui/panel/darkestdiablo/glintdim(.lowend).sprite
 """
 import math
 import struct
@@ -64,6 +69,34 @@ def glow_pixels(box_w, box_h, radius, margin, scale=1.0):
     return w, h, bytes(out)
 
 
+# name: peak opacity. Size GLINT (ShimmerSize in the plugin).
+GLINT = 120
+GLINTS = {"glint": 0.95, "glintdim": 0.45}
+
+
+def glint_pixels(size, peak, scale=1.0):
+    """(width, height, RGBA bytes) of a soft round glint: a white-gold core in a gold haze."""
+    n = int(round(size * scale))
+    c = n / 2
+    out = bytearray(n * n * 4)
+    i = 0
+    for y in range(n):
+        for x in range(n):
+            t = math.hypot(x + 0.5 - c, y + 0.5 - c) / c  # 0 centre, 1 edge
+            if t >= 1:
+                i += 4
+                continue
+            core = math.exp(-(t / 0.28) ** 2)
+            haze = math.exp(-(t / 0.5) ** 2) * (1 - t) ** 2
+            a = min(1.0, peak * (0.75 * core + 0.6 * haze))
+            out[i] = 255
+            out[i + 1] = int(232 + 23 * core)
+            out[i + 2] = int(150 + 90 * core)
+            out[i + 3] = int(a * 255 + 0.5)
+            i += 4
+    return n, n, bytes(out)
+
+
 def sprite(template, w, h, pixels):
     """A one-frame RGBA .sprite, header copied from a vanilla one of the same kind."""
     if template[:4] != b"SpA1":
@@ -86,4 +119,7 @@ def patch(t):
         for name, (bw, bh, r, m) in GLOWS.items():
             w, h, px = glow_pixels(bw, bh, r, m, scale)
             t.add_file(OUT.format(name, suffix), sprite(template, w, h, px))
-    print(f"  campfire glow: {len(GLOWS)} pictures, gold")
+        for name, peak in GLINTS.items():
+            w, h, px = glint_pixels(GLINT, peak, scale)
+            t.add_file(OUT.format(name, suffix), sprite(template, w, h, px))
+    print(f"  campfire glow: {len(GLOWS) + len(GLINTS)} pictures, gold")

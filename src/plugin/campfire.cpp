@@ -125,6 +125,9 @@ int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
 int  g_hoveredHero = -1;    // the class under the mouse at the Campfire (from the game's Hover messages)
 int  g_clickedHero = -1;    // the hero under the mouse when the left button went down (see WatchFireClicks)
 std::atomic<bool> g_watchingClicks { false };
+std::atomic<bool> g_shimmering { false };      // the Campfire's shimmer thread runs (see ShimmerFire)
+std::vector<std::string> g_shimmerShown;       // the glint widgets the last shimmer step showed
+bool g_shimmerReset = false;                   // a fresh Campfire panel: hide every glint first
 bool g_emptyFire = false;       // the hero screen is up with nobody at the fire, under the save slots
 bool g_travelerArrives = false; // the fire was used with a traveler waiting: portal and figure are showing
 bool g_travelerMode = false;
@@ -626,6 +629,51 @@ auto Allowed() -> std::vector<int> {
 	return g_travelerMode ? g_camp.offer : Camp::Creatable(g_camp, g_rng);
 }
 
+// The selection shimmer: a small gold glint (src/patches/042_campfire_glow.py, ShimmerSize
+// square) that runs around the picked hero's plate and around the lit Enter button, with a
+// dimmer one trailing it. Each place along the way is its own pair of widgets (the plugin can
+// only show and hide widgets), and ShimmerStep shows the pair for the current moment.
+constexpr int ShimmerSize = 120;
+constexpr int PlateGlints = 40;   // places around a name plate (380x128)
+constexpr int EnterGlints = 64;   // places around the Enter button (824x162)
+
+// `n` points evenly around the edge of a box, clockwise from its top left corner.
+auto EdgePoints(int x, int y, int w, int h, int n) -> std::vector<std::pair<int, int>> {
+	std::vector<std::pair<int, int>> out;
+	const double around = 2.0 * (w + h);
+	for (int i = 0; i < n; ++i) {
+		double d = around * i / n;
+		int px = 0;
+		int py = 0;
+		if (d < w) {
+			px = x + static_cast<int>(d), py = y;
+		} else if ((d -= w) < h) {
+			px = x + w, py = y + static_cast<int>(d);
+		} else if ((d -= h) < w) {
+			px = x + w - static_cast<int>(d), py = y + h;
+		} else {
+			d -= w;
+			px = x, py = y + h - static_cast<int>(d);
+		}
+		out.emplace_back(px, py);
+	}
+	return out;
+}
+
+// The glint widgets for one box: "<prefix>B<i>" (bright) and "<prefix>D<i>" (dim) at each place.
+auto GlintWidgets(const std::string& prefix, int x, int y, int w, int h, int n) -> std::string {
+	std::string out;
+	const auto points = EdgePoints(x, y, w, h, n);
+	for (int i = 0; i < n; ++i) {
+		const std::string at = "{\"x\":" + std::to_string(points[i].first - ShimmerSize / 2) + ",\"y\":" + std::to_string(points[i].second - ShimmerSize / 2) + "}";
+		out += "{\"type\":\"ImageWidget\",\"name\":\"" + prefix + "B" + std::to_string(i) + "\",\"fields\":{\"rect\":" + at +
+			",\"filename\":\"PANEL\\\\DarkestDiablo\\\\Glint\"}},";
+		out += "{\"type\":\"ImageWidget\",\"name\":\"" + prefix + "D" + std::to_string(i) + "\",\"fields\":{\"rect\":" + at +
+			",\"filename\":\"PANEL\\\\DarkestDiablo\\\\GlintDim\"}},";
+	}
+	return out;
+}
+
 // The Fire panel's layout for the camp as it is now: each living hero as a figure in its gear
 // where its class stands, a name plate under it, and the Options, Delete and Exit buttons.
 auto FireLayoutJson() -> std::string {
@@ -669,6 +717,8 @@ auto FireLayoutJson() -> std::string {
 			"\"style\":{\"pointSize\":\"$ExtraLargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorWhite\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
 			"{\"type\":\"TextBoxWidget\",\"name\":\"Rank\",\"fields\":{\"rect\":{\"x\":0,\"y\":72,\"width\":380,\"height\":44},\"text\":\"Level " + std::to_string(hero.level) + " " + cls + "\","
 			"\"style\":{\"pointSize\":\"$MediumFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
+		// The glint runs over the plate's gilded frame.
+		kids += GlintWidgets("Glint" + cls, plaqueX, 1450, 380, 128, PlateGlints);
 		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, and a waiting traveler's offer, in the game's
@@ -707,6 +757,9 @@ auto FireLayoutJson() -> std::string {
 				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.94,\"b\":0.80,\"a\":1.0},\"textColor\":\"$FontColorGoldYellow\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
 			return out;
 		};
+		// Enter's glint runs in the glow just outside the button, under it (an image over a button might
+		// take its clicks).
+		kids += GlintWidgets("GlintEnter", -420, 1732, 840, 178, EnterGlints);
 		kids += enter("EnterIdle", false) + "," + enter("EnterReady", true) + ",";
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
@@ -854,6 +907,80 @@ void WatchFireClicks(const D2RL::PluginContext* context) {
 	}).detach();
 }
 
+// One moment of the shimmer: the glint runs once around each lit box, then rests.
+void __cdecl ShimmerStep(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (!g_atFire) {
+		return;
+	}
+	const std::string panel = PoolName(g_fire);
+	if (g_shimmerReset) {
+		g_shimmerReset = false;
+		g_shimmerShown.clear();
+		for (const auto& hero : g_camp.heroes) {
+			for (int i = 0; i < PlateGlints; ++i) {
+				for (const char* kind : { "B", "D" }) {
+					SetVisible(context, panel.c_str(), ("Glint" + std::string(Camp::ClassNames[hero.cls]) + kind + std::to_string(i)).c_str(), false);
+				}
+			}
+		}
+		for (int i = 0; i < EnterGlints; ++i) {
+			for (const char* kind : { "B", "D" }) {
+				SetVisible(context, panel.c_str(), ("GlintEnter" + std::string(kind) + std::to_string(i)).c_str(), false);
+			}
+		}
+	}
+	// A lap of 1.6 s, then 1.4 s of rest.
+	constexpr int LapMs = 1600;
+	constexpr int CycleMs = 3000;
+	const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	const double phase = static_cast<double>(ms % CycleMs) / LapMs;  // 0..1 during the lap
+	std::vector<std::string> show;
+	const bool lit = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr && !g_deleteMode && !g_travelerMode && !g_createMode;
+	if (lit && phase < 1.0) {
+		const auto add = [&](const std::string& prefix, int n) {
+			const int i = static_cast<int>(phase * n);
+			show.push_back(prefix + "B" + std::to_string(i));
+			show.push_back(prefix + "D" + std::to_string((i + n - 1) % n));
+			show.push_back(prefix + "D" + std::to_string((i + n - 2) % n));
+			show.push_back(prefix + "D" + std::to_string((i + n - 3) % n));
+		};
+		add("Glint" + std::string(Camp::ClassNames[g_chosenHero]), PlateGlints);
+		add("GlintEnter", EnterGlints);
+	}
+	for (const auto& name : g_shimmerShown) {
+		if (std::find(show.begin(), show.end(), name) == show.end()) {
+			SetVisible(context, panel.c_str(), name.c_str(), false);
+		}
+	}
+	for (const auto& name : show) {
+		if (std::find(g_shimmerShown.begin(), g_shimmerShown.end(), name) == g_shimmerShown.end()) {
+			SetVisible(context, panel.c_str(), name.c_str(), true);
+		}
+	}
+	g_shimmerShown = std::move(show);
+}
+
+// While the Campfire is up, moves the shimmer along every 40 ms.
+void ShimmerFire(const D2RL::PluginContext* context) {
+	if (g_shimmering.exchange(true) || g_threads == nullptr) {
+		return;
+	}
+	std::thread([context] {
+		for (;;) {
+			{
+				const Lock lock(g_mutex);
+				if (!g_atFire) {
+					break;
+				}
+			}
+			g_threads->runOnUiThread(context, ShimmerStep, nullptr);
+			std::this_thread::sleep_for(std::chrono::milliseconds(40));
+		}
+		g_shimmering = false;
+	}).detach();
+}
+
 // The hero screen has opened: lay the camp's figures over it.
 void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
@@ -870,6 +997,8 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 		g_clickedHero = -1;
 		g_selectedClass = -1;
 		WatchFireClicks(context);
+		g_shimmerReset = true;
+		ShimmerFire(context);
 		if (g_justRecruited >= 0) {             // after Accept: the new class steps in, name box ready
 			g_createMode = true;
 			g_selectedClass = g_justRecruited;
