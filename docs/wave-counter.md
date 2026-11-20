@@ -13,8 +13,10 @@ Leaving the arena or the game hides it.
 
 The plugin can show and hide widgets but not change their text, so every text the counter can
 show is a ready-made widget: `src/patches/130_wave_counter.py` adds them, hidden, to the game's own
-HUD layout (`hudpanelhd.json`, panel `HUDPanel`, which is open whenever you are in a game), in a
-box `DDWaveCounter` at the top centre of the screen. Names: `DDWave<k>of<n>` (every k <= n <= 15),
+HUD layout (`hudpanelhd.json`, panel `HUDPanel`, which is open whenever you are in a game), placed
+at the top centre of the screen. They must be direct children of `HUDPanel`: the plugin's widget
+search doesn't find widgets inside a box of their own (0.15.2), and the layout's "visible" field
+is ignored, so the plugin hides them all when a game starts. Names: `DDWave<k>of<n>` (every k <= n <= 15),
 `DDNext1`..`DDNext5`, `DDFinal`, `DDCleared`, and two dark plates `DDPlateShort` / `DDPlateTall`.
 They use the game's own font and tooltip frame.
 
