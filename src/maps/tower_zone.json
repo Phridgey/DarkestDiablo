@@ -1,0 +1,21 @@
+{
+  "name": "darkest_tower",
+  "folder": "act1/crypt",
+  "room": 30,
+  "comment": "Tower zone (src/patches/120_linear_zone.py): Blizzard's Forgotten Tower last floor (act1/crypt/cryptcountess2, the second of its two layouts, 31 x 31 cells) as one whole map, without its monsters, chests and gold. The hero arrives in the south loop, an elite waits in each side room (west, east), and the altar stands in the north room (the Countess's room). Spots: src/plugin/zone.cpp.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/crypt/cryptcountess2"
+    }
+  ],
+  "drop_objects": [
+    38,
+    65,
+    66,
+    104
+  ],
+  "close_edges": true
+}
