@@ -21,6 +21,12 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
 - **Death:** a dead hero is gone; the camp carries on.
 - **Quitting mid-stop starts it over.** The resume and give-up rules (route.h) go away: the good
   rewards are at the end, and a hero who doesn't clear doesn't win back what they spent.
+- **Resistance penalty: linear, by camp progress** (decided 2026-11-20). The same total as the
+  base game, -100 all resistances by level 90, but growing evenly instead of in two steps
+  (-40 at Nightmare, -100 at Hell). It follows the camp's progress, not each hero's level:
+  the penalty is -100 x (camp level / 90), where the camp level is the target level of the
+  furthest stop the camp has cleared. So after Andariel (18) every hero has -20; a fresh hero
+  joining a late camp gets the camp's penalty too.
 - Why: resistances and immunities are fixed per encounter, so players learn which hero suits which
   stop and bring another hero when one is resisted.
 
@@ -42,11 +48,11 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
    - Sockets: each item type's most sockets depend on item level (itemtypes.txt, two thresholds per
      type, 25 and 40 by default). Move them so 4+ sockets don't arrive too early.
    - Rune caps per stop are re-anchored per act.
-5. **Penalties and rewards.** Normal-only removes the -40 / -100 resistance penalties and the
-   quest rewards given once per difficulty (skill and stat points, socket quest, ...). Both need
-   a replacement.
+5. **Penalties and rewards.** The resistance penalty becomes the linear, camp-based one above
+   (the game always runs on Normal, which has none, so the plugin applies it). The quest rewards
+   given once per difficulty (skill and stat points, socket quest, ...) still need a new home.
 
 ## Still to decide (ask Fabrizio)
-- What replaces the resistance penalty: a penalty that grows by act, or more elemental damage?
+- Where the quest rewards given once per difficulty go now.
 - Item levels for 4, 5 and 6 sockets.
 - The highest rune per act (Act I today: Eth; Amn from the Countess).
