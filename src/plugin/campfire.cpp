@@ -125,9 +125,9 @@ int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
 int  g_hoveredHero = -1;    // the class under the mouse at the Campfire (from the game's Hover messages)
 int  g_clickedHero = -1;    // the hero under the mouse when the left button went down (see WatchFireClicks)
 std::atomic<bool> g_watchingClicks { false };
-std::atomic<bool> g_shimmering { false };      // the Campfire's shimmer thread runs (see ShimmerFire)
-std::vector<std::string> g_shimmerShown;       // the glint widgets the last shimmer step showed
-bool g_shimmerReset = false;                   // a fresh Campfire panel: hide every glint first
+std::atomic<bool> g_shimmering { false };      // the Campfire's aurora thread runs (see ShimmerFire)
+std::vector<std::string> g_shimmerShown;       // the aurora widgets the last step showed
+bool g_shimmerReset = false;                   // a fresh Campfire panel: hide every aurora widget first
 bool g_emptyFire = false;       // the hero screen is up with nobody at the fire, under the save slots
 bool g_travelerArrives = false; // the fire was used with a traveler waiting: portal and figure are showing
 bool g_travelerMode = false;
@@ -629,49 +629,66 @@ auto Allowed() -> std::vector<int> {
 	return g_travelerMode ? g_camp.offer : Camp::Creatable(g_camp, g_rng);
 }
 
-// The selection shimmer: a small gold glint (src/patches/042_campfire_glow.py, ShimmerSize
-// square) that runs around the picked hero's plate and around the lit Enter button, with a
-// dimmer one trailing it. Each place along the way is its own pair of widgets (the plugin can
-// only show and hide widgets), and ShimmerStep shows the pair for the current moment.
-constexpr int ShimmerSize = 120;
-constexpr int PlateGlints = 40;   // places around a name plate (380x128)
-constexpr int EnterGlints = 64;   // places around the Enter button (824x162)
+// The selection aurora: soft patches of gold light (src/patches/042_campfire_glow.py) sit all
+// around the picked hero's plate and the lit Enter button, each slowly brightening and fading
+// on its own rhythm, so the glow breathes and wavers in place. The plugin can only show and
+// hide widgets, so each patch is drawn at AuraLevels brightnesses, one widget per level, and
+// AuraStep shows the right one (or none).
+constexpr int AuraLevels = 6;
+constexpr int PlateAuras = 10;    // patches around a name plate (380x128)
+constexpr int EnterAuras = 16;    // patches around the Enter button (824x162)
+constexpr int AuraOut = 14;       // how far outside the box edge a patch's centre sits
+// Picture sizes: along a top or bottom edge (H) and along a side (V).
+constexpr int AuraHW = 280, AuraHH = 130, AuraVW = 130, AuraVH = 200;
 
-// `n` points evenly around the edge of a box, clockwise from its top left corner.
-auto EdgePoints(int x, int y, int w, int h, int n) -> std::vector<std::pair<int, int>> {
-	std::vector<std::pair<int, int>> out;
+struct AuraSpot { int x; int y; bool side; };
+
+// `n` patch centres evenly around a box, clockwise from its top left corner, just outside it.
+auto AuraSpots(int x, int y, int w, int h, int n) -> std::vector<AuraSpot> {
+	std::vector<AuraSpot> out;
 	const double around = 2.0 * (w + h);
 	for (int i = 0; i < n; ++i) {
-		double d = around * i / n;
-		int px = 0;
-		int py = 0;
+		double d = around * (i + 0.5) / n;
 		if (d < w) {
-			px = x + static_cast<int>(d), py = y;
+			out.push_back({ x + static_cast<int>(d), y - AuraOut, false });
 		} else if ((d -= w) < h) {
-			px = x + w, py = y + static_cast<int>(d);
+			out.push_back({ x + w + AuraOut, y + static_cast<int>(d), true });
 		} else if ((d -= h) < w) {
-			px = x + w - static_cast<int>(d), py = y + h;
+			out.push_back({ x + w - static_cast<int>(d), y + h + AuraOut, false });
 		} else {
 			d -= w;
-			px = x, py = y + h - static_cast<int>(d);
+			out.push_back({ x - AuraOut, y + h - static_cast<int>(d), true });
 		}
-		out.emplace_back(px, py);
 	}
 	return out;
 }
 
-// The glint widgets for one box: "<prefix>B<i>" (bright) and "<prefix>D<i>" (dim) at each place.
-auto GlintWidgets(const std::string& prefix, int x, int y, int w, int h, int n) -> std::string {
+// The aurora widgets for one box: "<prefix>_<patch>_<level>", level 1..AuraLevels.
+auto AuraWidgets(const std::string& prefix, int x, int y, int w, int h, int n) -> std::string {
 	std::string out;
-	const auto points = EdgePoints(x, y, w, h, n);
+	const auto spots = AuraSpots(x, y, w, h, n);
 	for (int i = 0; i < n; ++i) {
-		const std::string at = "{\"x\":" + std::to_string(points[i].first - ShimmerSize / 2) + ",\"y\":" + std::to_string(points[i].second - ShimmerSize / 2) + "}";
-		out += "{\"type\":\"ImageWidget\",\"name\":\"" + prefix + "B" + std::to_string(i) + "\",\"fields\":{\"rect\":" + at +
-			",\"filename\":\"PANEL\\\\DarkestDiablo\\\\Glint\"}},";
-		out += "{\"type\":\"ImageWidget\",\"name\":\"" + prefix + "D" + std::to_string(i) + "\",\"fields\":{\"rect\":" + at +
-			",\"filename\":\"PANEL\\\\DarkestDiablo\\\\GlintDim\"}},";
+		const AuraSpot& s = spots[i];
+		const int pw = s.side ? AuraVW : AuraHW;
+		const int ph = s.side ? AuraVH : AuraHH;
+		const std::string at = "{\"x\":" + std::to_string(s.x - pw / 2) + ",\"y\":" + std::to_string(s.y - ph / 2) + "}";
+		for (int k = 1; k <= AuraLevels; ++k) {
+			out += "{\"type\":\"ImageWidget\",\"name\":\"" + prefix + "_" + std::to_string(i) + "_" + std::to_string(k) + "\",\"fields\":{\"rect\":" + at +
+				",\"filename\":\"PANEL\\\\DarkestDiablo\\\\Aura" + (s.side ? "V" : "H") + std::to_string(k) + "\"}},";
+		}
 	}
 	return out;
+}
+
+// How bright patch `i` is at time `t` (seconds): 0 (hidden) .. AuraLevels. Two slow waves
+// with periods and starts of its own, so neighbours never pulse together.
+auto AuraLevel(int i, double t) -> int {
+	constexpr double Tau = 6.283185307179586;
+	const double start = i * 2.399963;  // the golden angle spreads the starts evenly
+	const double p1 = 2.7 + 0.37 * (i % 5);
+	const double p2 = 4.1 + 0.53 * (i % 3);
+	const double v = 0.55 + 0.28 * std::sin(Tau * t / p1 + start) + 0.2 * std::sin(Tau * t / p2 + 2 * start);
+	return std::clamp(static_cast<int>(std::lround(v * AuraLevels)), 0, AuraLevels);
 }
 
 // The Fire panel's layout for the camp as it is now: each living hero as a figure in its gear
@@ -708,6 +725,8 @@ auto FireLayoutJson() -> std::string {
 		// plus a 56 margin on each side.
 		kids += "{\"type\":\"ImageWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - 56) +
 			",\"y\":1394},\"filename\":\"PANEL\\\\DarkestDiablo\\\\HeroGlow\"}},";
+		// Its aurora, between the glow and the plate.
+		kids += AuraWidgets("Aura" + cls, plaqueX, 1450, 380, 128, PlateAuras);
 		kids += "{\"type\":\"NineTileImageWidget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\","
 			"\"backgroundColor\":[0.0,0.0,0.0,0.8],\"tileScale\":1.0,\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":1450,\"width\":380,\"height\":128}},\"children\":["
 			"{\"type\":\"TextBoxWidget\",\"name\":\"Name" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
@@ -717,8 +736,6 @@ auto FireLayoutJson() -> std::string {
 			"\"style\":{\"pointSize\":\"$ExtraLargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorWhite\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
 			"{\"type\":\"TextBoxWidget\",\"name\":\"Rank\",\"fields\":{\"rect\":{\"x\":0,\"y\":72,\"width\":380,\"height\":44},\"text\":\"Level " + std::to_string(hero.level) + " " + cls + "\","
 			"\"style\":{\"pointSize\":\"$MediumFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
-		// The glint runs over the plate's gilded frame.
-		kids += GlintWidgets("Glint" + cls, plaqueX, 1450, 380, 128, PlateGlints);
 		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, and a waiting traveler's offer, in the game's
@@ -757,9 +774,9 @@ auto FireLayoutJson() -> std::string {
 				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.94,\"b\":0.80,\"a\":1.0},\"textColor\":\"$FontColorGoldYellow\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
 			return out;
 		};
-		// Enter's glint runs in the glow just outside the button, under it (an image over a button might
+		// Enter's aurora, in the glow around the button and under it (an image over a button might
 		// take its clicks).
-		kids += GlintWidgets("GlintEnter", -420, 1732, 840, 178, EnterGlints);
+		kids += AuraWidgets("AuraEnter", -412, 1740, 824, 162, EnterAuras);
 		kids += enter("EnterIdle", false) + "," + enter("EnterReady", true) + ",";
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
@@ -907,61 +924,58 @@ void WatchFireClicks(const D2RL::PluginContext* context) {
 	}).detach();
 }
 
-// One moment of the shimmer: the glint runs once around each lit box, then rests.
+// One moment of the aurora around the picked hero and Enter.
 void __cdecl ShimmerStep(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
 	if (!g_atFire) {
 		return;
 	}
 	const std::string panel = PoolName(g_fire);
+	const auto name = [](const std::string& prefix, int i, int k) { return prefix + "_" + std::to_string(i) + "_" + std::to_string(k); };
 	if (g_shimmerReset) {
 		g_shimmerReset = false;
 		g_shimmerShown.clear();
-		for (const auto& hero : g_camp.heroes) {
-			for (int i = 0; i < PlateGlints; ++i) {
-				for (const char* kind : { "B", "D" }) {
-					SetVisible(context, panel.c_str(), ("Glint" + std::string(Camp::ClassNames[hero.cls]) + kind + std::to_string(i)).c_str(), false);
+		const auto hideAll = [&](const std::string& prefix, int n) {
+			for (int i = 0; i < n; ++i) {
+				for (int k = 1; k <= AuraLevels; ++k) {
+					SetVisible(context, panel.c_str(), name(prefix, i, k).c_str(), false);
 				}
 			}
+		};
+		for (const auto& hero : g_camp.heroes) {
+			hideAll("Aura" + std::string(Camp::ClassNames[hero.cls]), PlateAuras);
 		}
-		for (int i = 0; i < EnterGlints; ++i) {
-			for (const char* kind : { "B", "D" }) {
-				SetVisible(context, panel.c_str(), ("GlintEnter" + std::string(kind) + std::to_string(i)).c_str(), false);
-			}
-		}
+		hideAll("AuraEnter", EnterAuras);
 	}
-	// A lap of 1.6 s, then 1.4 s of rest.
-	constexpr int LapMs = 1600;
-	constexpr int CycleMs = 3000;
-	const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-	const double phase = static_cast<double>(ms % CycleMs) / LapMs;  // 0..1 during the lap
+	const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 	std::vector<std::string> show;
 	const bool lit = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr && !g_deleteMode && !g_travelerMode && !g_createMode;
-	if (lit && phase < 1.0) {
-		const auto add = [&](const std::string& prefix, int n) {
-			const int i = static_cast<int>(phase * n);
-			show.push_back(prefix + "B" + std::to_string(i));
-			show.push_back(prefix + "D" + std::to_string((i + n - 1) % n));
-			show.push_back(prefix + "D" + std::to_string((i + n - 2) % n));
-			show.push_back(prefix + "D" + std::to_string((i + n - 3) % n));
+	if (lit) {
+		const auto add = [&](const std::string& prefix, int n, int seed) {
+			for (int i = 0; i < n; ++i) {
+				const int k = AuraLevel(i + seed, t);
+				if (k > 0) {
+					show.push_back(name(prefix, i, k));
+				}
+			}
 		};
-		add("Glint" + std::string(Camp::ClassNames[g_chosenHero]), PlateGlints);
-		add("GlintEnter", EnterGlints);
+		add("Aura" + std::string(Camp::ClassNames[g_chosenHero]), PlateAuras, 0);
+		add("AuraEnter", EnterAuras, 17);
 	}
-	for (const auto& name : g_shimmerShown) {
-		if (std::find(show.begin(), show.end(), name) == show.end()) {
-			SetVisible(context, panel.c_str(), name.c_str(), false);
+	for (const auto& n : g_shimmerShown) {
+		if (std::find(show.begin(), show.end(), n) == show.end()) {
+			SetVisible(context, panel.c_str(), n.c_str(), false);
 		}
 	}
-	for (const auto& name : show) {
-		if (std::find(g_shimmerShown.begin(), g_shimmerShown.end(), name) == g_shimmerShown.end()) {
-			SetVisible(context, panel.c_str(), name.c_str(), true);
+	for (const auto& n : show) {
+		if (std::find(g_shimmerShown.begin(), g_shimmerShown.end(), n) == g_shimmerShown.end()) {
+			SetVisible(context, panel.c_str(), n.c_str(), true);
 		}
 	}
 	g_shimmerShown = std::move(show);
 }
 
-// While the Campfire is up, moves the shimmer along every 40 ms.
+// While the Campfire is up, moves the aurora along every 80 ms.
 void ShimmerFire(const D2RL::PluginContext* context) {
 	if (g_shimmering.exchange(true) || g_threads == nullptr) {
 		return;
@@ -975,7 +989,7 @@ void ShimmerFire(const D2RL::PluginContext* context) {
 				}
 			}
 			g_threads->runOnUiThread(context, ShimmerStep, nullptr);
-			std::this_thread::sleep_for(std::chrono::milliseconds(40));
+			std::this_thread::sleep_for(std::chrono::milliseconds(80));
 		}
 		g_shimmering = false;
 	}).detach();
