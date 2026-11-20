@@ -63,6 +63,9 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
    Note: our Den arena is not the real Den, so its quest (skill point, Akara's respec) needs a new
    way to be given.
 
+## Act plans
+- Act II: `docs/act2.md`.
+
 ## Still to decide (ask Fabrizio)
 - What Anya's resistance scroll becomes.
 - Item levels for 4, 5 and 6 sockets.
