@@ -152,6 +152,8 @@ def seals_and_elites(t):
         for c in stats.columns:
             if c.startswith("TreasureClass"):
                 row[c] = tc_name
+        # His minions are the ordinary Tower kind, not his type: as his type they dropped seals too.
+        row["minion1"], row["minion2"] = f"dd_tower_{source}", ""
         models[elite] = models[source]
 
         sup = dict(supers.first("Superunique", "Bishibosh"))
