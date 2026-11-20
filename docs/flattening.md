@@ -27,6 +27,9 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
   the penalty is -100 x (camp level / 90), where the camp level is the target level of the
   furthest stop the camp has cleared. So after Andariel (18) every hero has -20; a fresh hero
   joining a late camp gets the camp's penalty too.
+- **Highest rune per act** (decided 2026-11-20, replacing every earlier Act I limit): Act I Ral,
+  Act II Shael, Act III Lem, Act IV Ohm (Act V: no limit set yet). Every rune source in an act
+  stays at or below its cap, at the game's own odds between runes.
 - Why: resistances and immunities are fixed per encounter, so players learn which hero suits which
   stop and bring another hero when one is resisted.
 
@@ -47,7 +50,8 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
      (their group and level are cleared), so they must be rebuilt to follow level.
    - Sockets: each item type's most sockets depend on item level (itemtypes.txt, two thresholds per
      type, 25 and 40 by default). Move them so 4+ sockets don't arrive too early.
-   - Rune caps per stop are re-anchored per act.
+   - Rune caps per act: Ral, Shael, Lem, Ohm (see the rules above). Act I is done: the Mausoleum
+     drops El to Ral, the Countess Ith to Ral.
 5. **Penalties and rewards.** The resistance penalty becomes the linear, camp-based one above
    (the game always runs on Normal, which has none, so the plugin applies it). The quest rewards
    given once per difficulty (skill and stat points, socket quest, ...) still need a new home.
@@ -55,4 +59,3 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
 ## Still to decide (ask Fabrizio)
 - Where the quest rewards given once per difficulty go now.
 - Item levels for 4, 5 and 6 sockets.
-- The highest rune per act (Act I today: Eth; Amn from the Countess).
