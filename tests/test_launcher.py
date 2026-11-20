@@ -204,10 +204,6 @@ class SetupTests(unittest.TestCase):
             self.assertTrue(Path(t, "d2rloader/config/d2rloader.toml").is_file())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 import ddmain  # noqa: E402
 
 
@@ -350,3 +346,31 @@ class ConsoleTests(unittest.TestCase):
     def test_no_config_yet(self):
         with tempfile.TemporaryDirectory() as game:
             self.assertFalse(ddcore.enable_console(game))
+
+
+class ChildProgramTests(unittest.TestCase):
+    """Programs the launcher starts must not use its temp unpack folder (see ddcore.clean_env)."""
+
+    def test_clean_env_when_frozen(self):
+        bundle = os.path.join(tempfile.gettempdir(), "_MEI12345")
+        env = {"PATH": os.pathsep.join([bundle, os.path.join(bundle, "sub"), "/usr/bin"]),
+               "_PYI_APPLICATION_HOME_DIR": bundle, "_PYI_PARENT_PROCESS_LEVEL": "1", "_MEIPASS2": bundle,
+               "TCL_LIBRARY": os.path.join(bundle, "tcl"), "TK_LIBRARY": "/elsewhere/tk",
+               "PYINSTALLER_RESET_ENVIRONMENT": "1", "APPDATA": "x"}
+        with mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch.object(sys, "_MEIPASS", bundle, create=True):
+            out = ddcore.clean_env(env)
+        self.assertEqual(out["PATH"], "/usr/bin")
+        for k in ("_PYI_APPLICATION_HOME_DIR", "_PYI_PARENT_PROCESS_LEVEL", "_MEIPASS2", "TCL_LIBRARY"):
+            self.assertNotIn(k, out)
+        self.assertEqual(out["TK_LIBRARY"], "/elsewhere/tk")
+        self.assertEqual(out["PYINSTALLER_RESET_ENVIRONMENT"], "1")
+        self.assertEqual(out["APPDATA"], "x")
+
+    def test_clean_env_from_source_changes_nothing(self):
+        env = {"PATH": "/a", "_PYI_X": "1"}
+        self.assertEqual(ddcore.clean_env(env), env)
+
+
+if __name__ == "__main__":
+    unittest.main()

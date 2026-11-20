@@ -25,6 +25,7 @@
 #include "gamewrite.h"
 #include "devtools.h"
 #include "route.h"
+#include "zone.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <atomic>
@@ -1440,6 +1441,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
 	if (event->kind == Kind::LevelChanged) {
 		g_levelId = event->currentValue;
+		Zone::OnLevelChanged(context, g_levelId);
 		char message[96] {};
 		std::snprintf(message, sizeof(message), "Level changed: %d -> %d.", event->previousValue, event->currentValue);
 		context->LogInfo(message);
@@ -1512,6 +1514,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			const std::lock_guard<std::mutex> guard(g_supersLock);
 			g_supersSpawned.clear();  // a new game has every superunique again
 		}
+		Zone::OnGameLeft();
 		ResetArena();
 		return;
 	}
@@ -1524,6 +1527,13 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		if (g_arena.load() >= 0 && !g_portalDropped.exchange(true) && g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
 			context->LogWarn("Town Portal: could not queue the drop.");
 		}
+	}
+}
+
+// The linear zone's boss died: the same Town Portal scroll as the arenas (zone.h).
+static void GiveZoneTownPortal(const D2RL::PluginContext* context) noexcept {
+	if (g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
+		context->LogWarn("Town Portal: could not queue the drop.");
 	}
 }
 
@@ -1670,7 +1680,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	// The GM window's event list. A new event needs one line here (or a RegisterEvent call of its
 	// own before DevTools::Load); the window and "gm event <id>" pick it up by themselves.
 	DevTools::RegisterEvent({ .id = "traveler", .label = "A traveler joins the camp", .console = "dd-traveler" });
-	return Campfire::Load(context) && DevTools::Load(context) &&
+	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) &&
 		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&
