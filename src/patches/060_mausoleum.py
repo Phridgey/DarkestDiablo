@@ -164,19 +164,45 @@ def rune_steps():
 
 def white_copies(t, item_levels):
     """Always-white copies of the weapon and armor bases from BASE_BAND levels under each item
-    level up to it. Returns the copies' codes per difficulty."""
-    types = t.table("itemtypes")
-    by_code = {r.get("Code"): r for r in types.rows if r.get("Code")}
-    taken = {r.get("code") for name in ("weapons", "armor", "misc") for r in t.table(name).rows}
-    quest = {r.get("code") for name in ("weapons", "armor", "misc") for r in t.table(name).rows
+    level up to it. Returns the copies' codes per difficulty.
+
+    Both copies of the tables (global/excel and global/excel/base) must get the same new rows in
+    the same order: the game mixes up the two copies' row numbers, so an item list that is 8 rows
+    longer in one copy showed every later item with the picture of the item 8 rows before it (an
+    Identify scroll looked like a ring, Minor Healing Potions like rubies). So which bases get a
+    copy is always decided from global/excel. Where the base copy has only Blizzard's empty
+    placeholder for a base (the Warlock's grimoires), it gets an empty placeholder copy too, which
+    never drops there."""
+    main = type(t)()  # global/excel, read fresh
+    is_main = t.excel == main.excel
+    if is_main:
+        main = t
+    main_types = main.table("itemtypes")
+    by_code = {r.get("Code"): r for r in main_types.rows if r.get("Code")}
+    quest = {r.get("code") for name in ("weapons", "armor", "misc") for r in main.table(name).rows
              if r.get("quest", "").strip() not in ("", "0")}
-    items = t.data("hd/items/items.json")
+    items = main.data("hd/items/items.json")
     assets = {code: v for entry in items for code, v in entry.items()}
+
+    types = t.table("itemtypes")
+    if not is_main:
+        # Blizzard's own type rows that only global/excel has (they sit at its end) are copied
+        # first, so the new types get the same row numbers in both copies.
+        have = {r.get("Code") for r in types.rows}
+        vanilla = [r for r in type(t)().table("itemtypes").rows]
+        for row in vanilla:
+            if row.get("Code") and row["Code"] not in have:
+                types.rows.append(dict(row))
+        if [r.get("Code") for r in types.rows] != [r.get("Code") for r in vanilla]:
+            raise RuntimeError("itemtypes: the two copies differ in more than rows at the end")
+    own_types = {r.get("Code"): r for r in types.rows if r.get("Code")}
+    taken = {r.get("code") for name in ("weapons", "armor", "misc") for r in t.table(name).rows}
+
     new_types = {}
     per_difficulty = [[] for _ in item_levels]
     for name in ("weapons", "armor"):
         table = t.table(name)
-        for row in list(table.rows):
+        for row in list(main.table(name).rows):
             code, level = row.get("code", ""), row.get("level", "")
             if (len(code) != 3 or not level.isdigit() or row.get("spawnable") != "1" or code in quest
                     or row.get("type") not in by_code or code not in assets):
@@ -186,28 +212,35 @@ def white_copies(t, item_levels):
                 continue
             kind = row["type"]
             if kind not in new_types:
-                # Named by the original type's place in itemtypes, so both copies of the tables
-                # (global/excel and its base copy) give a type the same code.
+                # Named by the original type's place in global/excel's itemtypes, so both copies
+                # give a type the same code.
                 n = list(by_code).index(kind)
                 digits = "0123456789abcdefghijklmnopqrstuvwxyz"
                 new_code = "zw" + digits[n // 36] + digits[n % 36]  # 4 characters at most
-                if new_code in by_code:
+                if new_code in own_types:
                     raise RuntimeError(f"item type code {new_code} is taken")
-                copy = dict(by_code[kind])
+                copy = dict(own_types[kind])
                 copy.update({"ItemType": f"DD White {copy['ItemType']}", "Code": new_code, "Equiv1": kind, "Equiv2": "",
                              "Normal": "1", "Magic": "0", "Rare": "0", "TreasureClass": "0"})
                 types.rows.append(copy)
+                own_types[new_code] = copy
                 new_types[kind] = new_code
             new_code = "z" + code
             if new_code in taken:
                 raise RuntimeError(f"item code {new_code} is taken")
             taken.add(new_code)
-            copy = dict(row)
-            copy.update({"code": new_code, "type": new_types[kind], "spawnable": "0"})
+            own = table.first("code", code)
+            copy = dict(own)
+            copy["code"] = new_code
+            copy["spawnable"] = "0"
+            if own.get("type"):
+                copy["type"] = new_types[kind]
+                for d in wanted:
+                    per_difficulty[d].append(new_code)
+            # else: Blizzard's empty placeholder row in the base copy; it stays empty and never drops.
             table.rows.append(copy)
-            items.append({new_code: dict(assets[code])})
-            for d in wanted:
-                per_difficulty[d].append(new_code)
+            if is_main:
+                items.append({new_code: dict(assets[code])})
     for d, codes in enumerate(per_difficulty):
         if not codes:
             raise RuntimeError(f"No white bases for the Mausoleum at item level {item_levels[d]}.")

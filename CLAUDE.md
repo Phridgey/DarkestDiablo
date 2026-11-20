@@ -101,6 +101,10 @@ Plain, jargon-free language in docs and commit messages.
   (`PanelManager:OpenPanel:darkestdiablo/travel-<level>`) and catch it in the UI-message listener.
 - Crowded arenas sometimes refuse a spawn ("Monster not created") and the plugin can't see it, so
   an arena clears with up to `MissingSpawnSlack` monsters unaccounted for.
+- New item rows must be the same rows, in the same order, in `global/excel` and `global/excel/base`
+  (keep Blizzard's empty placeholder rows as placeholders). The game mixes the two copies' row
+  numbers for item pictures: 8 grimoire copies only in `global/excel` made every later item show
+  the picture 8 rows earlier (Identify scroll as a ring, Minor Healing Potion as a ruby; 0.13.2).
 - `createItem` refuses quest items (Book of Skill: `Unsupported`). Give those through a monster's
   treasure class instead.
 - Console typing through computer use: the clipboard paste drops newlines; press Return after
