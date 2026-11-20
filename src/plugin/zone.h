@@ -1,7 +1,7 @@
-// The linear zone (prototype): a red portal by the town fire leads into a short cave
-// (src/patches/120_linear_zone.py) that the hero crosses from west to east, through the game's
-// own random monster packs. Reaching the last room brings out an elite (Bishibosh); his death
-// gives a Town Portal scroll. Reference: docs/linear-zone.md.
+// The Tower zone (prototype): a red portal by the town fire leads to the Forgotten Tower's last
+// floor (src/patches/120_linear_zone.py). Packs fight the hero on the way, an elite in each side
+// room drops a Tower seal, and with both seals the altar in the last room brings out Blood Raven.
+// Reference: docs/linear-zone.md.
 #pragma once
 
 #include <D2RLPlugin/api.h>
@@ -9,7 +9,7 @@
 namespace Zone {
 
 // Called once from D2RLoaderLoadPlugin. `giveTownPortal` queues the arenas' Town Portal scroll.
-// Registers the console commands dd-zone, dd-zone-portal and dd-zone-boss.
+// Registers the console commands dd-zone, dd-zone-portal, dd-zone-boss and dd-zone-seals.
 using GiveFn = void (*)(const D2RL::PluginContext* context) noexcept;
 auto Load(const D2RL::PluginContext* context, GiveFn giveTownPortal) noexcept -> bool;
 

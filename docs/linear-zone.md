@@ -1,52 +1,53 @@
-# Linear zone (prototype)
+# Tower zone (prototype)
 
-Sam's test of a custom zone (2026-11-20): a short, linear map, like a much shorter Path of Exile
-map. The player enters on one side, fights through to the other and kills an elite at the end.
-Reached through a red portal in town. Uses the custom Den of Evil's look and monsters.
+Sam's test of a custom zone (2026-11-20). A first try, a long linear cave, was far too big.
+This one is the Forgotten Tower's last floor turned into a small quest map:
 
-## How to try it
 1. In the Rogue Encampment, a red portal stands a few steps from the fire (about 1.5 s after
    arriving). Walk into it.
-2. You arrive at the west end of a cave six rooms long. The game's own random packs of Den
-   monsters (Fallen, Fallen Shamans, zombies, with the odd champion or unique pack) are spread
-   along it.
-3. Walk east. When you reach the last room, Bishibosh (a Fallen Shaman boss with his Fallen)
-   comes out a little ahead of you.
-4. Killing him gives a Town Portal scroll, as in the arenas.
+2. You arrive in the south loop of the Tower floor. Packs of Tower monsters (Fallen, ghosts,
+   goatmen, archers) come out as you go. They have 80% of the Den monsters' life, damage,
+   defense, hit chance and experience.
+3. An elite waits in each side room (west and east), with a few minions. Each drops a Tower
+   seal (1x2): the West and the East Tower Seal.
+4. The north room (the Countess's) is empty except for an altar (the Tower's tome). Walk up to
+   it or click it with both seals in your inventory: the seals vanish and Blood Raven comes out.
+5. Killing her gives a Town Portal scroll, as in the arenas.
 
-Test commands (console): `dd-zone` goes straight to the zone; `dd-zone-portal` puts the red
-portal where you stand and prints its offset from the fire (to choose a better spot);
-`dd-zone-boss` spawns the boss next to you.
+Seal rules:
+- Put in the stash (personal or shared) or the Cube, a seal jumps back to the inventory. With no
+  room, it stays there and jumps back as soon as there is.
+- Seals don't outlive the game: any seal the hero didn't pick up in this game vanishes (the
+  game saves items when you quit, before the plugin can act, so they go at the next game's
+  start instead).
+
+Test commands (console): `dd-zone` goes straight to the zone; `dd-zone-seals` prints where you
+stand (zone cell) and which seals you picked up; `dd-zone-boss` brings out Blood Raven without
+the seals; `dd-zone-portal` puts the red portal where you stand and prints its offset from the
+fire.
 
 ## How it is built
 | Part | Where |
 | --- | --- |
-| Map: Blizzard's Act I cave rooms `cavee`, 4 x `caveew`/`caveew2`, `cavew` in a row (145 x 25 tiles) | `src/maps/linear_zone.json` |
-| Level: "Act 1 - Jail 3" (Id 31) reused, with the Den's look, sound, name, monster level and monsters; random packs on (lvlprest `Populate` 1, `MonDen` 900) | `src/patches/120_linear_zone.py` |
-| Red portal, travel, arrival spot, boss, scroll | `src/plugin/zone.cpp` |
+| Map: Blizzard's `act1/crypt/cryptcountess2` (the Countess floor's second layout, 31 x 31 cells) without its monsters, chests and gold | `src/maps/tower_zone.json` |
+| Level: "Act 1 - Jail 3" (Id 31) reused, with the Tower cellar's look and sound and the Den's monster level; random packs off. The real Tower floor (level 25) is untouched: the Countess stop uses it | `src/patches/120_linear_zone.py` |
+| Monsters `dd_tower_<id>` (80% of the Den's numbers), the elites (`dd_tower_keeper_w/e` and two new superuniques), the seals `zs1`/`zs2` and their loot tables | `src/patches/120_linear_zone.py` |
+| Red portal, arrival, packs, elites, altar, Blood Raven, scroll, seal rules | `src/plugin/zone.cpp` |
+
+The elites' superunique rows and the seal codes reach the plugin as `towerelite <n> <row> <code>`
+lines in `d2rloader/loot_data.txt`.
 
 ## Engine limits (and the workarounds)
-- **No real linked portal.** The SDK can't make a portal with a destination, and a raw
-  `cheat ospawn` portal leads nowhere. The red portal is the Tristram portal's look
-  (objects.txt row 189, CainPortal, a dummy the game never operates). The plugin watches the
-  hero's position and sends them with `goto 31` when they step into it.
-- **`cheat ospawn` places at the hero's feet.** The hero is moved to the portal spot and back
-  in the same moment (`location`), as for the traveler's portal.
-- **Maps are stitched from Blizzard's rooms.** No new terrain; the tunnels bend as Blizzard drew
-  them. The layout is the same every game; the monsters are new every game.
-- **Spawns only work near the hero.** The boss can't wait in the end room; he comes out when the
-  hero gets there.
-- **The zone keeps its state for the whole game.** Going back in during the same game finds it
-  cleared; a new game makes it fresh.
+- **No real linked portal.** The red portal is the Tristram portal's look (objects.txt row
+  189, a dummy). The plugin sends the hero with `goto 31` when they step into it.
+- **`cheat ospawn` places at the hero's feet.** The hero is moved to the spot and straight back
+  (`location`) to put up the red portal and the altar.
+- **No object-click event.** The altar fires when the hero reaches it, which clicking it does.
+- **The stash can't refuse an item.** The plugin moves a stored seal back to the inventory.
+- **Nothing can run as the hero quits.** Leftover seals vanish at the next game instead.
+- **Spawns only work near the hero.** Packs, elites and Blood Raven come out as the hero nears.
 
 ## Numbers to tune after the first test (top of `src/plugin/zone.cpp`)
-- `PortalFromFireX/Y`: where the portal stands next to the fire (guessed).
-- `StartTileX/Y`: the arrival spot in the first room (guessed; the hero is only moved if `goto`
-  put them outside the first room).
-- `BossRoomEnter`, `BossAhead`: when and where the boss comes out.
-- `DENSITY` and `MONSTERS` in the patch: how packed the corridor is, and with what.
-
-## Not known yet (first test)
-- Whether the game fills a hand-made map with its random packs. Its own preset levels
-  (Tristram) are filled, so it should. If not, the plugin can spawn a pack per room instead.
-- Whether the six rooms join cleanly (no walls across the openings, no black gaps).
+The spots (`Entry`, `Altar`, `RavenAt`, `EliteAt`, `Packs`) are map cells read from the map file,
+not yet checked in game; `dd-zone-seals` prints the cell you stand in. `STRENGTH`, the monster
+kinds and the elites' mods are at the top of the patch.
