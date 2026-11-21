@@ -55,10 +55,11 @@ for (const Game::PlayerDetails& p : Game::Players()) {
 }
 ```
 
-React to changes from one place, on a timer (the plugin's `Later` helper in `campfire.cpp`):
+React to changes by subscribing to the shared event feed. The plugin looks for changes every
+250 ms (one tick for everyone) and calls each subscriber on the UI thread:
 
 ```cpp
-for (const Game::Event& e : Game::Poll()) {
+void OnGameEvent(const Game::Event& e, void* userData) {
 	switch (e.type) {
 		case Game::EventType::HeroDied:     /* permanent death */ break;
 		case Game::EventType::ObjectUsed:   /* e.unit.row: which object; e.after: its new mode */ break;
@@ -67,6 +68,19 @@ for (const Game::Event& e : Game::Poll()) {
 		default: break;
 	}
 }
+
+const int id = Game::Subscribe(OnGameEvent);  // once, e.g. when your feature loads
+Game::Unsubscribe(id);                        // when it no longer wants events
+```
+
+Numbers for the run and the current stop, kept by the API from the same feed:
+
+```cpp
+const Game::CounterSet c = Game::Counters();
+// c.run.kills, c.run.killsChampion, c.run.killsUnique, c.run.killsBoss, c.run.heroDeaths,
+// c.run.mercDeaths, c.run.goldGained, c.run.itemsFound, c.run.levelsGained, c.run.shrinesUsed,
+// c.run.chestsOpened, c.run.seconds; the same in c.stop for the area the hero is in (c.stopArea).
+Game::ResetStop();  // e.g. when an arena's first wave starts, if "stop" should mean that instead
 ```
 
 ## Rules for calling it
@@ -78,9 +92,12 @@ for (const Game::Event& e : Game::Poll()) {
   Always check before using a value.
 - **Units are snapshots.** A `Game::Unit` holds the values read when you got it. Ask again (or
   `GameState::Refresh(unit)`) for newer ones; never keep `unit.address` for later.
-- **One poller.** `Game::Poll()` compares with its previous call, so only one place may call it.
-  Today that is the `dd-state watch` tick. A feature that needs events should share that tick
-  (or become it), not start a second one.
+- **One tick, many subscribers.** Only the plugin's timer (`TrackTick` in `campfire.cpp`) calls
+  `Game::Tick()`. Features use `Game::Subscribe()` and `Game::Counters()`, never a timer of
+  their own that looks for changes. `Game::Poll()` still works (everything since its previous
+  call) for one caller; new code should subscribe instead.
+- **Subscribers are quick.** They run on the game's UI thread right after the tick. Do the work
+  or hand it to `Later`; never wait or sleep in one.
 - **Cost.** A call walks the loaded units (a few hundred) and takes well under a millisecond.
   Fine every 100-250 ms; avoid calling it every frame from many places.
 - **Positions** are world sub-tiles, the same numbers `location player` prints. `fx`, `fy` add
@@ -193,7 +210,7 @@ and `Other`.
 
 For the local player's own items, the SDK's InventoryService is checked and preferred.
 
-### What changed: `Game::Poll()`
+### What changed: events (`Game::Subscribe()`, `Game::Poll()`)
 
 | Event | `before` / `after` | Status |
 | --- | --- | --- |
@@ -210,8 +227,36 @@ For the local player's own items, the SDK's InventoryService is checked and pref
 | `ObjectUsed` | mode before / after (chest opened, shrine taken, door opened) | mapped |
 | `UnitAppeared` / `UnitGone` | a monster, object or item came into or left the loaded area | mapped |
 
-The first call only takes a snapshot. The town fire and stash never change mode, so the fire
+The first tick only takes a snapshot. The town fire and stash never change mode, so the fire
 click still goes by distance (`docs/campfire.md`).
+
+### The event feed: `Game::Subscribe(callback, userData)`, `Game::Unsubscribe(id)`
+
+Every event above goes to every subscriber, in order, once. The tick runs every 250 ms from
+the moment the plugin loads (at the menus it finds no hero and does nothing). A monster that
+dies and disappears within 250 ms can be missed; in practice the dying animation and the
+corpse last much longer. Status: mapped (built on the events above).
+
+### Run counters: `Game::Counters()`, `Game::ResetCounters()`, `Game::ResetStop()`
+
+`Counters()` returns a `CounterSet`: `run` (since the run started), `stop` (since the hero
+entered the current area) and `stopArea` (that area's levels.txt Id). Each is a `Tally`:
+
+| Counter | How it is counted | Status |
+| --- | --- | --- |
+| `kills` | `MonsterDied` of a monster of class `Enemy` (not NPCs, summons, critters, the mercenary) | mapped |
+| `killsNormal`, `killsChampion`, `killsUnique`, `killsBoss` | the dead monster's kind; boss = monstats.txt `boss` rows (act bosses, Blood Raven, Griswold, the Summoner, Radament...), which wins over unique | mapped |
+| `heroDeaths`, `mercDeaths` | `HeroDied`, `MercDied` | mapped |
+| `goldGained` | each rise of gold carried + stash gold (picking up, selling, quest gold). Moving gold to the stash doesn't count; spending doesn't subtract | mapped |
+| `itemsFound` | items that newly belong to the hero (`HeroItems()`): picked up, bought, rewards. What the hero owns when the run starts doesn't count | mapped (needs the item owner number) |
+| `levelsGained` | `HeroLevelUp` | mapped |
+| `shrinesUsed`, `chestsOpened` | `ObjectUsed` from idle (mode 0) of a `Shrine` or `Chest` kind object, once per object | mapped |
+| `seconds` | real time since the reset; the game's pause menu still counts | checked by the clock |
+
+The run starts at `ResetCounters()`, which the Campfire calls when a game with a hero starts
+(`GameJoined`). The stop starts again by itself whenever the hero enters another area (going to
+town and back starts a new stop too), or at `ResetStop()`. Nothing is saved: the counters start
+from zero with each game, so a run that spans several games needs its own saved total.
 
 ### Planned (needs finding in the game's code, then checking)
 
@@ -268,12 +313,36 @@ Open the console in game:
   numbers of each skill (to find where the points live if `baseLevel` is wrong).
 - `dd-state items`: every item the hero owns, with place, slot, page, quality and item level.
 - `dd-state players`: every player (the hero, a corpse) and the mercenary.
-- `dd-state watch`: logs each `Game::Poll()` change as "State:" lines; type it again to stop.
+- `dd-state counters`: the run and stop counters; `dd-state counters reset` starts them again.
+- `dd-state watch`: subscribes and logs each event as "State:" lines; type it again to stop.
 - `dd-state tables`: research for where missiles live.
 
 Everything is also written to the plugin log (`Mods\darkestdiablo\d2rloader\logs\darkestdiablo.log`).
 When a mapped value proves right, mark it checked here; when it's wrong, fix the offset in
 `gameapi.cpp` and note what the game showed.
+
+### One play session to check the mapped values
+
+Copy the log afterwards (it is rewritten when the game starts again). Type `dd-state watch`
+first so every event is logged, then:
+
+| Do this | Then type | What should match |
+| --- | --- | --- |
+| Stand in town | `dd-state` | hero line: mana, gold, stash gold, exp as on the character screen; `town idle`; world: act 0, your difficulty; objects: `stash`, `waypoint`, `fire` kinds |
+| Open the character screen | `dd-state stats` | strength, dexterity, resistances, defense, magic find as the screen shows them |
+| Open the skill tree | `dd-state skills` | each skill's points (second number); left and right skill match the mouse buttons. If points are -1 or wrong, send the raw lines |
+| Wear, carry, stash and belt a few items | `dd-state items` | slot of each worn item, page 0 / 3 / 4 for inventory / cube / stash, quality, ethereal, unidentified |
+| Hire a mercenary, walk near it | `dd-state players` | `Mercenary:` line with its life; the hero line says `the hero` |
+| Cast a buff (or get cursed / chilled) | `dd-state states` | the state appears; `State: hero state on` / `off` in the log |
+| Walk into a monster area | `dd-state` | monsters say `enemy`; champions / uniques marked; NPCs in town say `npc` |
+| Kill monsters, a champion, a unique | `dd-state counters` | kills by kind; `State: monster died` lines |
+| Open chests, take a shrine, pick up gold and items | `dd-state counters` | chests, shrines, gold +, items found; `object used` lines |
+| Get hit, drink a potion, level up | (log) | `hero hit`, `hero healed`, `hero level up` lines; levels + in counters |
+| Change the right skill | (log) | `right skill changed` with the skills.txt rows |
+| Die (or let the mercenary die) | `dd-state players`, `dd-state counters` | a `corpse` player line; `hero died` / `mercenary died`; deaths in counters |
+| Go to another area | `dd-state counters` | the stop counters start again with the new area Id |
+
+Mark each value that matched as checked in the tables above.
 
 ## Adding to the API
 

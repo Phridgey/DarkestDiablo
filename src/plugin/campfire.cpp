@@ -1435,24 +1435,28 @@ auto UnitsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 // "dd-state watch" logs changes (Game::Poll) every 250 ms until typed again; "dd-state tables"
 // lists every unit-list-shaped address in the game's code (research: where missiles live);
 // "dd-state skills" the hero's skills; "dd-state items" what the hero wears and carries;
-// "dd-state players" every player, corpse and the mercenary.
-std::atomic<bool> g_watching { false };
+// "dd-state players" every player, corpse and the mercenary; "dd-state counters" the run and
+// stop counters ("dd-state counters reset" starts them again).
 
-void __cdecl WatchTick(const D2RL::PluginContext* context, void*) noexcept {
-	if (!g_watching) {
-		return;
-	}
+// The game-state API's one tick (gameapi.h, "The shared event feed"): every 250 ms on the UI
+// thread, from the moment the plugin loads. It feeds every subscriber and the run counters.
+void __cdecl TrackTick(const D2RL::PluginContext* context, void*) noexcept {
 	try {
-		for (const Game::Event& e : Game::Poll()) {
-			if (e.type == Game::EventType::UnitAppeared || e.type == Game::EventType::UnitGone) {
-				continue;  // too many to log; the API still reports them
-			}
-			Log(context, "State: %s: %s row %u #%u at %d,%d (%d -> %d)", Game::EventName(e.type), GameState::KindName(e.unit.kind), e.unit.row,
-				e.unit.id, e.unit.x, e.unit.y, e.before, e.after);
-		}
+		Game::Tick();
 	} catch (...) {
 	}
-	Later(context, 250, WatchTick);
+	Later(context, 250, TrackTick);
+}
+
+// "dd-state watch": a subscriber that logs each event (not units coming and going: too many).
+std::atomic<int> g_watchId { 0 };
+
+void WatchEvent(const Game::Event& e, void* userData) {
+	if (e.type == Game::EventType::UnitAppeared || e.type == Game::EventType::UnitGone) {
+		return;
+	}
+	Log(static_cast<const D2RL::PluginContext*>(userData), "State: %s: %s row %u #%u at %d,%d (%d -> %d)", Game::EventName(e.type),
+		GameState::KindName(e.unit.kind), e.unit.row, e.unit.id, e.unit.x, e.unit.y, e.before, e.after);
 }
 
 auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
@@ -1476,13 +1480,32 @@ auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 			return D2RL::ConsoleCommandResult::Handled;
 		}
 		if (args == "watch") {
-			g_watching = !g_watching;
-			say(g_watching ? "Watching for changes (hero died, object used, monster died, area, hits); see the log. 'dd-state watch' stops."
-			               : "Stopped watching.");
-			if (g_watching) {
-				Game::Poll();
-				Later(command->plugin, 250, WatchTick);
+			if (const int id = g_watchId.exchange(0); id != 0) {
+				Game::Unsubscribe(id);
+				say("Stopped watching.");
+			} else {
+				g_watchId = Game::Subscribe(WatchEvent, const_cast<D2RL::PluginContext*>(command->plugin));
+				say("Watching for changes (hero died, object used, monster died, area, hits); see the log. 'dd-state watch' stops.");
 			}
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (args == "counters" || args == "counters reset") {
+			if (args == "counters reset") {
+				Game::ResetCounters();
+				say("Counters reset.");
+			}
+			const Game::CounterSet c = Game::Counters();
+			const auto line = [&](const char* name, const Game::Tally& t) {
+				char text[320];
+				std::snprintf(text, sizeof(text),
+					"%s: %.0f s; kills %d (normal %d, champion %d, unique %d, boss %d); deaths hero %d, merc %d; gold +%lld; items found %d; "
+					"levels +%d; shrines %d; chests %d.",
+					name, t.seconds, t.kills, t.killsNormal, t.killsChampion, t.killsUnique, t.killsBoss, t.heroDeaths, t.mercDeaths, t.goldGained,
+					t.itemsFound, t.levelsGained, t.shrinesUsed, t.chestsOpened);
+				say(text);
+			};
+			line("Run", c.run);
+			line(("Stop (area " + std::to_string(c.stopArea) + ")").c_str(), c.stop);
 			return D2RL::ConsoleCommandResult::Handled;
 		}
 		if (!GameState::Ready()) {
@@ -2035,6 +2058,10 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		if (context->QueryService(&g_threads) != D2RL::ServiceQueryResult::Success || !D2RL::HasThreadServiceField(g_threads, D2RL::ThreadServiceRequiredSize)) {
 			g_threads = nullptr;
 		}
+		static std::atomic<bool> tracking { false };
+		if (g_threads != nullptr && !tracking.exchange(true)) {
+			Later(context, 250, TrackTick);  // the game-state API's event feed and counters (gameapi.h)
+		}
 		if (context->QueryService(&g_widgets) != D2RL::ServiceQueryResult::Success || !D2RL::HasWidgetServiceField(g_widgets, D2RL::WidgetServiceRequiredSize)) {
 			g_widgets = nullptr;
 			context->LogWarn("Camp: widget service missing; classes can't be hidden on the hero screen.");
@@ -2081,7 +2108,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).") &&
 		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).") &&
 		context->RegisterConsoleCommand("dd-set", SetCommand, "Game-state WRITES test: dd-set copies | stat <id> <value> | hold <id> <value> | state <row> end|stat ...") &&
-		context->RegisterConsoleCommand("dd-state", StateCommand, "Game-state API test: hero, world, monsters, objects, items; 'dd-state stats', 'states', 'skills', 'items', 'players', 'watch', 'tables'.") &&
+		context->RegisterConsoleCommand("dd-state", StateCommand, "Game-state API test: hero, world, monsters, objects, items; 'dd-state stats', 'states', 'skills', 'items', 'players', 'counters', 'watch', 'tables'.") &&
 		context->RegisterConsoleCommand("dd-units", UnitsCommand, "List the units the game has loaded: 'dd-units', 'dd-units objects 39', 'dd-units monsters', 'dd-units find' (test).");
 }
 
@@ -2325,6 +2352,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 		using Kind = D2RL::Lifecycle::GameplayEventKind;
 		switch (event->kind) {
 		case Kind::GameJoined:
+			Game::ResetCounters();  // a game with a hero starts the run's counters (gameapi.h)
 			g_inGame = true;
 			g_slotChosen = true;
 			g_died = false;
