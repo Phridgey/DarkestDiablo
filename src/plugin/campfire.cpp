@@ -508,7 +508,7 @@ auto StartRelauncher(std::string& error) -> bool {
 	const std::wstring line = GetCommandLineW();
 	size_t start = line.empty() ? 0 : line[0] == L'"' ? line.find(L'"', 1) : line.find(L' ');
 	start = start == std::wstring::npos ? line.size() : start + 1;
-	std::wstring args = line.substr(std::min(start, line.size()));
+	std::wstring args = line.substr(start);  // start is at most line.size() here
 	args.erase(0, args.find_first_not_of(L' ') == std::wstring::npos ? args.size() : args.find_first_not_of(L' '));
 	const auto quote = [](const std::wstring& text) {
 		std::wstring out = L"'";
