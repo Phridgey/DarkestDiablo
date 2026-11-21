@@ -48,6 +48,17 @@ def monsters():
     return out
 
 
+def bosses():
+    """Rows marked boss in monstats.txt (act bosses, Blood Raven, Griswold, the Summoner...)."""
+    h, rows = read("monstats.txt")
+    out = []
+    for r in rows:
+        get = lambda k: r[h[k]] if h[k] < len(r) else ""
+        if get("*hcIdx").strip().isdigit() and get("boss") == "1":
+            out.append(int(get("*hcIdx")))
+    return sorted(out)
+
+
 def objects():
     h, rows = read("objects.txt")
     out = {}
@@ -107,6 +118,9 @@ namespace Tables {{
 {table("MonsterClasses", "MonsterClass", monsters())}
 
 {table("ObjectKinds", "ObjectKind", objects())}
+
+// monstats.txt rows marked boss, sorted.
+inline constexpr uint16_t BossRows[] = {{ {", ".join(str(b) for b in bosses())} }};
 
 }}  // namespace Tables
 }}  // namespace Game
