@@ -10,7 +10,8 @@ d2rloader/loot_data.txt. Runs after every patch that changes these superuniques,
 get their changes too.
 """
 
-SPAWNED = ["Corpsefire", "Rakanishu", "Treehead WoodFist", "Griswold", "The Countess"]
+SPAWNED = ["Corpsefire", "Rakanishu", "Treehead WoodFist", "Griswold", "The Countess", "Radament", "Bloodwitch the Wild",
+           "Coldworm the Burrower", "Fangskin", "The Summoner"]
 
 
 def patch(t):

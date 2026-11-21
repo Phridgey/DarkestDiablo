@@ -1,0 +1,63 @@
+{
+  "name": "darkest_andariel",
+  "folder": "act1/catacomb",
+  "room": 22,
+  "comment": "Andariel (src/patches/125_andariel.py): a copy of Blizzard's Catacombs level 4 map (act1/catacomb/andy3, 23 x 32 cells) without its monsters (Andariel and her Fallen Shamans; the plugin spawns everything), without its two doors, so no door can be shut on her (the one from the south room up to her hall, tiles 8,22 and 9,22, and the one between the east room and the south room, 16,26 and 16,27, whose HD door model goes too), and without its stairs (tiles 18,22 and 19,22 get the plain wall of their neighbours, and the stairs' HD model becomes two plain walls): the level leads nowhere, and the hero comes and goes by the route map and Town Portal. Spots: src/plugin/andariel.cpp.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/catacomb/andy3"
+    }
+  ],
+  "remove_walls": [
+    [
+      8,
+      22
+    ],
+    [
+      9,
+      22
+    ],
+    [
+      16,
+      26
+    ],
+    [
+      16,
+      27
+    ]
+  ],
+  "close_edges": false,
+  "drop_entities": [
+    "door01",
+    "stairs02"
+  ],
+  "copy_walls": [
+    [
+      17,
+      22,
+      18,
+      22
+    ],
+    [
+      20,
+      22,
+      19,
+      22
+    ]
+  ],
+  "add_entities": [
+    {
+      "copy": "wall_plain_37",
+      "x": 188,
+      "z": 222
+    },
+    {
+      "copy": "wall_plain_37",
+      "x": 198,
+      "z": 222
+    }
+  ]
+}

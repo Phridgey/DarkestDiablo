@@ -1,0 +1,98 @@
+{
+  "name": "darkest_canyon",
+  "folder": "act2/outdoors",
+  "room": 8,
+  "comment": "Canyon of the Magi (src/patches/116_act2_tier3.py): a round sandy hollow, 3x3 of the desert's own ground pieces made one open circle (radius 11) and ringed with the desert's rocks. The hero arrives at the west edge.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/outdoors/desert1"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "piece": "act2/outdoors/desert2"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "piece": "act2/outdoors/desert3"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act2/outdoors/desert4"
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "piece": "act2/outdoors/desert5"
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "piece": "act2/outdoors/desert6"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act2/outdoors/desert7"
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "piece": "act2/outdoors/desert8"
+    },
+    {
+      "x": 2,
+      "y": 2,
+      "piece": "act2/outdoors/desert9"
+    }
+  ],
+  "circle": {
+    "radius": 11,
+    "ring": [
+      {
+        "dist": 0.5,
+        "step": 1.4,
+        "scale": [
+          1.0,
+          1.6
+        ],
+        "models": [
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_rocks/rock_set01.model",
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_rocks/rock_set02.model",
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_rocks/rock_set03.model"
+        ]
+      },
+      {
+        "dist": 1.6,
+        "step": 1.6,
+        "scale": [
+          1.4,
+          2.2
+        ],
+        "models": [
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_rocks/rock_set01.model",
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_rocks/rock_set02.model",
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_rock_skirts/rock_skirt_spread02.model"
+        ]
+      },
+      {
+        "dist": 2.8,
+        "step": 2.0,
+        "scale": [
+          1.8,
+          2.8
+        ],
+        "models": [
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_rocks/rock_set03.model",
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_rocks/rock_set01.model"
+        ]
+      }
+    ]
+  },
+  "close_edges": true
+}

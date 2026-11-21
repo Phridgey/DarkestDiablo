@@ -1,0 +1,30 @@
+{
+  "name": "darkest_sewers",
+  "folder": "act2/sewer",
+  "room": 12,
+  "comment": "Sewers 3 (src/patches/111_act2_arenas.py): a copy of three sewer rooms in a line, no stairs: the hero arrives in the south room (sewn), goes north through one passage (sewns) into Radament's lair (sewsrad). The rooms' own monsters are gone; Radament and his waves come from the plugin.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/sewer/sewsrad"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act2/sewer/sewns"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act2/sewer/sewn"
+    }
+  ],
+  "close_edges": true,
+  "allow_holes": [
+    "act2/sewer/sewsrad",
+    "act2/sewer/sewns",
+    "act2/sewer/sewn"
+  ]
+}

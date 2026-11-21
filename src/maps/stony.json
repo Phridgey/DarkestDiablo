@@ -1,0 +1,76 @@
+{
+  "name": "darkest_stony",
+  "folder": "act2/tomb",
+  "room": 16,
+  "comment": "Stony Tomb (src/patches/111_act2_arenas.py): one round tomb hall like the Mausoleum's, 26 tiles across: 2x2 of Blizzard's four-way tomb rooms (tombnsew) give the floor and look, 'circle' makes them one round open floor ringed with tomb pillars, sand, bones and statues. The hero arrives at the west edge (tile 4,16).",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/tomb/tombnsew"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "piece": "act2/tomb/tombnsew"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act2/tomb/tombnsew"
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "piece": "act2/tomb/tombnsew"
+    }
+  ],
+  "circle": {
+    "radius": 13,
+    "ring": [
+      {
+        "dist": 0.4,
+        "step": 2.4,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "models": [
+          "data/hd/env/model/act2/tomb/act2_tomb_pillars/pillar01_clean.model"
+        ],
+        "turn": false,
+        "jitter": 0
+      },
+      {
+        "dist": 0.9,
+        "step": 1.6,
+        "scale": [
+          0.9,
+          1.3
+        ],
+        "models": [
+          "data/hd/env/model/global/prop/act2/tomb/act2_tomb_sand_piles/sand_pile07.model",
+          "data/hd/env/model/global/prop/act2/tomb/act2_tomb_sand_piles/sand_pile06.model",
+          "data/hd/env/model/global/prop/act2/outdoors/act2_outdoors_bones/rib02.model",
+          "data/hd/env/model/global/prop/act2/tomb/act2_tomb_gravegoods/canopic_jar01.model"
+        ]
+      },
+      {
+        "dist": 2.0,
+        "step": 4.5,
+        "scale": [
+          1.0,
+          1.2
+        ],
+        "models": [
+          "data/hd/env/model/act2/tomb/act2_tomb_statues/priestess01.model",
+          "data/hd/env/model/act2/tomb/act2_tomb_statues/pharoah01.model"
+        ],
+        "turn": false,
+        "jitter": 0.3
+      }
+    ]
+  },
+  "close_edges": true
+}

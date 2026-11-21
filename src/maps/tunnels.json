@@ -1,0 +1,35 @@
+{
+  "name": "darkest_tunnels",
+  "folder": "act2/sewer",
+  "room": 12,
+  "comment": "Ancient Tunnels (src/patches/116_act2_tier3.py): a copy of four sewer rooms in a line (the tunnels use the sewers' tiles), no stairs: the hero arrives in the south room and fights north.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/sewer/sews"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act2/sewer/sewns"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act2/sewer/sewns"
+    },
+    {
+      "x": 0,
+      "y": 3,
+      "piece": "act2/sewer/sewn"
+    }
+  ],
+  "allow_holes": [
+    "act2/sewer/sews",
+    "act2/sewer/sewns",
+    "act2/sewer/sewn"
+  ],
+  "close_edges": true
+}

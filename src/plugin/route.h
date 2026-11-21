@@ -38,7 +38,7 @@ struct Stop {
 	int         arenaLevel;  // the level whose clear counts for this stop; -1 = not built yet
 };
 
-inline constexpr int TierCount    = 6;
+inline constexpr int TierCount    = 11;  // Act I: tiers 0-5, Act II: 6-10
 inline constexpr int PicksPerFork = 2;
 
 inline constexpr Stop Stops[] = {
@@ -51,11 +51,32 @@ inline constexpr Stop Stops[] = {
 	{ "pit",       "Fork2Pit",       4, 16, 16 },  // MF run: the real Pit level 2 as an arena
 	{ "countess",  "Fork2Countess",  4, 25, 25 },  // crafting hunt: the game's Tower Cellar 5
 	{ "malus",     "Fork2Malus",     4, 28, 28 },  // XP grind: a cut-down Barracks; the Smith ends it
-	{ "andariel",  "NodeAndariel",   5, -1, -1 },
+	{ "andariel",  "NodeAndariel",   5, 37, 37 },  // her lair (Catacombs 4); andariel.cpp; cleared when she dies
+	// Act II (docs/act2.md)
+	{ "halls",     "NodeHalls",      6, 60, 60 },  // Halls of the Dead 3: cleared on picking up the Horadric Cube
+	{ "sewers",    "Fork3Sewers",    7, 49, 49 },  // XP grind: Sewers 3, shortened, with Radament
+	{ "stony",     "Fork3Stony",     7, 55, 55 },  // crafting hunt: Stony Tomb
+	{ "maggot",    "NodeMaggot",     8, 64, 64 },  // tier 8: both forced stops, any order; the Staff of Kings
+	{ "clawviper", "NodeClawViper",  8, 61, 61 },  // the Amulet of the Viper
+	{ "arcane",    "Fork4Arcane",    9, 74, 74 },  // crafting hunt; the Summoner ends it
+	{ "tunnels",   "Fork4Tunnels",   9, 65, 65 },  // MF run
+	{ "canyon",    "Fork4Canyon",    9, 46, 46 },  // XP grind
+	{ "duriel",    "NodeDuriel",    10, 66, 73 },  // arrive at the orifice (66); Duriel dies in his lair (73)
 };
 
 inline constexpr auto IsFork(int tier) -> bool {
-	return tier == 2 || tier == 4;
+	return tier == 2 || tier == 4 || tier == 7 || tier == 9;
+}
+
+// A tier of several forced stops on one row (Act II: Maggot Lair and Claw Viper Temple): each is
+// cleared once, in any order, and the next tier opens when all of them are.
+inline constexpr auto IsAllOf(int tier) -> bool {
+	return tier == 8;
+}
+
+// Which act a tier belongs to (1-based): its route map page.
+inline constexpr auto ActOfTier(int tier) -> int {
+	return tier < 6 ? 1 : 2;
 }
 
 inline auto StopById(const std::string& id) -> const Stop* {
@@ -107,6 +128,14 @@ struct Progress {
 	}
 
 	auto TierDone(int tier) const -> bool {
+		if (IsAllOf(tier)) {
+			for (const auto& stop : Stops) {
+				if (stop.tier == tier && Clears(stop) == 0) {
+					return false;
+				}
+			}
+			return true;
+		}
 		return TierClears(tier) >= (IsFork(tier) ? PicksPerFork : 1);
 	}
 
@@ -122,7 +151,8 @@ struct Progress {
 	// May the hero go there now? Only built stops of the current tier, and while a run is in
 	// progress only its stop.
 	auto CanEnter(const Stop& stop) const -> bool {
-		return stop.travelLevel >= 0 && stop.tier == CurrentTier() && (running.empty() || running == stop.id);
+		return stop.travelLevel >= 0 && stop.tier == CurrentTier() && (running.empty() || running == stop.id) &&
+			(!IsAllOf(stop.tier) || Clears(stop) == 0);
 	}
 
 	// The hero entered the stop: starts its run, or resumes the one in progress. Returns the

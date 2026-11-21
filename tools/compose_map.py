@@ -192,6 +192,20 @@ def compose(spec):
     for o in spec.get("extra_objects", []):
         tx, ty = o["tile"]
         m["objects"].append({"type": o["type"], "id": o["id"], "x": tx * 5 + 4, "y": ty * 5 + 4, "flags": 0})
+    # "remove_walls": [[x, y], ...] takes the walls off those tiles, e.g. a door (orientation 8 or
+    # 9, which the game turns into a door object) to leave an open doorway.
+    for tx, ty in spec.get("remove_walls", []):
+        i = ty * W + tx
+        for l in range(len(m["walls"])):
+            m["walls"][l][i] = m["orients"][l][i] = 0
+    # "copy_walls": [[from_x, from_y, to_x, to_y], ...] puts a neighbour's wall on a tile, e.g. a
+    # plain wall where stairs were (stairs are wall tiles too; a map whose stairs lead nowhere
+    # crashes the game, so a copy of a map without exits must lose them).
+    for fx, fy, tx, ty in spec.get("copy_walls", []):
+        src, dst = fy * W + fx, ty * W + tx
+        for l in range(len(m["walls"])):
+            m["walls"][l][dst] = m["walls"][l][src]
+            m["orients"][l][dst] = m["orients"][l][src]
     # "open": [x0, y0, x1, y1] (tiles, inclusive) makes one big room of the rooms in that box: no
     # walls inside it, floor everywhere inside, the rooms' own walls kept on its edge. build_hd
     # leaves out the models inside it too. Objects stay.
@@ -344,9 +358,12 @@ def rock_ring(spec, entities, deps, seen, next_id):
     cx, cz, r = (W - 1) / 2 * 10, (H - 1) / 2 * 10, spec["circle"]["radius"] * 10
     rows = spec["circle"].get("ring") or DEFAULT_RING
     wanted = {m for row in rows for m in row["models"]}
-    # Each model's settings (light, shadow, ground blend) as Blizzard's own Act I rooms use them.
+    # Each model's settings (light, shadow, ground blend) as Blizzard's own rooms use them (Act I,
+    # then Act II).
     templates = {}
-    for f in sorted((VANILLA / "hd" / "env" / "preset" / "act1").glob("*/*.json")):
+    rooms = sorted((VANILLA / "hd" / "env" / "preset" / "act1").glob("*/*.json")) + \
+        sorted((VANILLA / "hd" / "env" / "preset" / "act2").glob("*/*.json"))
+    for f in rooms:
         for e in json.loads(f.read_text(encoding="utf-8-sig")).get("entities") or []:
             for k in e.get("components") or []:
                 if k.get("type") == "ModelDefinitionComponent" and k.get("filename") in wanted:
@@ -355,7 +372,7 @@ def rock_ring(spec, entities, deps, seen, next_id):
             break
     missing = wanted - set(templates)
     if missing:
-        sys.exit(f"ring models not found in any Act I room: {sorted(missing)}")
+        sys.exit(f"ring models not found in any Act I or II room: {sorted(missing)}")
     for path in sorted(wanted):
         if path not in seen["models"]:
             seen["models"].add(path)
@@ -427,6 +444,8 @@ def build_hd(spec):
                 continue  # the circle gets its own rock ring below
             if spec.get("open") and is_solid_model(c) and inside_open(spec["open"], c):
                 continue  # the open box's inner walls and pillars
+            if any(name in (e.get("name") or "") for name in spec.get("drop_entities", [])):
+                continue  # e.g. a door's model, with the door taken off ("remove_walls")
             entities.append(c)
         ground = move(hd["terrain"], dx, dz, suffix)
         if terrain is None:
@@ -437,6 +456,20 @@ def build_hd(spec):
         biome = biome or hd.get("biomeFilename", "")
     if spec.get("circle"):
         next_id = rock_ring(spec, entities, deps, seen, next_id)
+    # "add_entities": [{"copy": <entity name>, "x": .., "z": ..}, ...] places another copy of one of
+    # the map's own models (HD units: a tile is 10), e.g. a plain wall where the stairs' model was.
+    for add in spec.get("add_entities", []):
+        source = next((e for e in entities if (e.get("name") or "").startswith(add["copy"] + "_")), None)
+        if source is None:
+            sys.exit(f"add_entities: no entity named {add['copy']}")
+        c = copy.deepcopy(source)
+        c["id"] = next_id
+        next_id += 1
+        c["name"] = f"{add['copy']}_added{next_id}"
+        for k in c.get("components") or []:
+            if k.get("type") == "TransformDefinitionComponent" and k.get("position"):
+                k["position"]["x"], k["position"]["z"] = float(add["x"]), float(add["z"])
+        entities.append(c)
     # HD look for extra objects: the game draws some objects (waypoints) from a prefab in the map's
     # HD file, not from the object itself. Sub-tile -> HD units: x2, plus the prefab's offset.
     for o in spec.get("extra_objects", []):

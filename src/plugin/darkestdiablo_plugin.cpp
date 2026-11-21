@@ -26,6 +26,7 @@
 #include "devtools.h"
 #include "route.h"
 #include "zone.h"
+#include "andariel.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <atomic>
@@ -360,6 +361,18 @@ struct Arena {
 	// Every "mspawn" pack comes this many times at once, the copies spread evenly around the hero
 	// (more density without longer wave tables).
 	int         packCopies = 1;
+	// A quest stop (Act II): cleared when the hero picks up this item (its code, e.g. "box", the
+	// Horadric Cube), whatever else is still alive. A hero who already owns one when arriving (a
+	// replay: the game gives a quest item once) clears it instead by opening `questChest`
+	// (objects.txt row), the chest that holds the item; -1 for none.
+	const char* clearOnItem = nullptr;
+	int         questChest  = -1;
+	// Where the hero is put on arrival (a tile of the map; -1: wherever "goto" puts them). Maps
+	// without a waypoint or stairs give "goto" nothing to aim at.
+	Spot        arrival     = { -1, -1 };
+	// A map walked one way, south to north (the Arcane Sanctuary's arm, the tunnels): monsters
+	// only spawn ahead of the hero (north of them), never behind.
+	bool        ahead       = false;
 };
 
 static constexpr uint32_t AnyClass       = 0xFFFFFFFFU;
@@ -367,6 +380,14 @@ static constexpr uint32_t ZombieClass    = 5;    // monstats row of zombie1 (Cor
 static constexpr uint32_t BloodRavenClass = 267; // monstats row of bloodraven
 static constexpr uint32_t GriswoldClass  = 365;  // monstats row of griswold (Tristram's boss)
 static constexpr uint32_t SmithClass     = 402;  // monstats row of smith (the Malus's guard)
+static constexpr uint32_t AndarielClass  = 156;  // monstats row of andariel
+static constexpr uint32_t RadamentClass  = 229;  // monstats row of radament
+static constexpr int32_t  SewersLevelId  = 49;   // Act II: Sewers 3 (Radament)
+static constexpr int      CubeChestRow   = 354;  // objects.txt: HoradricCubeChest
+static constexpr int      StaffChestRow  = 356;  // objects.txt: StaffOfKingsChest
+static constexpr int      SunAltarRow    = 149;  // objects.txt: TaintedSunShrine (gives the Amulet of the Viper)
+static constexpr uint32_t SummonerClass  = 250;  // monstats row of summoner
+static constexpr uint32_t DurielClass    = 211;  // monstats row of duriel
 static constexpr uint32_t CorpsefireClass = 751;  // monstats row of dd_corpsefire, Corpsefire's own type
                                                   // (CORPSEFIRE_CLASS in src/patches/010_den_of_evil.py)
 static constexpr uint32_t TreeheadClass   = 752;  // monstats row of dd_treehead, Treehead WoodFist's own type
@@ -500,6 +521,77 @@ static constexpr Wave MalusWaves[] = {
 	{ { { "mspawn", "dd_malus_goatman5", 7, { 10, 7 } }, { "mspawn", "dd_malus_corruptrogue4", 5, { 4, 7 } } }, 2, AnyClass },
 };
 
+// ---- Act II (docs/act2.md, src/patches/111_act2_arenas.py) ----
+// Halls of the Dead 3 (level 60): three tomb rooms in a line (src/maps/halls.json); the hero
+// arrives in the south room and walks north to the Horadric Cube's chest. Cleared on picking up
+// the Cube. Bloodwitch the Wild (superunique 11) guards the chest in the last wave.
+static constexpr Wave HallsWaves[] = {
+	{ { { "mspawn", "dd_halls_mummy2", 4, { 8, 32 } }, { "mspawn", "dd_halls_unraveler1", 2, { 8, 24 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_halls_batdemon1", 4, { 11, 27 } }, { "mspawn", "dd_halls_slinger2", 3, { 6, 27 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_halls_mummy2", 5, { 8, 17 } }, { "mspawn", "dd_halls_unraveler1", 2, { 10, 9 } } }, 2, AnyClass },
+	{ { { "monster", "super:11", 4, { 8, 7 } }, { "mspawn", "dd_halls_mummy2", 4, { 7, 11 } } }, 2, AnyClass },
+};
+// Sewers 3 (level 49): three sewer rooms in a line (src/maps/sewers.json), XP grind; the hero
+// arrives in the south room, Radament (superunique 10) waits in his lair at the north end.
+// Cleared on picking up his Book of Skill (he always drops it first).
+static constexpr Wave SewersWaves[] = {
+	{ { { "mspawn", "dd_xp_a2_skeleton4", 5, { 7, 19 } }, { "mspawn", "dd_xp_a2_mummy1", 3, { 4, 25 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a2_pantherwoman1", 4, { 3, 14 } }, { "mspawn", "dd_xp_a2_skmage_fire3", 3, { 7, 19 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a2_skeleton4", 6, { 3, 8 } }, { "mspawn", "dd_xp_a2_mummy1", 4, { 7, 3 } } }, 2, AnyClass },
+	{ { { "monster", "super:10", 5, { 5, 4 } } }, 1, AnyClass, RadamentClass },
+};
+// Stony Tomb (level 55): a round tomb hall (src/maps/stony.json), crafting hunt like the
+// Mausoleum (runes up to Shael). The hero arrives at the west edge; waves come around the hero.
+static constexpr Wave StonyWaves[] = {
+	{ { { "mspawn", "dd_craft_a2_skeleton5", 5, { 26, 16 } }, { "mspawn", "dd_craft_a2_scarab1", 4, { 20, 26 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2_scarab1", 5, { 22, 8 } }, { "mspawn", "dd_craft_a2_skmage_ltng3", 3, { 26, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2_skeleton5", 6, { 16, 26 } }, { "mspawn", "dd_craft_a2_skmage_ltng3", 3, { 16, 6 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2_scarab1", 6, { 24, 22 } }, { "mspawn", "dd_craft_a2_skeleton5", 5, { 24, 10 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2_skmage_ltng3", 4, { 26, 16 } }, { "mspawn", "dd_craft_a2_scarab1", 6, { 16, 26 } }, { "mspawn", "dd_craft_a2_skeleton5", 5, { 16, 6 } } }, 3, AnyClass },
+};
+
+// Maggot Lair 3 (level 64): three lair rooms in a line (src/maps/maggot.json); the hero arrives
+// in the south room and goes north to the treasure room and the Staff of Kings' chest, where
+// Coldworm the Burrower (superunique 15) waits. Cleared on picking up the staff.
+static constexpr Wave MaggotWaves[] = {
+	{ { { "mspawn", "dd_maggot_sandmaggot1", 4, { 4, 20 } }, { "mspawn", "dd_maggot_scarab2", 3, { 6, 15 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_maggot_swarm2", 3, { 4, 12 } }, { "mspawn", "dd_maggot_sandmaggot2", 4, { 5, 5 } } }, 2, AnyClass },
+	{ { { "monster", "super:15", 3, { 5, 5 } }, { "mspawn", "dd_maggot_scarab3", 4, { 3, 7 } } }, 2, AnyClass },
+};
+// Claw Viper Temple 2 (level 61): the altar room alone (src/maps/clawviper.json); the hero arrives
+// in the corridor at its north end. Fangskin (superunique 12) and the clan; the Tainted Sun altar
+// gives the Amulet of the Viper. Cleared on picking it up.
+static constexpr Wave ClawViperWaves[] = {
+	{ { { "mspawn", "dd_viper_clawviper2", 4, { 5, 10 } }, { "mspawn", "dd_viper_clawviper3", 3, { 12, 8 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_viper_mummy3", 3, { 10, 13 } }, { "mspawn", "dd_viper_clawviper2", 4, { 4, 8 } } }, 2, AnyClass },
+	{ { { "monster", "super:12", 4, { 12, 13 } }, { "mspawn", "dd_viper_clawviper3", 3, { 5, 13 } } }, 2, AnyClass },
+};
+// Arcane Sanctuary (level 74): one arm of the cross (src/maps/arcane.json), walked south to
+// north; monsters only come from ahead. Crafting hunt (runes up to Shael). The Summoner
+// (superunique 18) waits on his platform at the far end; his death clears it.
+static constexpr Wave ArcaneWaves[] = {
+	{ { { "mspawn", "dd_craft_a2b_wraith3", 4, { 5, 29 } }, { "mspawn", "dd_craft_a2b_goatman4", 4, { 5, 17 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2b_vampire1", 2, { 5, 17 } }, { "mspawn", "dd_craft_a2b_goatman4", 5, { 5, 7 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 7 } }, { "mspawn", "dd_craft_a2b_goatman4", 4, { 4, 5 } } }, 2, AnyClass },
+	{ { { "monster", "super:18", 1, { 3, 3 } }, { "mspawn", "dd_craft_a2b_vampire1", 2, { 4, 5 } } }, 2, AnyClass, SummonerClass },
+};
+// Ancient Tunnels (level 65): four sewer rooms in a line (src/maps/tunnels.json), MF run; every
+// pack is led by a unique, and a random one of them is the target. Monsters only come from ahead.
+static constexpr Wave TunnelsWaves[] = {
+	{ { { "mspawn", "dd_mf_a2_zombie5", 4, { 6, 31 } }, { "mspawn", "dd_mf_a2_sandraider3", 3, { 4, 26 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a2_mummy3", 3, { 7, 19 } }, { "mspawn", "dd_mf_a2_skmage_ltng4", 2, { 3, 14 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a2_sandraider3", 4, { 5, 3 } }, { "mspawn", "dd_mf_a2_zombie5", 4, { 8, 6 } } }, 2, AnyClass },
+};
+// Canyon of the Magi (level 46): a round sandy hollow (src/maps/canyon.json), XP grind; waves
+// around the hero. Cleared when everything is dead.
+static constexpr Wave CanyonWaves[] = {
+	{ { { "mspawn", "dd_xp_a2b_brute4", 3, { 20, 12 } }, { "mspawn", "dd_xp_a2b_sandmaggot3", 4, { 16, 19 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a2b_pantherwoman4", 5, { 18, 6 } }, { "mspawn", "dd_xp_a2b_scarab4", 4, { 20, 16 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a2b_slinger4", 4, { 12, 20 } }, { "mspawn", "dd_xp_a2b_brute4", 3, { 12, 4 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a2b_scarab4", 6, { 19, 18 } }, { "mspawn", "dd_xp_a2b_pantherwoman4", 5, { 19, 7 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a2b_sandmaggot3", 5, { 20, 12 } }, { "mspawn", "dd_xp_a2b_slinger4", 4, { 14, 20 } }, { "mspawn", "dd_xp_a2b_brute4", 3, { 14, 4 } } }, 3, AnyClass },
+};
+
 static constexpr Arena Arenas[] = {
 	{ "Den of Evil",    DenOfEvilLevelId, 1500, 2500, DenWaves,    static_cast<int>(sizeof(DenWaves) / sizeof(DenWaves[0])) },
 	{ "Burial Grounds", 9,                1500, 1300, BurialWaves, static_cast<int>(sizeof(BurialWaves) / sizeof(BurialWaves[0])) },
@@ -509,6 +601,20 @@ static constexpr Arena Arenas[] = {
 	{ "Pit",            16,               1500, 2872, PitWaves,       static_cast<int>(sizeof(PitWaves) / sizeof(PitWaves[0])),             false, { 0, 0 }, 0, AnyClass, true, true },
 	{ "Countess",       25,               2500, 2200, CountessWaves,  static_cast<int>(sizeof(CountessWaves) / sizeof(CountessWaves[0])),   true, { 0, 0 }, 0 },
 	{ "Malus",          28,               5500, 1000, MalusWaves,     static_cast<int>(sizeof(MalusWaves) / sizeof(MalusWaves[0])),         true, { 10, 7 }, 7, SmithClass },
+	// Andariel: no waves; her lair's packs, uniques and Andariel herself come from andariel.cpp. Her death clears it.
+	{ "Andariel",       37,               4500, 1900, nullptr,        0,                                                                     false, { 0, 0 }, 0, AndarielClass },
+	{ "Halls of the Dead", 60,            3000, 2500, HallsWaves,  static_cast<int>(sizeof(HallsWaves) / sizeof(HallsWaves[0])),  false, { 0, 0 }, 0, AnyClass, false, false, 1, "box", CubeChestRow, { 10, 42 }, true },
+	{ "Sewers",         49,               1500, 1600, SewersWaves, static_cast<int>(sizeof(SewersWaves) / sizeof(SewersWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "ass", -1, { 5, 30 }, true },
+	{ "Stony Tomb",     55,               3000, 1000, StonyWaves,  static_cast<int>(sizeof(StonyWaves) / sizeof(StonyWaves[0])),   true, { 16, 16 }, 11, AnyClass, false, false, 1, nullptr, -1, { 4, 16 } },
+	{ "Maggot Lair",    64,               3500, 1600, MaggotWaves,    static_cast<int>(sizeof(MaggotWaves) / sizeof(MaggotWaves[0])),       false, { 0, 0 }, 0, AnyClass, false, false, 1, "msf", StaffChestRow, { 4, 27 }, true },
+	{ "Claw Viper Temple", 61,            3000, 2800, ClawViperWaves, static_cast<int>(sizeof(ClawViperWaves) / sizeof(ClawViperWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "vip", SunAltarRow, { 8, 4 } },
+	{ "Arcane Sanctuary", 74,             5000, 1000, ArcaneWaves,    static_cast<int>(sizeof(ArcaneWaves) / sizeof(ArcaneWaves[0])),       false, { 0, 0 }, 0, SummonerClass, false, false, 1, nullptr, -1, { 4, 41 }, true },
+	{ "Ancient Tunnels", 65,              4000, 1000, TunnelsWaves,   static_cast<int>(sizeof(TunnelsWaves) / sizeof(TunnelsWaves[0])),     false, { 0, 0 }, 0, AnyClass, true, true, 1, nullptr, -1, { 5, 42 }, true },
+	{ "Canyon of the Magi", 46,           2500, 1000, CanyonWaves,    static_cast<int>(sizeof(CanyonWaves) / sizeof(CanyonWaves[0])),       true, { 12, 12 }, 9, AnyClass, false, false, 1, nullptr, -1, { 3, 12 } },
+	// Duriel: the hero arrives in the orifice room (level 66, no waves); inserting the staff opens
+	// the way to his lair (level 73, Blizzard's), where his death clears the stop.
+	{ "Tal Rasha's Tomb", 66,             4500, 1000, nullptr,        0,                                                                     false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 9, 4 } },
+	{ "Duriel",         73,               4500, 3100, nullptr,        0,                                                                     false, { 0, 0 }, 0, DurielClass },
 	{ "Tristram",       38,               0,    0,    TristramWaves,  static_cast<int>(sizeof(TristramWaves) / sizeof(TristramWaves[0])),   true, { 0, 0 }, 0, GriswoldClass, false, false, 3 },
 };
 
@@ -751,6 +857,11 @@ static void WatchTownHealing(const D2RL::PluginContext* context, int townLevel) 
 			while (g_levelId == townLevel && !copies.empty()) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
 				const Game::HeroDetails now = Game::HeroInfo();
+				if (now.mana != last.mana) {  // temporary: mana potions in town (2026-11-20)
+					char seen[96] {};
+					std::snprintf(seen, sizeof(seen), "Town: mana %d -> %d of %d.", last.mana, now.mana, now.maxMana);
+					Trace(context, seen);
+				}
 				bool atAkara = false;
 				for (const Game::MonsterDetails& m : Game::Monsters(AkaraReach, true)) {
 					atAkara = atAkara || m.unit.row == AkaraClass;
@@ -808,8 +919,13 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 			}
 			// The Den quest's skill point, once per hero: the Den arena is not the quest level (that
 			// would offer Akara's free respec), and a dropped Book of Skill can't be used in Act I.
+			// Quest rewards given once per difficulty are tripled (docs/flattening.md): 3 points.
 			if (counted && Arenas[index].levelId == DenOfEvilLevelId) {
-				RunConsole(context, "cheat skillpoints 1");
+				RunConsole(context, "cheat skillpoints 3");
+			}
+			// Radament's Book of Skill gives its 1 point when read; the other 2 come here.
+			if (counted && Arenas[index].levelId == SewersLevelId && progress.Clears(*stop) == 1) {
+				RunConsole(context, "cheat skillpoints 2");
 			}
 			std::snprintf(message, sizeof(message), "Route: %s %s; tier %d of %d is open now.", stop->id,
 				counted ? "counts as cleared" : "was not open for this hero, so it doesn't count", progress.CurrentTier() + 1, Route::TierCount);
@@ -819,6 +935,91 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 	} catch (...) {
 		context->LogWarn("Route: recording the clear failed.");
 	}
+}
+
+// ---- Quest stops: cleared on picking up the quest item ----------------------------------
+// Every half second while the hero is in a quest stop, the plugin counts the quest item in
+// everything the hero owns. More than on arrival: picked up, cleared.
+static std::atomic<int> g_questBaseline { -1 };  // the count on arrival; -1 not counted yet
+static std::atomic<int64_t> g_questChestOpenedMs { 0 };  // when the quest chest was seen open; 0 not yet
+static constexpr int64_t QuestChestGraceMs = 10000;  // then the stop clears even without a pickup
+
+struct ItemCount { uint32_t code; int count; };
+
+static auto __cdecl CountItem(const D2RL::PluginContext*, const D2RL::Items::ItemInfo* item, void* out) noexcept -> D2RL::Inventory::IterationAction {
+	auto* c = static_cast<ItemCount*>(out);
+	if (item != nullptr && item->code == c->code) {
+		++c->count;
+	}
+	return D2RL::Inventory::IterationAction::Continue;
+}
+
+static void __cdecl QuestItemTick(const D2RL::PluginContext* context, void* run) noexcept;
+
+// Game thread.
+static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run) noexcept {
+	const int index = g_arena.load();
+	if (index < 0 || reinterpret_cast<uintptr_t>(run) != g_run.load() || g_portalDropped.load() || Arenas[index].clearOnItem == nullptr) {
+		return;
+	}
+	const Arena& arena = Arenas[index];
+	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+	ItemCount count { ItemCode(arena.clearOnItem), 0 };
+	if (g_inventory != nullptr && g_inventory->getLocalPlayer(context, &player) == D2RL::Inventory::Result::Success) {
+		const D2RL::Inventory::ItemFilter filter {
+			.structSize    = D2RL::Inventory::ItemFilterSize,
+			.containerMask = D2RL::Items::AllItemContainers,
+		};
+		g_inventory->forEachInventoryItem(context, player, &filter, CountItem, &count);
+		const int baseline = g_questBaseline.load();
+		char message[128] {};
+		if (baseline < 0) {
+			g_questBaseline = count.count;
+			std::snprintf(message, sizeof(message), "%s: the hero owns %d of the quest item (%s) on arrival.", arena.name, count.count, arena.clearOnItem);
+			Trace(context, message);
+		} else if (count.count > baseline) {
+			std::snprintf(message, sizeof(message), "%s: quest item picked up.", arena.name);
+			Trace(context, message);
+			g_threads->runOnUiThread(context, ClearArena, run);
+			return;
+		} else if (arena.questChest >= 0) {
+			// The game gives a quest item once per hero (and a staff may be in the Horadric
+			// Staff by now): after the chest (or altar) is opened, a replay clears without a pickup,
+			// at once for a hero who already owns the item, else after a short wait.
+			const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+			bool open = false;
+			for (const Game::Unit& chest : Game::Objects(-1, static_cast<uint32_t>(arena.questChest))) {
+				open = open || chest.mode != 0;  // opening or open
+			}
+			if (open && g_questChestOpenedMs.load() == 0) {
+				g_questChestOpenedMs = now;
+			}
+			if (open && (baseline > 0 || now - g_questChestOpenedMs.load() >= QuestChestGraceMs)) {
+				std::snprintf(message, sizeof(message), "%s: quest chest opened; no pickup needed (the hero had the item or the quest).", arena.name);
+				Trace(context, message);
+				g_threads->runOnUiThread(context, ClearArena, run);
+				return;
+			}
+		}
+	}
+	Later(context, 500, QuestItemTick);
+}
+
+// UI thread (from Later).
+static void __cdecl QuestItemTick(const D2RL::PluginContext* context, void* run) noexcept {
+	g_threads->runOnGameThread(context, QuestItemCheck, run);
+}
+
+// UI thread. Puts the hero at the arena's arrival tile (maps without a waypoint or stairs).
+static void __cdecl PlaceAtArrival(const D2RL::PluginContext* context, void* run) noexcept {
+	const int index = g_arena.load();
+	if (index < 0 || reinterpret_cast<uintptr_t>(run) != g_run.load() || Arenas[index].arrival.tx < 0) {
+		return;
+	}
+	const Arena& arena = Arenas[index];
+	char command[64];
+	std::snprintf(command, sizeof(command), "location %d,%d", (arena.originX + arena.arrival.tx) * 5 + 2, (arena.originY + arena.arrival.ty) * 5 + 2);
+	RunConsole(context, command);
 }
 
 // UI thread. Spawns the next wave and, if more are left, schedules the one after it.
@@ -875,18 +1076,26 @@ static Spot OffscreenSpot(const Arena& arena, Spot wanted, const GameMemory::Pos
 	const auto reach = [&](double tx, double ty) {
 		return ScreenReach((arena.originX + tx) * 5 + 2 - hero.x, (arena.originY + ty) * 5 + 2 - hero.y);
 	};
-	if (reach(wanted.tx, wanted.ty) >= 1.0) {
+	const double heroTy = (hero.y - 2) / 5.0 - arena.originY;
+	const auto isAhead = [&](const Spot& s) { return !arena.ahead || s.ty < heroTy - 1; };
+	if (reach(wanted.tx, wanted.ty) >= 1.0 && isAhead(wanted)) {
 		return wanted;
 	}
 	if (!arena.nearHero) {
-		Spot best = wanted, furthest = wanted;
-		double bestDistance = 1e9, furthestReach = reach(wanted.tx, wanted.ty);
+		Spot best = wanted, furthest = wanted, foremost = wanted;
+		double bestDistance = 1e9, furthestReach = isAhead(wanted) ? reach(wanted.tx, wanted.ty) : -1.0;
 		for (int i = 0; i < arena.waveCount; ++i) {
 			for (int g = 0; g < arena.waves[i].groupCount; ++g) {
 				if (boss && std::strcmp(arena.waves[i].groups[g].what, what) != 0) {
 					continue;  // a boss only goes where it was tested (Blood Raven failed on a zombie spot)
 				}
 				const Spot s = arena.waves[i].groups[g].at;
+				if (s.ty < foremost.ty) {
+					foremost = s;
+				}
+				if (!isAhead(s)) {
+					continue;  // behind the hero
+				}
 				const double r = reach(s.tx, s.ty);
 				const double d = std::hypot(s.tx - wanted.tx, s.ty - wanted.ty);
 				if (r >= 1.0 && d < bestDistance) {
@@ -899,7 +1108,10 @@ static Spot OffscreenSpot(const Arena& arena, Spot wanted, const GameMemory::Pos
 				}
 			}
 		}
-		return bestDistance < 1e9 ? best : furthest;
+		if (bestDistance < 1e9) {
+			return best;
+		}
+		return furthestReach >= 0.0 ? furthest : foremost;  // nothing ahead: the spot furthest along
 	}
 	if (boss && arena.reach == 0) {
 		return wanted;
@@ -1211,7 +1423,18 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 // keep Blizzard's list, so the player can always get home.
 static const D2RL::PanelService*     g_panels = nullptr;
 static const D2RL::WidgetService*    g_widgets = nullptr;  // sends native panel messages (optional)
-static D2RL::Panels::RegistrationHandle g_routeMap = D2RL::Panels::InvalidHandle;
+static D2RL::Panels::RegistrationHandle g_routeMap = D2RL::Panels::InvalidHandle;   // Act I's page
+static D2RL::Panels::RegistrationHandle g_routeMap2 = D2RL::Panels::InvalidHandle;  // Act II's page
+static std::atomic<int> g_routeAct { 1 };  // the page last opened
+
+// The act a level belongs to (levels.txt Ids: Act I 1-39, Act II 40-74, ...), for its route map page.
+static auto ActOfLevel(int level) noexcept -> int {
+	return level >= 40 && level < 75 ? 2 : 1;
+}
+
+static auto RouteMapPanel(int act) noexcept -> D2RL::Panels::RegistrationHandle {
+	return act == 2 ? g_routeMap2 : g_routeMap;
+}
 
 // The game's waypoint panel ("WaypointsPanelExpansion") that the route map replaced. Even with its
 // open message consumed, the game counts it as open (an empty left frame and a dimmed screen until
@@ -1240,7 +1463,7 @@ static void __cdecl CloseNativeWaypointPanel(const D2RL::PluginContext* context,
 	}
 }
 
-static constexpr int TownLevelId = 1;  // Rogue Encampment: "Return to town" (Act I only so far)
+static constexpr int TownLevelId = 1;  // Rogue Encampment
 
 // levels.txt Ids of the five towns: Rogue Encampment, Lut Gholein, Kurast Docks,
 // Pandemonium Fortress, Harrogath.
@@ -1253,7 +1476,9 @@ static auto InTown() noexcept -> bool {
 	}
 }
 
-static constexpr char RouteMapLayout[] = R"json({"type":"Panel","name":"darkestdiablo/RouteMap","fields":{"rect":"$LeftPanelRect","anchor":"$LeftPanelAnchor","priority":8500},"children":[{"type":"ImageWidget","name":"Background","fields":{"rect":{"x":0,"y":0},"filename":"PANEL\\Waypoints\\Waypoints_Base","frame":0}},{"type":"ImageWidget","name":"LeftHinge","fields":{"rect":"$LeftHingeRect","filename":"$LeftHingeSprite"}},{"type":"TextBoxWidget","name":"Title","fields":{"rect":"$InGamePanelTitleRect","text":"Act I - Choose your path","style":"$StyleTitleBlock"}},{"type":"ButtonWidget","name":"NodeTownLocked","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeTown","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-1"}},{"type":"ButtonWidget","name":"NodeDenLocked","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Den of Evil","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeDen","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Den of Evil","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-13","disabled":true}},{"type":"TextBoxWidget","name":"Line1","fields":{"rect":{"x":561,"y":275,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeBurialLocked","fields":{"rect":{"x":406,"y":330},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Blood Raven","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeBurial","fields":{"rect":{"x":406,"y":330},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Blood Raven","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-10","disabled":true}},{"type":"TextBoxWidget","name":"Line2","fields":{"rect":{"x":561,"y":415,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line3","fields":{"rect":{"x":205,"y":425,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line4","fields":{"rect":{"x":185,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line5","fields":{"rect":{"x":561,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line6","fields":{"rect":{"x":937,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork1Note","fields":{"rect":{"x":0,"y":475,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeInifussLocked","fields":{"rect":{"x":30,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Rakanishu & Treehead","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeInifuss","fields":{"rect":{"x":30,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Rakanishu & Treehead","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-12","disabled":true}},{"type":"ButtonWidget","name":"Fork1MausoleumLocked","fields":{"rect":{"x":406,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Mausoleum","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork1Mausoleum","fields":{"rect":{"x":406,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Mausoleum","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-14"}},{"type":"ButtonWidget","name":"Fork1CryptLocked","fields":{"rect":{"x":782,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Crypt","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork1Crypt","fields":{"rect":{"x":782,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Crypt","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-15"}},{"type":"TextBoxWidget","name":"Kind0_602","fields":{"rect":{"x":30,"y":602,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind1_602","fields":{"rect":{"x":406,"y":602,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind2_602","fields":{"rect":{"x":782,"y":602,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line11","fields":{"rect":{"x":185,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line12","fields":{"rect":{"x":561,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line13","fields":{"rect":{"x":937,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line14","fields":{"rect":{"x":205,"y":635,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line15","fields":{"rect":{"x":561,"y":680,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeTristramLocked","fields":{"rect":{"x":406,"y":730},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Tristram","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeTristram","fields":{"rect":{"x":406,"y":730},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Tristram","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-38"}},{"type":"TextBoxWidget","name":"Line16","fields":{"rect":{"x":561,"y":815,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line17","fields":{"rect":{"x":205,"y":825,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line18","fields":{"rect":{"x":185,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line19","fields":{"rect":{"x":561,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line20","fields":{"rect":{"x":937,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork2Note","fields":{"rect":{"x":0,"y":895,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"Fork2PitLocked","fields":{"rect":{"x":30,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Pit","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Pit","fields":{"rect":{"x":30,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Pit","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-16"}},{"type":"ButtonWidget","name":"Fork2CountessLocked","fields":{"rect":{"x":406,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Countess","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Countess","fields":{"rect":{"x":406,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Countess","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-25"}},{"type":"ButtonWidget","name":"Fork2MalusLocked","fields":{"rect":{"x":782,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Horadric Malus","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Malus","fields":{"rect":{"x":782,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Horadric Malus","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-28"}},{"type":"TextBoxWidget","name":"Kind0_1022","fields":{"rect":{"x":30,"y":1022,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind1_1022","fields":{"rect":{"x":406,"y":1022,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind2_1022","fields":{"rect":{"x":782,"y":1022,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line25","fields":{"rect":{"x":185,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line26","fields":{"rect":{"x":561,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line27","fields":{"rect":{"x":937,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line28","fields":{"rect":{"x":205,"y":1055,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line29","fields":{"rect":{"x":561,"y":1100,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeAndariel","fields":{"rect":{"x":406,"y":1150},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Andariel","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"CloseButton","fields":{"rect":{"x":1075,"y":9},"filename":"PANEL\\closebtn_4x","hoveredFrame":3,"tooltipString":"@d2r:strClose","sound":"cursor_close_window_hd","onClickMessage":"PanelManager:ClosePanel:darkestdiablo/RouteMap","pressedFrame":1}}]})json";
+static constexpr char RouteMapLayout[] = R"json({"type":"Panel","name":"darkestdiablo/RouteMap","fields":{"rect":"$LeftPanelRect","anchor":"$LeftPanelAnchor","priority":8500},"children":[{"type":"ImageWidget","name":"Background","fields":{"rect":{"x":0,"y":0},"filename":"PANEL\\Waypoints\\Waypoints_Base","frame":0}},{"type":"ImageWidget","name":"LeftHinge","fields":{"rect":"$LeftHingeRect","filename":"$LeftHingeSprite"}},{"type":"TextBoxWidget","name":"Title","fields":{"rect":"$InGamePanelTitleRect","text":"Act I - Choose your path","style":"$StyleTitleBlock"}},{"type":"ButtonWidget","name":"NodeTownLocked","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeTown","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-1"}},{"type":"ButtonWidget","name":"NodeDenLocked","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Den of Evil","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeDen","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Den of Evil","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-13","disabled":true}},{"type":"TextBoxWidget","name":"Line1","fields":{"rect":{"x":561,"y":275,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeBurialLocked","fields":{"rect":{"x":406,"y":330},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Blood Raven","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeBurial","fields":{"rect":{"x":406,"y":330},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Blood Raven","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-10","disabled":true}},{"type":"TextBoxWidget","name":"Line2","fields":{"rect":{"x":561,"y":415,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line3","fields":{"rect":{"x":205,"y":425,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line4","fields":{"rect":{"x":185,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line5","fields":{"rect":{"x":561,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line6","fields":{"rect":{"x":937,"y":460,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork1Note","fields":{"rect":{"x":0,"y":475,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeInifussLocked","fields":{"rect":{"x":30,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Rakanishu & Treehead","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeInifuss","fields":{"rect":{"x":30,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Rakanishu & Treehead","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-12","disabled":true}},{"type":"ButtonWidget","name":"Fork1MausoleumLocked","fields":{"rect":{"x":406,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Mausoleum","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork1Mausoleum","fields":{"rect":{"x":406,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Mausoleum","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-14"}},{"type":"ButtonWidget","name":"Fork1CryptLocked","fields":{"rect":{"x":782,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Crypt","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork1Crypt","fields":{"rect":{"x":782,"y":520},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Crypt","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-15"}},{"type":"TextBoxWidget","name":"Kind0_602","fields":{"rect":{"x":30,"y":602,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind1_602","fields":{"rect":{"x":406,"y":602,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind2_602","fields":{"rect":{"x":782,"y":602,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line11","fields":{"rect":{"x":185,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line12","fields":{"rect":{"x":561,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line13","fields":{"rect":{"x":937,"y":630,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line14","fields":{"rect":{"x":205,"y":635,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line15","fields":{"rect":{"x":561,"y":680,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeTristramLocked","fields":{"rect":{"x":406,"y":730},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Tristram","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeTristram","fields":{"rect":{"x":406,"y":730},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Tristram","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-38"}},{"type":"TextBoxWidget","name":"Line16","fields":{"rect":{"x":561,"y":815,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line17","fields":{"rect":{"x":205,"y":825,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line18","fields":{"rect":{"x":185,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line19","fields":{"rect":{"x":561,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line20","fields":{"rect":{"x":937,"y":860,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork2Note","fields":{"rect":{"x":0,"y":895,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"Fork2PitLocked","fields":{"rect":{"x":30,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Pit","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Pit","fields":{"rect":{"x":30,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Pit","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-16"}},{"type":"ButtonWidget","name":"Fork2CountessLocked","fields":{"rect":{"x":406,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Countess","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Countess","fields":{"rect":{"x":406,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Countess","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-25"}},{"type":"ButtonWidget","name":"Fork2MalusLocked","fields":{"rect":{"x":782,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Horadric Malus","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork2Malus","fields":{"rect":{"x":782,"y":940},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Horadric Malus","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-28"}},{"type":"TextBoxWidget","name":"Kind0_1022","fields":{"rect":{"x":30,"y":1022,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind1_1022","fields":{"rect":{"x":406,"y":1022,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind2_1022","fields":{"rect":{"x":782,"y":1022,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line25","fields":{"rect":{"x":185,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line26","fields":{"rect":{"x":561,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line27","fields":{"rect":{"x":937,"y":1050,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line28","fields":{"rect":{"x":205,"y":1055,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line29","fields":{"rect":{"x":561,"y":1100,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeAndarielLocked","fields":{"rect":{"x":406,"y":1150},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Andariel","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeAndariel","fields":{"rect":{"x":406,"y":1150},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Andariel","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-37"}},{"type":"ButtonWidget","name":"CloseButton","fields":{"rect":{"x":1075,"y":9},"filename":"PANEL\\closebtn_4x","hoveredFrame":3,"tooltipString":"@d2r:strClose","sound":"cursor_close_window_hd","onClickMessage":"PanelManager:ClosePanel:darkestdiablo/RouteMap","pressedFrame":1}}]})json";
+// Act II's page of the route map (RouteMap2hd.json; the same rule: change both).
+static constexpr char RouteMap2Layout[] = R"json({"type":"Panel","name":"darkestdiablo/RouteMap2","fields":{"rect":"$LeftPanelRect","anchor":"$LeftPanelAnchor","priority":8500},"children":[{"type":"ImageWidget","name":"Background","fields":{"rect":{"x":0,"y":0},"filename":"PANEL\\Waypoints\\Waypoints_Base","frame":0}},{"type":"ImageWidget","name":"LeftHinge","fields":{"rect":"$LeftHingeRect","filename":"$LeftHingeSprite"}},{"type":"TextBoxWidget","name":"Title","fields":{"rect":"$InGamePanelTitleRect","text":"Act II - Choose your path","style":"$StyleTitleBlock"}},{"type":"ButtonWidget","name":"NodeTownLocked","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeTown","fields":{"rect":{"x":30,"y":110},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Return to town","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-40","disabled":true}},{"type":"ButtonWidget","name":"NodeHallsLocked","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Halls of the Dead","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeHalls","fields":{"rect":{"x":406,"y":190},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Halls of the Dead","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-60","disabled":true}},{"type":"TextBoxWidget","name":"Line1","fields":{"rect":{"x":561,"y":275,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line2","fields":{"rect":{"x":393,"y":285,"width":376,"height":40},"text":"________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line3","fields":{"rect":{"x":373,"y":320,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line4","fields":{"rect":{"x":749,"y":320,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork3Note","fields":{"rect":{"x":0,"y":335,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"Fork3SewersLocked","fields":{"rect":{"x":218,"y":380},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Sewers & Radament","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork3Sewers","fields":{"rect":{"x":218,"y":380},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Sewers & Radament","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-49","disabled":true}},{"type":"ButtonWidget","name":"Fork3StonyLocked","fields":{"rect":{"x":594,"y":380},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Stony Tomb","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork3Stony","fields":{"rect":{"x":594,"y":380},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Stony Tomb","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-55","disabled":true}},{"type":"TextBoxWidget","name":"Kind3a","fields":{"rect":{"x":218,"y":462,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind3b","fields":{"rect":{"x":594,"y":462,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line5","fields":{"rect":{"x":373,"y":490,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line6","fields":{"rect":{"x":749,"y":490,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line7","fields":{"rect":{"x":393,"y":495,"width":376,"height":40},"text":"________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line8","fields":{"rect":{"x":561,"y":540,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line9","fields":{"rect":{"x":393,"y":550,"width":376,"height":40},"text":"________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line10","fields":{"rect":{"x":373,"y":585,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line11","fields":{"rect":{"x":749,"y":585,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Tier8Note","fields":{"rect":{"x":0,"y":600,"width":1162,"height":30},"text":"Both, any order","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeMaggotLocked","fields":{"rect":{"x":218,"y":645},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Maggot Lair","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeMaggot","fields":{"rect":{"x":218,"y":645},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Maggot Lair","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-64"}},{"type":"ButtonWidget","name":"NodeClawViperLocked","fields":{"rect":{"x":594,"y":645},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Claw Viper Temple","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeClawViper","fields":{"rect":{"x":594,"y":645},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Claw Viper Temple","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-61"}},{"type":"TextBoxWidget","name":"Line12","fields":{"rect":{"x":373,"y":730,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line13","fields":{"rect":{"x":749,"y":730,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line14","fields":{"rect":{"x":393,"y":735,"width":376,"height":40},"text":"________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line15","fields":{"rect":{"x":561,"y":780,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line16","fields":{"rect":{"x":205,"y":790,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line17","fields":{"rect":{"x":185,"y":825,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line18","fields":{"rect":{"x":561,"y":825,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line19","fields":{"rect":{"x":937,"y":825,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Fork4Note","fields":{"rect":{"x":0,"y":840,"width":1162,"height":30},"text":"Fork - pick 2","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"Fork4ArcaneLocked","fields":{"rect":{"x":30,"y":885},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Arcane Sanctuary","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork4Arcane","fields":{"rect":{"x":30,"y":885},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Arcane Sanctuary","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-74"}},{"type":"ButtonWidget","name":"Fork4TunnelsLocked","fields":{"rect":{"x":406,"y":885},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Ancient Tunnels","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork4Tunnels","fields":{"rect":{"x":406,"y":885},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Ancient Tunnels","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-65"}},{"type":"ButtonWidget","name":"Fork4CanyonLocked","fields":{"rect":{"x":782,"y":885},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Canyon of the Magi","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"Fork4Canyon","fields":{"rect":{"x":782,"y":885},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Canyon of the Magi","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-46"}},{"type":"TextBoxWidget","name":"Kind4a","fields":{"rect":{"x":30,"y":967,"width":350,"height":28},"text":"Crafting hunt","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind4b","fields":{"rect":{"x":406,"y":967,"width":350,"height":28},"text":"MF run","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Kind4c","fields":{"rect":{"x":782,"y":967,"width":350,"height":28},"text":"XP grind","style":{"fontColor":"$FontColorDarkGrayGold","pointSize":"$SmallFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line20","fields":{"rect":{"x":185,"y":995,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line21","fields":{"rect":{"x":561,"y":995,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line22","fields":{"rect":{"x":937,"y":995,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line23","fields":{"rect":{"x":205,"y":1000,"width":752,"height":40},"text":"________________________________________________","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"TextBoxWidget","name":"Line24","fields":{"rect":{"x":561,"y":1045,"width":40,"height":40},"text":"|","style":{"fontColor":"$FontColorGoldYellow","pointSize":"$MediumFontSize","alignment":{"h":"center","v":"center"}}}},{"type":"ButtonWidget","name":"NodeDurielLocked","fields":{"rect":{"x":406,"y":1095},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Duriel","pointSize":"$SmallFontSize","textColor":"$FontColorDarkGrayBlue","disabled":true}},{"type":"ButtonWidget","name":"NodeDuriel","fields":{"rect":{"x":406,"y":1095},"filename":"FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall","pressedFrame":1,"disabledFrame":2,"hoveredFrame":3,"textString":"Duriel","pointSize":"$SmallFontSize","textColor":"$FontColorWhite","disabled":true,"onClickMessage":"PanelManager:OpenPanel:darkestdiablo/travel-66"}},{"type":"ButtonWidget","name":"CloseButton","fields":{"rect":{"x":1075,"y":9},"filename":"PANEL\\closebtn_4x","hoveredFrame":3,"tooltipString":"@d2r:strClose","sound":"cursor_close_window_hd","onClickMessage":"PanelManager:ClosePanel:darkestdiablo/RouteMap2","pressedFrame":1}}]})json";
 
 // ---- Unlocks along the route (src/plugin/route.h) -----------------------------------------
 // Each hero's progress decides which buttons on the route map work: only stops of the current
@@ -1308,11 +1533,30 @@ static auto GiveUpLeftRun(const D2RL::PluginContext* context) noexcept -> bool {
 // UI thread: enable the route map's buttons for the hero's progress.
 static void __cdecl RefreshRouteMap(const D2RL::PluginContext* context, void*) noexcept {
 	if (g_widgets == nullptr) {
+		Trace(context, "Route map: no widget service; its buttons keep their layout state.");
 		return;
 	}
+	const int act = g_routeAct.load();
 	D2RL::Widgets::WidgetHandle panel = D2RL::Widgets::InvalidHandle;
-	if (g_widgets->findPanel(context, "darkestdiablo/RouteMap", &panel) != D2RL::Widgets::Result::Success) {
-		context->LogWarn("Route map: panel not found; its buttons keep their layout state.");
+	const auto foundPanel = g_widgets->findPanel(context, act == 2 ? "darkestdiablo/RouteMap2" : "darkestdiablo/RouteMap", &panel);
+	static std::atomic<int> s_retries { 0 };
+	if (foundPanel == D2RL::Widgets::Result::Success) {
+		s_retries = 0;
+	} else {
+		// "Unavailable" (3): the panel is still being built after opening. Try again shortly,
+		// a few times, instead of leaving every button in its layout state.
+		char why[112] {};
+		if (foundPanel == D2RL::Widgets::Result::Unavailable && s_retries.fetch_add(1) < 10) {
+			std::thread([context] {
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				g_threads->runOnUiThread(context, RefreshRouteMap, nullptr);
+			}).detach();
+			return;
+		}
+		s_retries = 0;
+		std::snprintf(why, sizeof(why), "Route map: panel not found (code %d); its buttons keep their layout state.", static_cast<int>(foundPanel));
+		context->LogWarn(why);
+		Trace(context, why);
 		return;
 	}
 	// Every stop button starts disabled in the layout; only the ones the hero may enter are switched
@@ -1345,6 +1589,9 @@ static void __cdecl RefreshRouteMap(const D2RL::PluginContext* context, void*) n
 	};
 	const Route::Progress progress = LoadProgress();
 	for (const auto& stop : Route::Stops) {
+		if (Route::ActOfTier(stop.tier) != act) {
+			continue;  // on the other act's page
+		}
 		if (stop.travelLevel >= 0) {
 			node(stop.node, progress.CanEnter(stop));
 		} else {
@@ -1389,7 +1636,8 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	static constexpr char WaypointPanelPrefix[] = "WaypointsPanel";
 	if (g_panels != nullptr && std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
 		std::strncmp(text, WaypointPanelPrefix, sizeof(WaypointPanelPrefix) - 1) == 0) {
-		const auto result = g_panels->openPanel(context, g_routeMap);
+		g_routeAct = ActOfLevel(g_levelId.load());
+		const auto result = g_panels->openPanel(context, RouteMapPanel(g_routeAct.load()));
 		if (result == D2RL::Panels::Result::Success) {
 			// Close the game's half-open waypoint panel, queued so it runs after this message.
 			std::snprintf(g_nativeWaypointPanel, sizeof(g_nativeWaypointPanel), "%s", text);
@@ -1411,7 +1659,8 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		std::strncmp(text, TravelPrefix, sizeof(TravelPrefix) - 1) == 0) {
 		const int level = std::atoi(text + sizeof(TravelPrefix) - 1);
 		const Route::Stop* stop = Route::StopByTravelLevel(level);
-		if (level > 0 && level != TownLevelId && (stop == nullptr || !LoadProgress().CanEnter(*stop))) {
+		const bool town = level == 1 || level == 40 || level == 75 || level == 103 || level == 109;
+		if (level > 0 && !town && (stop == nullptr || !LoadProgress().CanEnter(*stop))) {
 			std::snprintf(message, sizeof(message), "Route map: %s is locked for this hero.", stop != nullptr ? stop->id : text);
 			context->LogInfo(message);
 		Trace(context, message);
@@ -1421,6 +1670,9 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		if (level > 0) {
 			if (g_panels != nullptr) {
 				g_panels->closePanel(context, g_routeMap);
+				if (g_routeMap2 != D2RL::Panels::InvalidHandle) {
+					g_panels->closePanel(context, g_routeMap2);
+				}
 			}
 			// If the earlier close didn't take, close the game's waypoint panel before leaving town.
 			g_threads->runOnUiThread(context, CloseNativeWaypointPanel, nullptr);
@@ -1442,12 +1694,18 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	if (event->kind == Kind::LevelChanged) {
 		g_levelId = event->currentValue;
 		Zone::OnLevelChanged(context, g_levelId);
+		{
+			const Route::Stop* here = Route::StopByArenaLevel(g_levelId);
+			Andariel::OnLevelChanged(context, g_levelId, here != nullptr && LoadProgress().CanEnter(*here));
+		}
 		char message[96] {};
 		std::snprintf(message, sizeof(message), "Level changed: %d -> %d.", event->previousValue, event->currentValue);
 		context->LogInfo(message);
 		Trace(context, message);
-		if (g_levelId == TownLevelId) {  // the camp's potion supply (DeliverPotions); no healer
+		if (InTown()) {  // the camp's potion supply (DeliverPotions), in every town
 			g_threads->runOnGameThread(context, DeliverPotions, nullptr);
+		}
+		if (g_levelId == TownLevelId) {  // no healer (Akara; Act II's Fara not yet)
 			WatchTownHealing(context, TownLevelId);
 		}
 		const int arena = FindArena(g_levelId);
@@ -1486,6 +1744,14 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 				g_wave = (std::max)(0, (std::min)(spawned, Arenas[arena].waveCount - 1));  // stop gets its last wave again
 			}
 			g_arena = arena;       // back in the same game: the counts carry on
+			if (Arenas[arena].arrival.tx >= 0) {
+				Later(context, ArrivalDelayMs / 2, PlaceAtArrival);
+			}
+			if (Arenas[arena].clearOnItem != nullptr) {
+				g_questBaseline = -1;
+				g_questChestOpenedMs = 0;
+				Later(context, ArrivalDelayMs + 500, QuestItemTick);
+			}
 			if (g_wave.load() < Arenas[arena].waveCount) {
 				Later(context, ArrivalDelayMs, StartNextWave);
 			}
@@ -1515,6 +1781,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			g_supersSpawned.clear();  // a new game has every superunique again
 		}
 		Zone::OnGameLeft();
+		Andariel::OnGameLeft();
 		ResetArena();
 		return;
 	}
@@ -1575,7 +1842,8 @@ static auto MapCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* co
 	if (command == nullptr || command->plugin == nullptr || g_panels == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	const auto result = g_panels->togglePanel(command->plugin, g_routeMap);
+	g_routeAct = ActOfLevel(g_levelId.load());
+	const auto result = g_panels->togglePanel(command->plugin, RouteMapPanel(g_routeAct.load()));
 	if (result != D2RL::Panels::Result::Success) {
 		char message[96] {};
 		std::snprintf(message, sizeof(message), "Route map: toggle failed (code %d).", static_cast<int>(result));
@@ -1654,6 +1922,22 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 			g_panels->registerPanel(context, &registration, &g_routeMap) != D2RL::Panels::Result::Success) {
 			context->LogWarn("Route map: could not register the panel.");
 			g_panels = nullptr;
+		} else {
+			// Act II's page: the same kind of panel, its own layout.
+			const D2RL::Resources::ResourceRegistration resource2 {
+				.structSize = D2RL::Resources::ResourceRegistrationSize,
+				.path       = "data/global/ui/layouts/darkestdiablo/RouteMap2hd.json",
+				.bytes      = RouteMap2Layout,
+				.byteCount  = sizeof(RouteMap2Layout) - 1,
+			};
+			D2RL::Panels::PanelRegistration registration2 = registration;
+			registration2.localId = "RouteMap2";
+			D2RL::Resources::RegistrationHandle resourceHandle2 = D2RL::Resources::InvalidHandle;
+			if (resources->registerResource(context, &resource2, &resourceHandle2) != D2RL::Resources::Result::Success ||
+				g_panels->registerPanel(context, &registration2, &g_routeMap2) != D2RL::Panels::Result::Success) {
+				context->LogWarn("Route map: could not register Act II's page.");
+				g_routeMap2 = g_routeMap;
+			}
 		}
 	} else {
 		g_panels = nullptr;
@@ -1680,7 +1964,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	// The GM window's event list. A new event needs one line here (or a RegisterEvent call of its
 	// own before DevTools::Load); the window and "gm event <id>" pick it up by themselves.
 	DevTools::RegisterEvent({ .id = "traveler", .label = "A traveler joins the camp", .console = "dd-traveler" });
-	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) &&
+	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) &&
 		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&

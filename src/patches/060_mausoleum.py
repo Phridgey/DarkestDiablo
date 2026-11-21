@@ -31,9 +31,9 @@ BASE_BAND = 24                      # bases up to this many levels under the ite
 # potions and gold drop as one pick per kill (two for champions); runes and white items roll on
 # their own (crafting_loot).
 CRAFT = {
-    # Normal: El to Eth. The game's "Runes 3" with Ith left out (same odds otherwise); Tal and
-    # Ral wait for the next crafting hunt (the Countess).
-    "":     ([("r05", 3), ("Runes 2", 5)], ("Chipped Gem", "Flawed Gem"), "Hpotion 1"),
+    # Normal: El to Ral, Act I's highest rune (decided 2026-11-20: A1 Ral, A2 Shael, A3 Lem,
+    # A4 Ohm), with the game's own odds: its "Runes 4" table.
+    "":     ("Runes 4", ("Chipped Gem", "Flawed Gem"), "Hpotion 1"),
     "(N)":  ("Runes 8", ("Flawed Gem", "Normal Gem"), "Hpotion 3"),
     "(H)":  ("Runes 13", ("Normal Gem", "Flawless Gem"), "Hpotion 5"),
 }
@@ -81,7 +81,8 @@ def patch(t):
     crafting_loot(t, arena)
 
 
-def crafting_loot(t, arena):
+def crafting_loot(t, arena, arena_id=ARENA_ID, wave_types=WAVE_TYPES, craft=CRAFT, name="DD Craft",
+                  id_prefix="dd_craft_"):
     """The hunt's loot, all from the game's own loot tables, so it drops on the ground like any
     loot. (The plugin can't make items on the ground: the loader's ground drops crash the game.)
 
@@ -93,7 +94,11 @@ def crafting_loot(t, arena):
       "spawnable", so they drop only from these tables, never in the rest of the game.
     - Runes: each monster type comes in one copy per magic find step ("dd_craft_<id>_r<k>"),
       whose loot table drops a rune at that step's chance. The plugin reads the hero's magic find
-      when a wave spawns and spawns the matching copies ("craftmf" lines in loot_data.txt)."""
+      when a wave spawns and spawns the matching copies ("craftmf" lines in loot_data.txt).
+
+    Other crafting hunts (the Stony Tomb, 130_stony_tomb.py) call this with their own level,
+    monsters, loot (`craft`), table names and monster Id prefix; the white copies are made once
+    (the first call) and found again after that."""
     tcs = t.table("treasureclassex")
     template = tcs.rows[0]
 
@@ -114,30 +119,31 @@ def crafting_loot(t, arena):
         return table(name, 1, 0, [(nested(f"{name} {n + 1}", part), len(part)) for n, part in enumerate(parts)])
 
     item_levels = [int(arena[c]) for c in ("MonLvlEx", "MonLvlEx(N)", "MonLvlEx(H)")]
-    whites = white_copies(t, item_levels)
+    made = any(r.get("code", "").startswith("z") and r.get("type", "").startswith("zw") for r in t.table("armor").rows)
+    whites = white_codes(t, item_levels) if made else white_copies(t, item_levels)
     steps = rune_steps()
     hunt = {}  # difficulty tag -> {step: (normal table, champion table)}
-    for d, (diff, (runes, gems, potion)) in enumerate(CRAFT.items()):
+    for d, (diff, (runes, gems, potion)) in enumerate(craft.items()):
         tag = f" {diff}" if diff else ""
         entries = [(gems[0], 10), (gems[1], 4), (potion, 8), ("gld", 12)]
-        base = table(f"DD Craft Hunt{tag}", 1, 40, entries)
-        base_champ = table(f"DD Craft Hunt Champ{tag}", 2, 10, entries)
-        white = table(f"DD Craft White{tag}", 1, 100 - WHITE_CHANCE,
-                      [(nested(f"DD Craft White Bases{tag}", whites[d]), WHITE_CHANCE)])
+        base = table(f"{name} Hunt{tag}", 1, 40, entries)
+        base_champ = table(f"{name} Hunt Champ{tag}", 2, 10, entries)
+        white = table(f"{name} White{tag}", 1, 100 - WHITE_CHANCE,
+                      [(nested(f"{name} White Bases{tag}", whites[d]), WHITE_CHANCE)])
         if not isinstance(runes, str):  # our own rune table
-            runes = table(f"DD Craft Runes{tag}", 1, 0, runes)
+            runes = table(f"{name} Runes{tag}", 1, 0, runes)
         hunt[diff] = {}
         for k, (_, chance) in enumerate(steps):
-            rune = table(f"DD Craft Rune {k}{tag}", 1, round((100 - chance) * 2), [(runes, round(chance * 2))])
+            rune = table(f"{name} Rune {k}{tag}", 1, round((100 - chance) * 2), [(runes, round(chance * 2))])
             # Negative picks: each entry drops its count of times, in order.
-            hunt[diff][k] = (table(f"DD Craft Hunt {k}{tag}", -3, 0, [(base, 1), (rune, 1), (white, 1)]),
-                             table(f"DD Craft Hunt Champ {k}{tag}", -4, 0, [(base_champ, 1), (rune, 2), (white, 1)]))
+            hunt[diff][k] = (table(f"{name} Hunt {k}{tag}", -3, 0, [(base, 1), (rune, 1), (white, 1)]),
+                             table(f"{name} Hunt Champ {k}{tag}", -4, 0, [(base_champ, 1), (rune, 2), (white, 1)]))
 
     stats = t.table("monstats")
     models = t.data("hd/character/monsters.json")
-    for source in WAVE_TYPES:
+    for source in wave_types:
         for k in range(len(steps)):
-            new_id = f"dd_craft_{source}_r{k}"
+            new_id = f"{id_prefix}{source}_r{k}"
             row = stats.add_copy("Id", source, Id=new_id, NextInClass="")
             for c in stats.columns:
                 if c.startswith("TreasureClass"):
@@ -146,7 +152,7 @@ def crafting_loot(t, arena):
                     row[c] = champ if ("Champ" in c or "Unique" in c) else normal
             models[new_id] = models[source]  # without this the monster is invisible
     for k, (mf, chance) in enumerate(steps):
-        t.loot_lines.append(f"craftmf {ARENA_ID} {mf} _r{k} {chance}")
+        t.loot_lines.append(f"craftmf {arena_id} {mf} _r{k} {chance}")
 
 
 def rune_steps():
@@ -160,6 +166,23 @@ def rune_steps():
         if chance >= 100.0:
             return steps
         mf += RUNE_STEP
+
+
+def white_codes(t, item_levels):
+    """The white copies white_copies already made, per difficulty: those from BASE_BAND levels
+    under each item level up to it."""
+    per_difficulty = [[] for _ in item_levels]
+    for name in ("weapons", "armor"):
+        for row in t.table(name).rows:
+            code, level = row.get("code", ""), row.get("level", "")
+            if code.startswith("z") and row.get("type", "").startswith("zw") and level.isdigit():
+                for d, top in enumerate(item_levels):
+                    if top - BASE_BAND < int(level) <= top:
+                        per_difficulty[d].append(code)
+    for d, codes in enumerate(per_difficulty):
+        if not codes:
+            raise RuntimeError(f"No white bases at item level {item_levels[d]}.")
+    return per_difficulty
 
 
 def white_copies(t, item_levels):

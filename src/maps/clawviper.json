@@ -1,0 +1,26 @@
+{
+  "name": "darkest_clawviper",
+  "folder": "act2/tomb",
+  "room": 16,
+  "comment": "Claw Viper Temple 2 (src/patches/116_act2_tier3.py): a copy of the temple's altar room (serpent1) alone, without its stairs and without Fangskin (the plugin brings him). The Tainted Sun altar gives the Amulet of the Viper.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/tomb/serpent1"
+    }
+  ],
+  "close_edges": true,
+  "copy_walls": [
+    [
+      9,
+      1,
+      8,
+      1
+    ]
+  ],
+  "drop_entities": [
+    "stair"
+  ]
+}

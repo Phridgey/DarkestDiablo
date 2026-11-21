@@ -288,7 +288,31 @@ static void RouteUnlocksTierByTier() {
 	CHECK(p.CurrentTier() == 2);                  // fork 1
 	CHECK(p.CanEnter(inifuss));
 	CHECK(p.CanEnter(crypt));                     // fork 1 has three built options
-	CHECK(!p.CanEnter(*Route::StopById("andariel")));  // not built yet: never enterable
+	CHECK(!p.CanEnter(*Route::StopById("andariel")));  // the last tier: not yet
+}
+
+static void ActTwoFollowsAndariel() {
+	Route::Progress p;
+	for (const char* id : { "den", "burial", "inifuss", "crypt", "tristram", "pit", "malus", "andariel" }) {
+		p.clears[id] = 1;
+	}
+	const auto& halls = *Route::StopById("halls");
+	CHECK(p.CurrentTier() == 6);                  // Act II opens after Andariel
+	CHECK(p.CanEnter(halls));
+	CHECK(!p.CanEnter(*Route::StopById("sewers")));
+	CHECK(p.RecordClear(halls));
+	CHECK(p.CanEnter(*Route::StopById("sewers")));
+	CHECK(p.CanEnter(*Route::StopById("stony")));
+	CHECK(Route::ActOfTier(halls.tier) == 2);
+	// Tier 8: both forced stops, in either order; each once, then the next tier.
+	p.clears["sewers"] = 1;
+	p.clears["stony"] = 1;
+	CHECK(p.CurrentTier() == 8);
+	CHECK(Route::IsAllOf(8));
+	p.clears["clawviper"] = 1;
+	CHECK(p.CurrentTier() == 8);                  // the Maggot Lair is still to do
+	p.clears["maggot"] = 1;
+	CHECK(p.CurrentTier() == 9);
 }
 
 static void ForkGivesTwoPicksSameOneAllowed() {
@@ -368,6 +392,7 @@ static void ReadsThisGameBuildsSaves() {
 int main() {
 	RouteUnlocksTierByTier();
 	ForkGivesTwoPicksSameOneAllowed();
+	ActTwoFollowsAndariel();
 	ARunMustBeFinishedAndResumes();
 	RouteProgressRoundTripAndBadLines();
 	EveryBuiltStopIsFoundByItsLevels();

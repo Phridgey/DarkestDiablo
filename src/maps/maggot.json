@@ -1,0 +1,44 @@
+{
+  "name": "darkest_maggot",
+  "folder": "act2/maggot",
+  "room": 10,
+  "comment": "Maggot Lair 3 (src/patches/116_act2_tier3.py): a copy of three of the lair's own rooms in a line, no stairs: the hero arrives in the south room (magn) and goes north through one tunnel (magns) to the treasure room (mags), whose unique-chest spot holds the Staff of Kings' chest on this level. The rooms' own monsters are gone.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/maggot/mags"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act2/maggot/magns"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act2/maggot/magn"
+    }
+  ],
+  "allow_holes": [
+    "act2/maggot/mags",
+    "act2/maggot/magns",
+    "act2/maggot/magn"
+  ],
+  "close_edges": true,
+  "remove_walls": [
+    [
+      3,
+      24
+    ],
+    [
+      4,
+      24
+    ],
+    [
+      5,
+      24
+    ]
+  ]
+}

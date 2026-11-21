@@ -40,7 +40,7 @@ Magic find also raises socket count, superior ("high quality") chance and ethere
 (MF runs and XP grinds).
 
 ## Act I
-Status (2026-11-19): every stop below is built except Andariel. Each is a
+Status (2026-11-20): every stop below is built (Andariel not yet tested). Each is a
 waves arena (see "The run"); the numbers are under "Drop and experience numbers".
 
 1. **Den of Evil** — forced quest. A skill point on the first clear (no Akara respec).
@@ -53,10 +53,36 @@ waves arena (see "The run"); the numbers are under "Drop and experience numbers"
    The whole zone has +40% magic find.
 5. Fork (2 picks): **Pit** (MF: the real Pit level 2; 5 packs led by uniques, a random one is the
    target and drops a guaranteed unique or set) · **Countess** (crafting hunt: Tower Cellar 5; she
-   drops 5 runes, Ith to Amn) · **Horadric Malus** (XP grind: a cut-down Barracks, a large hall
+   drops 5 runes, Ith to Ral) · **Horadric Malus** (XP grind: a cut-down Barracks, a large hall
    leading into the Smith's forge; +40% experience; cleared when the Smith dies; the Malus is
    Charsi's quest, her imbue)
-6. **Andariel** — act boss. Open question: forced final stop?
+6. **Andariel** — act boss, built like Sam's Tower zone (decided 2026-11-20). Her lair is
+   a copy of Blizzard's Catacombs level 4 map, without its monsters, its stairs (it leads
+   nowhere) and its two doors (no door can be shut on her). Packs come out as the hero nears them. Two unique monsters, far apart (the
+   south room, and the west end of the hall below her throne), each drop one of her keys: the
+   Vial of Maiden's Venom and the Shard of Anguish. Walking into her hall with both takes them and
+   brings her out; her death clears the stop. Keys follow the Tower seals' rules: kept in the
+   inventory, one of each, gone at the end of the game. Built in `src/patches/125_andariel.py`, `src/maps/andariel.json`, `src/plugin/andariel.cpp`.
+
+Act II (plan: `docs/act2.md`; status 2026-11-21: every stop built, not yet tested). Its route map
+page opens from the waypoint in Lut Gholein.
+1. **Halls of the Dead** (forced) — a copy of three Halls 3 rooms in a line, no stairs and no doors:
+   waves on the way to the Horadric Cube's chest, Bloodwitch the Wild by it. Cleared on picking up
+   the Cube (a hero who already has one: on opening the chest).
+2. Fork: **Sewers & Radament** (XP grind: +40% XP, triple gold; three sewer rooms ending in his lair;
+   he always drops his Book of Skill first, and picking it up clears it; the book's 1 skill point
+   plus 2 from the plugin on the first clear) · **Stony Tomb** (crafting hunt like the Mausoleum,
+   runes up to Shael, a round tomb hall).
+3. **Maggot Lair 3** and **Claw Viper Temple 2** (both forced, any order): three lair rooms ending in
+   the Staff of Kings' chest (Coldworm the Burrower by it); the temple's altar room (Fangskin; the
+   Tainted Sun altar gives the Amulet of the Viper). Each clears on picking up its item (a replay:
+   when the chest or altar is opened).
+4. Fork: **Arcane Sanctuary** (crafting hunt; one arm, monsters only ahead, the Summoner's death
+   clears it) · **Ancient Tunnels** (MF run; four rooms, unique-led packs, a random unique ends it)
+   · **Canyon of the Magi** (XP grind; a round sandy hollow).
+5. **Duriel**: arrive at the orifice in Tal Rasha's last room; the staff opens the way (the game's
+   own event); his death in his lair clears the stop.
+Linear maps (Halls, Sewers, Maggot Lair, Arcane, Tunnels) only spawn monsters ahead of the hero.
 
 ## Healing (decided 2026-11-19)
 - No health potions drop or are sold. Each cleared stop earns 3 (by difficulty: light, greater,
@@ -74,7 +100,8 @@ Every multiplier and drop rate we have agreed on, in one place. "Built" means it
 | Tristram, the whole zone | +40% magic find (on top of the hero's; done through the zone's loot tables) | built |
 | Griswold | 6 white weapon or armor drops (never magic; sockets and ethereal possible, superior not); a monster drops 6 items at most, so none of his own loot | built |
 | Horadric Malus (XP grind) | +40% experience from the waves' kills; drops as in the base game; cleared when the Smith dies | built |
-| Countess (crafting hunt) | She drops 5 runes, Ith to Amn, at the game's own odds between them except Amn (3% at most), then 1 of her usual item picks; the game's own Tower Cellar 5 map, with waves of its monster types, then her; cleared when she dies | built |
+| XP grinds: gold (Crypt, Malus) | Every gold pile is worth 3 times as much (+200%); how often gold drops is unchanged (`src/patches/115_xp_gold.py`) | built |
+| Countess (crafting hunt) | She drops 5 runes, Ith to Ral, at the game's own odds between them (Ith 22%, Tal 47%, Ral 31%), then 1 of her usual item picks; the game's own Tower Cellar 5 map, with waves of its monster types, then her; cleared when she dies | built |
 | Pit (MF run) | Like Rakanishu & Treehead: every monster's drops 1.4 times as likely to be magic or better; 5 packs of the Pit's monsters, each led by a unique; one unique, picked at random, drops a guaranteed unique or set, and killing it clears the stop | built |
 | MF runs (Rakanishu & Treehead, Pit) | Every drop 1.4 times as likely to be magic or better; charms 3 times as likely (+200%) | built |
 | Den of Evil, first clear | 1 skill point (no respec) | built |
@@ -87,12 +114,12 @@ Every multiplier and drop rate we have agreed on, in one place. "Built" means it
 | Mausoleum: gems, potions, gold | 1 pick per kill (2 for champions) from chipped/flawed gems, a healing potion and gold; 40 in 74 picks drop nothing (10 in 44 for champions) | built |
 
 Rune rules:
-- The Mausoleum tops out at Eth (Normal); Nightmare and Hell still use the game's Runes 8 and 13.
-  Runes above Eth in Act I come from the Countess (the next crafting hunt): Ith to Amn, Amn 3% at
-  most (changed 2026-11-19 from "Act I tops out at Tal").
+- Highest rune per act (decided 2026-11-20, replacing every earlier Act I limit): Act I Ral,
+  Act II Shael, Act III Lem, Act IV Ohm. The Mausoleum drops El to Ral (the game's "Runes 4"),
+  the Countess Ith to Ral.
 - Keep the game's own odds between runes (its rune tables), even where they look odd: the
-  newest runes of a table drop most often (in the Mausoleum, Eth 37.5%, Tir 26.8%, Nef 17.9%,
-  El 10.7%, Eld 7.1%). Only the top rune and the overall rune chance are ours to set.
+  newest runes of a table drop most often (in the Mausoleum, Tal 25%, Eth 17.5%, Ral 16.7%,
+  Tir 12.5%, Ith 11.7%, Nef 8.3%, El 5%, Eld 3.3%). Only the top rune and the overall rune chance are ours to set.
 
 The game's player count (`/players`) raises every drop chance above, as it does in the base
 game: the numbers are for one player.

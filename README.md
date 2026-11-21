@@ -92,7 +92,7 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
     a unique; a random one of them is the target (guaranteed unique or set; killing it wins).
     See `src/maps/pit.json` and `src/patches/090_pit.py`.
   - **Countess** (fork 2 crafting hunt): the game's own Tower Cellar 5 map, as waves; she drops 5 runes, Ith to
-    Amn. Cleared when she dies. See `src/patches/100_countess.py`.
+    Ral. Cleared when she dies. See `src/patches/100_countess.py`.
   - **Horadric Malus** (fork 2 XP grind): a cut-down Barracks, a large hall (two rooms opened into
     one, compose_map's `open`) leading into the Smith's forge; waves worth 40% more experience;
     cleared when the Smith dies. See `src/maps/malus.json` and `src/patches/110_malus.py`.

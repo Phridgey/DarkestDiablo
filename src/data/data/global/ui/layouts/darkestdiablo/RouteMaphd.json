@@ -1016,7 +1016,7 @@
   },
   {
    "type": "ButtonWidget",
-   "name": "NodeAndariel",
+   "name": "NodeAndarielLocked",
    "fields": {
     "rect": {
      "x": 406,
@@ -1030,6 +1030,25 @@
     "pointSize": "$SmallFontSize",
     "textColor": "$FontColorDarkGrayBlue",
     "disabled": true
+   }
+  },
+  {
+   "type": "ButtonWidget",
+   "name": "NodeAndariel",
+   "fields": {
+    "rect": {
+     "x": 406,
+     "y": 1150
+    },
+    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+    "pressedFrame": 1,
+    "disabledFrame": 2,
+    "hoveredFrame": 3,
+    "textString": "Andariel",
+    "pointSize": "$SmallFontSize",
+    "textColor": "$FontColorWhite",
+    "disabled": true,
+    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-37"
    }
   },
   {

@@ -3,13 +3,12 @@ waves (like every stop, so quitting can't bring the monsters back to farm): the 
 monster types around the hero, then the Countess. The stop counts as cleared when she dies (the
 plugin knows her by her own type, "targetclass" in d2rloader/loot_data.txt).
 
-- Map: src/maps/countess.json, one of the cellar's two versions with its monster spots and
-  chests left out; the level spawns no monsters of its own either.
-- The cellar is reached by the route map and left by town portal. Its stairs up still work (a
-  map with dead stairs crashes the game), but the floors above have no monsters.
-- The Countess drops 5 runes from Ith to Amn, then 1 pick of her usual item loot (a monster
-  drops 6 items at most). The odds between the runes are the game's own (its "Runes 6" table,
-  Ith to Amn), except Amn, held to AMN_CHANCE.
+- Map: src/maps/countess.json, a copy of one of the cellar's two versions without its monster
+  spots, chests and stairs; the level spawns no monsters of its own either.
+- The cellar leads nowhere: it is reached by the route map and left by town portal.
+- The Countess drops 5 runes from Ith to Ral, then 1 pick of her usual item loot (a monster
+  drops 6 items at most). Ral is Act I's highest rune (decided 2026-11-20: A1 Ral, A2 Shael,
+  A3 Lem, A4 Ohm). The odds between the runes are the game's own (its "Runes 4" table).
 - She gets her own monster type ("dd_countess", a copy of her base type) so her death can be
   told apart from the other rogues'.
 """
@@ -18,15 +17,13 @@ ARENA_ID = "25"                     # "Act 1 - Crypt 3 E", Tower Cellar level 5
 MAP_FILE = "Act1/Crypt/darkest_countess.ds1"
 COUNTESS = "The Countess"           # superuniques.txt row
 COUNTESS_TYPE = "dd_countess"
-RUNES = ["r06", "r07", "r08", "r09", "r10", "r11"]  # Ith .. Amn
-AMN_CHANCE = 0.03
+RUNES = ["r06", "r07", "r08"]       # Ith, Tal, Ral
 RUNE_DROPS = 5
-UPPER_FLOORS = ["21", "22", "23", "24"]  # Tower Cellar levels 1-4
 NO_MONSTERS = ("MonDen", "MonDen(N)", "MonDen(H)", "MonUMin", "MonUMax", "MonUMin(N)", "MonUMax(N)", "MonUMin(H)", "MonUMax(H)")
 
 
 def rune_shares(t):
-    """Each rune's share when the game's "Runes 6" table picks one, among Ith .. Amn only."""
+    """Each rune's share when the game's "Runes 4" table picks one, among Ith .. Ral only."""
     tcs = {r["Treasure Class"]: r for r in t.table("treasureclassex").rows}
     out = {}
 
@@ -40,24 +37,27 @@ def rune_shares(t):
                 walk(item, share * prob / total)
             else:
                 out[item] = out.get(item, 0.0) + share * prob / total
-    walk("Runes 6", 1.0)
+    walk("Runes 4", 1.0)
     shares = {r: out.get(r, 0.0) for r in RUNES}
-    rest = sum(v for r, v in shares.items() if r != "r11")
-    return {r: (AMN_CHANCE if r == "r11" else v / rest * (1 - AMN_CHANCE)) for r, v in shares.items()}
+    total = sum(shares.values())
+    return {r: v / total for r, v in shares.items()}
 
 
 def patch(t):
-    # The cellar's stairs up stay linked: its map has stair tiles, and a map whose stairs lead
-    # nowhere crashes the game on arrival (BC_VERIFY ptWarp). Instead the floors above are empty,
-    # so going up gains nothing.
+    # The map's stairs are gone (src/maps/countess.json), so nothing links to the cellar: a map
+    # whose stairs lead nowhere crashes the game on arrival (BC_VERIFY ptWarp).
     levels = t.table("levels")
-    for level_id in UPPER_FLOORS + [ARENA_ID]:
-        row = levels.first("Id", level_id)
-        for col in NO_MONSTERS:
-            row[col] = "0"
+    cellar = levels.first("Id", ARENA_ID)
+    for col in NO_MONSTERS:
+        cellar[col] = "0"
+    for row in levels.rows:
+        for k in range(8):
+            if row is cellar or row.get(f"Vis{k}") == ARENA_ID:
+                row[f"Vis{k}"], row[f"Warp{k}"] = "0", "-1"
 
     prest = t.table("lvlprest").first("LevelId", ARENA_ID)
     prest["Files"], prest["File1"], prest["File2"] = "1", MAP_FILE, "0"
+    prest["Scan"] = "0"             # no exits to register
 
     tcs = t.table("treasureclassex")
     template = tcs.rows[0]
