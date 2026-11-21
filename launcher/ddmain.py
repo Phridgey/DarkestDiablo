@@ -170,7 +170,9 @@ def python_shim(ws):
     shim.mkdir(exist_ok=True)
     target = shim / "python.exe"
     src = Path(sys.executable)
-    if not target.is_file() or target.stat().st_size != src.stat().st_size:
+    # Copied again after the launcher updated itself (ddself.py): a newer or different-size .exe.
+    if not target.is_file() or target.stat().st_size != src.stat().st_size \
+            or target.stat().st_mtime < src.stat().st_mtime:
         shutil.copyfile(src, target)
     return shim
 

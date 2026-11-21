@@ -41,7 +41,25 @@ What the launcher does on Update (`launcher/ddmain.py`):
 6. Records the commit in `<game folder>\darkestdiablo-install.json`.
 
 Getting the launcher itself: the Launcher workflow builds the .exe on every push to `main` that
-changes it (Actions, newest run, artifact `DarkestDiabloLauncher`).
+changes it (Actions, newest run, artifact `DarkestDiabloLauncher`). The launcher keeps itself up
+to date after that, see "The launcher updating itself" below.
+
+## The launcher updating itself
+
+No release is needed for a launcher change: merging it into `main` is enough.
+- On every push to `main` that changes the launcher, the Launcher workflow stamps the build
+  number (the workflow's run number) into `launcher/build_info.py`, builds the .exe and puts it
+  on the GitHub pre-release with tag `launcher`, together with `launcher.json`
+  (`build`, `commit`, `sha256`, `size`). That pre-release only ever holds the newest launcher;
+  its files are replaced each time. It is not a mod release: the releases channel reads
+  `/releases/latest`, which skips pre-releases.
+- When the launcher opens, it reads `launcher.json` (`launcher/ddself.py`). If the build number
+  is higher than its own, it downloads the .exe next to itself as `<name>.new`, checks size and
+  sha256, starts a small script that waits for the launcher to close, moves the new .exe over the
+  old one and opens it, then closes. Any failure (offline, folder not writable, bad download)
+  leaves the old launcher in place and it carries on as usual.
+- A launcher built anywhere else (`tools\build-launcher.cmd`, a pull request's build) has build 0
+  and never replaces itself, so a test build isn't overwritten.
 
 ## What the launcher does (both channels)
 
@@ -169,6 +187,7 @@ Rules:
 | `tools/vanilla_files.txt` | The game files the build reads. |
 | `launcher/darkestdiablo_launcher.py` | The window. Everything is drawn in code: no images, no sound (silent on purpose). |
 | `tools/release.py` | Makes and publishes releases. Shares the manifest code with the launcher. |
+| `launcher/ddself.py`, `launcher/build_info.py` | The launcher updating itself; its build number. |
 | `tools/build-launcher.cmd` | Builds `build\launcher\DarkestDiabloLauncher.exe` with PyInstaller. |
 | `tests/test_launcher.py` | Install, delta, fallback and safety tests: `python -m unittest discover tests`. |
 | `.github/workflows/launcher.yml` | Runs the tests and builds the .exe on Windows. |
