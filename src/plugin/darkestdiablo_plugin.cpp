@@ -9,6 +9,9 @@
 //     dd-tp        drop a Town Portal scroll now (for testing)
 //     dd-waves     restart the waves of the arena you stand in
 //     dd-map       open or close the route map
+//     dd-wavehud   show a fake 5-wave run of the wave counter (no monsters), to test how it looks
+// - Wave counter (waveoverlay.cpp): "Wave 2 / 5" at the top of the screen in an arena, with a
+//   "Next wave in 5" countdown during the last 5 s before each wave.
 //     gm           open the GM tools window: cheats for testing (devtools.cpp, docs/gm-tools.md)
 // - Route map: clicking a waypoint in town opens the route map instead of Blizzard's list.
 // - Waypoints: when the player is ready in a game, the plugin runs D2RLoader's "cheat waypoints"
@@ -27,6 +30,7 @@
 #include "route.h"
 #include "zone.h"
 #include "andariel.h"
+#include "waveoverlay.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <atomic>
@@ -719,6 +723,7 @@ static void ResetArena() noexcept {
 	g_portalDropped = false;
 	g_finalKills = 0;
 	g_finalSize = 0;
+	WaveOverlay::Hide();
 }
 
 static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run) noexcept;
@@ -899,6 +904,7 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 	if (g_threads->runOnGameThread(context, DropTownPortal, nullptr) != D2RL::Threads::Result::Success) {
 		context->LogWarn("Town Portal: could not queue the drop.");
 	}
+	WaveOverlay::Cleared();
 	char message[160] {};
 	std::snprintf(message, sizeof(message), "%s: cleared.", Arenas[index].name);
 	context->LogInfo(message);
@@ -1195,6 +1201,7 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run)
 			SaveProgress(context, progress);
 		}
 	}
+	WaveOverlay::SetWaves(wave, arena.waveCount, wave < arena.waveCount ? WaveIntervalMs : -1);
 	char message[128] {};
 	// The crafting hunt: its monsters spawn as the copies for the hero's magic find (craftmf
 	// lines). Between two steps each monster is the higher step's copy with a chance that grows
@@ -1753,6 +1760,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 				Later(context, ArrivalDelayMs + 500, QuestItemTick);
 			}
 			if (g_wave.load() < Arenas[arena].waveCount) {
+				WaveOverlay::SetWaves(g_wave.load(), Arenas[arena].waveCount, ArrivalDelayMs);
 				Later(context, ArrivalDelayMs, StartNextWave);
 			}
 			std::snprintf(message, sizeof(message), "%s: run %s at wave %d of %d.", Arenas[arena].name, spawned > 0 ? "resumed" : "started",
@@ -1767,6 +1775,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		return;
 	}
 	if (event->kind == Kind::LocalPlayerReady) {
+		WaveOverlay::OnPlayerReady();
 		RunConsole(context, "cheat waypoints");
 		GiveUpLeftRun(context);  // a run the hero quit with nothing more to spawn
 		g_threads->runOnGameThread(context, DeliverPotions, nullptr);  // games start in town
@@ -1835,6 +1844,15 @@ static auto WavesCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* 
 	ResetArena();
 	g_arena = arena;
 	StartNextWave(command->plugin, reinterpret_cast<void*>(g_run.load()));
+	return D2RL::ConsoleCommandResult::Handled;
+}
+
+static auto WaveHudCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	WaveOverlay::Demo();
+	command->plugin->WriteConsoleMessage("Wave counter: a fake 5-wave run starts now (no monsters).");
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -1964,11 +1982,12 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	// The GM window's event list. A new event needs one line here (or a RegisterEvent call of its
 	// own before DevTools::Load); the window and "gm event <id>" pick it up by themselves.
 	DevTools::RegisterEvent({ .id = "traveler", .label = "A traveler joins the camp", .console = "dd-traveler" });
-	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) &&
+	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) && WaveOverlay::Load(context) &&
 		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&
-		context->RegisterConsoleCommand("dd-map", MapCommand, "Open or close the route map.");
+		context->RegisterConsoleCommand("dd-map", MapCommand, "Open or close the route map.") &&
+		context->RegisterConsoleCommand("dd-wavehud", WaveHudCommand, "Show a fake 5-wave run of the wave counter (test).");
 }
 
 D2RL_PLUGIN_EXPORT void D2RLoaderUnloadPlugin() noexcept {}

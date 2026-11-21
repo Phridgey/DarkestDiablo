@@ -13,7 +13,7 @@ FetchContent_MakeAvailable(D2RLPluginSDK)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")  # no extra runtime DLLs
 
-add_library(darkestdiablo SHARED darkestdiablo_plugin.cpp campfire.cpp devtools.cpp gamememory.cpp gamestate.cpp gameapi.cpp gamewrite.cpp zone.cpp andariel.cpp darkestdiablo_plugin.rc)
+add_library(darkestdiablo SHARED darkestdiablo_plugin.cpp campfire.cpp devtools.cpp gamememory.cpp gamestate.cpp gameapi.cpp gamewrite.cpp zone.cpp andariel.cpp waveoverlay.cpp darkestdiablo_plugin.rc)
 target_include_directories(darkestdiablo PRIVATE ${CMAKE_SOURCE_DIR}/../../build/plugin-gen)  # gametables.h (tools/gen_game_tables.py)
 target_link_libraries(darkestdiablo PRIVATE D2RLPlugin::D2RLPlugin shell32 ole32 version)
 set_target_properties(darkestdiablo PROPERTIES

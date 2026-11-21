@@ -61,6 +61,18 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
   from a single folder. So a slot is a set of files: the live folder holds the loaded slot, the
   other slots are parked in `camp/slot<N>/files/`, and picking a slot moves files both ways.
   Settings and loot filters stay put and are shared by all slots.
+- **The game keeps the stash in memory.** It reads the shared stash at the first game of a
+  session and keeps that copy until it closes: later games show it and write it back on leaving,
+  whatever file is in the folder. Moving files was not enough (2026-11-19: save 2's stash item
+  turned up in save 1 and was written into save 1's stash). So once a game has been played,
+  picking another save, or deleting the save that was played, restarts the game: the change is
+  noted in `camp/next.txt`, a small helper waits for the game to close and starts it again with
+  the same command line, and the plugin moves the files while the game starts, before it reads
+  anything, then goes straight to the new save's Campfire. If the helper can't start, the slot
+  screen asks the player to restart by hand; the change is made at that next start.
+  **The automatic restart is switched off for now** (`AutoRestart` in `campfire.cpp`, 0.15.11):
+  Sam rejected the game closing itself, so the slot screen always asks the player to close the
+  game and start it again, until a better way replaces it.
 - **Gear at the fire is a copy, not the save.** The hero screen draws its figures from a layout
   file: a class, a weapon model, a shield model and light, medium or heavy armor per body part.
   The plugin notes what a hero wears while it is played, and writes that into the layout of its
@@ -103,6 +115,7 @@ In the save folder (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`):
     camp\active.txt              the loaded slot
     camp\slot<N>\camp.txt        that slot's camp: heroes, recruits, fallen classes, the traveler's offer
     camp\slot<N>\files\          that slot's saves and stash while another slot is loaded
+    camp\next.txt                 a save change waiting for the next start (see above)
     camp\graveyard\slot<N>\      fallen heroes
     camp\slot<N>\bench\        the other heroes' files while one hero is being loaded
     camp\trash\slot<N>-<time>\  a deleted save's files, kept in case it was a mistake

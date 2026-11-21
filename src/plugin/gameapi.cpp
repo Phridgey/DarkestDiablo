@@ -13,6 +13,8 @@
 #include <set>
 #include <atomic>
 #include <cmath>
+#include <deque>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <utility>
@@ -670,7 +672,8 @@ std::set<int>                                    g_heroStates;
 
 }  // namespace
 
-auto Poll() -> std::vector<Event> {
+// Compares the game with the previous call: the one place events are made (Update() below).
+static auto Diff() -> std::vector<Event> {
 	const std::lock_guard<std::mutex> guard(g_pollLock);
 	std::vector<Event> events;
 	const Unit hero = Hero();
@@ -785,6 +788,217 @@ auto EventName(EventType type) -> const char* {
 		case EventType::MercDied: return "mercenary died";
 	}
 	return "event";
+}
+
+// ---- The shared event feed and the run counters -----------------------------------------
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+
+struct Subscriber {
+	int           id;
+	EventCallback callback;
+	void*         userData;
+};
+
+std::mutex              g_feedLock;
+std::vector<Subscriber> g_subscribers;
+int                     g_nextId = 1;
+std::deque<Event>       g_pollQueue;           // what Poll() hands out next
+bool                    g_pollUsed = false;    // Poll() was called at least once
+constexpr std::size_t   PollQueueLimit = 4096; // a Poll() caller that stopped calling can't grow it forever
+std::atomic<int64_t>    g_lastTick { 0 };      // Clock ticks of the last Tick(), 0: never
+
+std::mutex              g_countLock;
+CounterSet              g_counts;
+Clock::time_point       g_runStart = Clock::now(), g_stopStart = Clock::now();
+uint32_t                g_countHero = 0;       // the hero the counters are primed for, 0: not yet
+Clock::time_point       g_primeUntil;          // items seen before this aren't "found" (they load over a moment)
+long long               g_goldTotal = -1;      // gold carried + stashed at the last tick
+std::set<uint32_t>      g_knownItems;          // the hero's item unit numbers seen this run
+std::set<uint32_t>      g_usedObjects;         // shrines and chests already counted this run
+
+auto IsBoss(uint32_t row) -> bool {
+	return std::binary_search(std::begin(Tables::BossRows), std::end(Tables::BossRows), static_cast<uint16_t>(row));
+}
+
+void Add(const std::function<void(Tally&)>& change) {
+	change(g_counts.run);
+	change(g_counts.stop);
+}
+
+// Counts one event (g_countLock held).
+void CountEvent(const Event& e) {
+	switch (e.type) {
+		case EventType::MonsterDied: {
+			if (ClassOf(e.unit.row) != MonsterClass::Enemy) {
+				break;
+			}
+			const MonsterDetails m = Monster(e.unit);
+			Add([&](Tally& t) {
+				++t.kills;
+				if (IsBoss(e.unit.row)) {
+					++t.killsBoss;
+				} else if (m.unique || m.superUnique) {
+					++t.killsUnique;
+				} else if (m.champion) {
+					++t.killsChampion;
+				} else {
+					++t.killsNormal;
+				}
+			});
+			break;
+		}
+		case EventType::MercDied: Add([](Tally& t) { ++t.mercDeaths; }); break;
+		case EventType::HeroDied: Add([](Tally& t) { ++t.heroDeaths; }); break;
+		case EventType::HeroLevelUp: Add([&](Tally& t) { t.levelsGained += e.after - e.before; }); break;
+		case EventType::ObjectUsed: {
+			const ObjectKind kind = KindOf(e.unit.row);
+			if (e.before != 0 || e.after == 0 || (kind != ObjectKind::Shrine && kind != ObjectKind::Chest) || !g_usedObjects.insert(e.unit.id).second) {
+				break;
+			}
+			Add([&](Tally& t) { ++(kind == ObjectKind::Shrine ? t.shrinesUsed : t.chestsOpened); });
+			break;
+		}
+		case EventType::HeroAreaChanged:
+			g_counts.stop = {};
+			g_counts.stopArea = e.after;
+			g_stopStart = Clock::now();
+			break;
+		default: break;
+	}
+}
+
+// Gold and items: compared with the last tick (g_countLock held). The first moments after a
+// reset (or a new hero) only take note of what the hero already has.
+void CountBelongings(const Unit& hero) {
+	const auto now = Clock::now();
+	if (hero.id != g_countHero) {
+		g_countHero = hero.id;
+		g_primeUntil = now + std::chrono::seconds(2);
+		g_goldTotal = -1;
+		g_knownItems.clear();
+		if (g_counts.stopArea < 0) {
+			g_counts.stopArea = GameState::Level(hero);
+		}
+	}
+	const bool priming = now < g_primeUntil;
+	const long long gold = static_cast<long long>(Stat(hero, StatId::Gold, 0, false).value_or(0)) + Stat(hero, StatId::StashGold, 0, false).value_or(0);
+	if (g_goldTotal >= 0 && gold > g_goldTotal && !priming) {
+		Add([&](Tally& t) { t.goldGained += gold - g_goldTotal; });
+	}
+	g_goldTotal = gold;
+	int found = 0;
+	for (const ItemDetails& i : HeroItems()) {
+		found += g_knownItems.insert(i.unit.id).second && !priming ? 1 : 0;
+	}
+	if (found > 0) {
+		Add([&](Tally& t) { t.itemsFound += found; });
+	}
+}
+
+// One look at the game: events, counters, then the subscribers and the Poll() queue.
+void Update() {
+	const std::vector<Event> events = Diff();
+	{
+		const std::lock_guard<std::mutex> guard(g_countLock);
+		for (const Event& e : events) {
+			CountEvent(e);
+		}
+		if (const Unit hero = Hero()) {
+			CountBelongings(hero);
+		}
+	}
+	if (events.empty()) {
+		return;
+	}
+	std::vector<Subscriber> subscribers;
+	{
+		const std::lock_guard<std::mutex> guard(g_feedLock);
+		subscribers = g_subscribers;
+		if (g_pollUsed) {
+			for (const Event& e : events) {
+				if (g_pollQueue.size() >= PollQueueLimit) {
+					g_pollQueue.pop_front();
+				}
+				g_pollQueue.push_back(e);
+			}
+		}
+	}
+	for (const Subscriber& s : subscribers) {
+		for (const Event& e : events) {
+			try {
+				s.callback(e, s.userData);
+			} catch (...) {
+			}
+		}
+	}
+}
+
+auto Ticking() -> bool {
+	const int64_t last = g_lastTick.load();
+	return last != 0 && Clock::now().time_since_epoch().count() - last < std::chrono::duration_cast<Clock::duration>(std::chrono::seconds(2)).count();
+}
+
+}  // namespace
+
+auto Subscribe(EventCallback callback, void* userData) -> int {
+	if (callback == nullptr) {
+		return 0;
+	}
+	const std::lock_guard<std::mutex> guard(g_feedLock);
+	g_subscribers.push_back({ g_nextId, callback, userData });
+	return g_nextId++;
+}
+
+void Unsubscribe(int id) {
+	const std::lock_guard<std::mutex> guard(g_feedLock);
+	g_subscribers.erase(std::remove_if(g_subscribers.begin(), g_subscribers.end(), [&](const Subscriber& s) { return s.id == id; }), g_subscribers.end());
+}
+
+void Tick() {
+	g_lastTick = Clock::now().time_since_epoch().count();
+	Update();
+}
+
+auto Poll() -> std::vector<Event> {
+	{
+		const std::lock_guard<std::mutex> guard(g_feedLock);
+		g_pollUsed = true;
+	}
+	if (!Ticking()) {
+		Update();
+	}
+	const std::lock_guard<std::mutex> guard(g_feedLock);
+	std::vector<Event> out(g_pollQueue.begin(), g_pollQueue.end());
+	g_pollQueue.clear();
+	return out;
+}
+
+auto Counters() -> CounterSet {
+	const std::lock_guard<std::mutex> guard(g_countLock);
+	CounterSet c = g_counts;
+	const auto now = Clock::now();
+	c.run.seconds = std::chrono::duration<double>(now - g_runStart).count();
+	c.stop.seconds = std::chrono::duration<double>(now - g_stopStart).count();
+	return c;
+}
+
+void ResetCounters() {
+	const std::lock_guard<std::mutex> guard(g_countLock);
+	g_counts = {};
+	g_runStart = g_stopStart = Clock::now();
+	g_countHero = 0;  // the next tick takes note of the hero's gold and items again
+	g_usedObjects.clear();
+}
+
+void ResetStop() {
+	const std::lock_guard<std::mutex> guard(g_countLock);
+	const int area = g_counts.stopArea;
+	g_counts.stop = {};
+	g_counts.stopArea = area;
+	g_stopStart = Clock::now();
 }
 
 }  // namespace Game

@@ -192,6 +192,43 @@ static void DeletingASaveEmptiesOnlyThatSave() {
 	CHECK(!DeleteSlot(live, 9, "t3", error));
 }
 
+static void PendingChangesWaitForTheNextStart() {
+	const fs::path live = TempDir("slots-pending");
+	WriteFile(live / "Settings.json", "{}");
+	WriteSave(live / "Burr.d2s", Paladin, 12);
+	WriteFile(live / "SharedStashHardCoreV2.d2i", "slot one stash");
+	std::string error;
+	CHECK(SwitchSlot(live, 2, error));
+	WriteSave(live / "Xade.d2s", Sorceress, 1);
+	WriteFile(live / "SharedStashHardCoreV2.d2i", "slot two stash");
+	CHECK(ApplyPending(live).empty());  // nothing waiting: nothing happens
+	// Noted while the game runs: nothing moves yet.
+	Pending pending;
+	pending.open = 1;
+	CHECK(WritePending(live, pending));
+	CHECK(ActiveSlot(live) == 2 && ReadFile(live / "SharedStashHardCoreV2.d2i") == "slot two stash");
+	CHECK(ReadPending(live).open == 1 && ReadPending(live).deletes.empty());
+	// The next start makes the change, once.
+	CHECK(ApplyPending(live).size() == 1);
+	CHECK(ActiveSlot(live) == 1 && ReadFile(live / "SharedStashHardCoreV2.d2i") == "slot one stash");
+	CHECK(!fs::exists(PendingFile(live)));
+	CHECK(ApplyPending(live).empty() && ActiveSlot(live) == 1);
+	// Deleting the live save waits too, and a new save there starts without its stash.
+	pending = {};
+	pending.deletes.emplace_back(1, "t1");
+	CHECK(WritePending(live, pending));
+	CHECK(HeroNames(live) == std::vector<std::string> { "Burr" });
+	ApplyPending(live);
+	CHECK(HeroNames(live).empty() && !fs::exists(live / "SharedStashHardCoreV2.d2i") && ActiveSlot(live) == 1);
+	CHECK(fs::exists(live / "camp" / "trash" / "slot1-t1" / "live" / "SharedStashHardCoreV2.d2i"));
+	CHECK(fs::exists(live / "Settings.json"));
+	// Bad lines are ignored.
+	WriteFile(PendingFile(live), "open 7\ndelete 0 x\nnonsense\n");
+	CHECK(ReadPending(live).Empty());
+	ApplyPending(live);
+	CHECK(ActiveSlot(live) == 1 && !fs::exists(PendingFile(live)));
+}
+
 static void SwitchingSlotNeverLosesFilesOnFailure() {
 	const fs::path live = TempDir("slots-clash");
 	WriteSave(live / "Burr.d2s", Paladin, 12);
@@ -406,6 +443,7 @@ int main() {
 	SlotsKeepTheirOwnHeroesAndStash();
 	DeletingASaveEmptiesOnlyThatSave();
 	SwitchingSlotNeverLosesFilesOnFailure();
+	PendingChangesWaitForTheNextStart();
 	ReconcileFollowsTheSaveFiles();
 	if (failures != 0) {
 		std::cerr << failures << " check(s) failed\n";

@@ -13,6 +13,7 @@
 //   Game::HeroItems()                    what the hero wears and carries (stash, cube, belt)
 //   Game::ClassOf(row), KindOf(row)      enemy / NPC / mercenary / summon / critter;
 //                                        shrine / chest / waypoint / portal / door / well
+//   Game::Subscribe(), Counters()        the shared event feed; run and stop counters (kills...)
 //   Game::Poll()                         what changed since the last call (hero died, object
 //                                        used, monster died, unit appeared/left, area changed)
 //
@@ -245,10 +246,62 @@ struct Event {
 	int       after = 0; // mode, area or life before/after, by type
 };
 
-// What changed since the last call (the first call only takes a snapshot). Call it regularly,
-// e.g. every 100-250 ms, from one place; Campfire's "dd-state watch" logs it.
+// ---- The shared event feed ---------------------------------------------------------------
+// One place looks for changes: Game::Tick(), which the plugin calls every 250 ms on the game's
+// UI thread from the moment it loads (campfire.cpp, TrackTick). Each tick compares the game
+// with the last tick, updates the run counters (below) and hands the new events to every
+// subscriber. Any number of features can subscribe; none of them miss events another one saw.
+
+using EventCallback = void (*)(const Event& event, void* userData);
+
+// Calls `callback` for every event from now on, on the UI thread, right after each tick.
+// Keep it quick (no waiting, no file writes in a loop). Returns an id for Unsubscribe; 0 = refused.
+auto Subscribe(EventCallback callback, void* userData = nullptr) -> int;
+void Unsubscribe(int id);
+
+// The tick itself. Only the plugin's timer calls it (campfire.cpp); features subscribe instead.
+void Tick();
+
+// Older way to read events, still working: everything that happened since the previous Poll()
+// call. Only one place should call it, because it empties its queue. When the tick isn't
+// running (e.g. a test without the plugin's timer), Poll() looks for changes itself.
 auto Poll() -> std::vector<Event>;
 
 auto EventName(EventType type) -> const char*;
+
+// ---- Run counters ------------------------------------------------------------------------
+// Kept by the API from the event feed, so every feature reads the same numbers. "Run" counts
+// from ResetCounters() (the Campfire calls it when a game starts with a hero); "stop" counts
+// from the last time the hero entered a new area (or ResetStop()).
+
+struct Tally {
+	int       kills = 0;          // enemies killed (MonsterClass::Enemy; not NPCs, summons, critters)
+	int       killsNormal = 0;    // ... of them: normal monsters and minions
+	int       killsChampion = 0;  // champions
+	int       killsUnique = 0;    // uniques and super uniques (not bosses)
+	int       killsBoss = 0;      // monstats.txt "boss" rows: act bosses, Blood Raven, Griswold...
+	int       heroDeaths = 0;
+	int       mercDeaths = 0;
+	long long goldGained = 0;     // rises in gold carried + stashed (picked up, sold, rewards); spending doesn't subtract
+	int       itemsFound = 0;     // items that newly belong to the hero (picked up, bought, rewards)
+	int       levelsGained = 0;
+	int       shrinesUsed = 0;
+	int       chestsOpened = 0;   // chests, urns, caskets and other containers (ObjectKind::Chest)
+	double    seconds = 0;        // wall-clock time since the reset (the game's pause menu still counts)
+};
+
+struct CounterSet {
+	Tally run;
+	Tally stop;
+	int   stopArea = -1;  // levels.txt Id of the current stop
+};
+
+auto Counters() -> CounterSet;
+
+// Starts the run (and the stop) from zero. Items the hero owns now don't count as found.
+void ResetCounters();
+
+// Starts the stop from zero (also happens by itself when the hero enters another area).
+void ResetStop();
 
 }  // namespace Game
