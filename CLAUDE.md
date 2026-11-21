@@ -132,5 +132,8 @@ Plain, jargon-free language in docs and commit messages.
   `findPanel("HUDPanel")` gives Unavailable (0.15.4), and a layout's `"visible": false` is
   ignored (widgets start shown). For on-screen text in a game, use a small panel of our own
   and show the right ready-made widget (`src/plugin/waveoverlay.cpp`).
+- A plugin panel opened for the first time can't be found (`findPanel`) until the game has built
+  it, so hiding widgets right after `openPanel` does nothing and every widget shows. Set them
+  again a few times over the next second (`OpenSlotsPanel` in `campfire.cpp`).
 - The plugin hears the menus too: `FrontEndNavigation:ToFrontEnd` comes before the main menu
   loads, `CharacterCreate:Select:<Class>` and `CharacterCreate:Create` on the hero screen.

@@ -14,6 +14,7 @@
 //   camp/slot<N>/camp.txt        that slot's camp
 //   camp/slot<N>/files/          that slot's characters and shared stash while another slot is live
 //   camp/graveyard/slot<N>/...   fallen heroes' files
+//   camp/next.txt                a save change that waits for the next start (Pending below)
 // The game only reads one folder and one shared stash, so switching slot means moving files.
 #pragma once
 
@@ -449,6 +450,85 @@ inline auto DeleteSlot(const fs::path& live, int slot, const std::string& stamp,
 		fs::rename(graves, trash / "graveyard", ec);  // if this fails the old graves stay: harmless
 	}
 	return true;
+}
+
+// ---- Changes that wait for the next start -------------------------------------------------
+// The game reads the shared stash once, at the first game of a session, and keeps that copy in
+// memory until it closes: every later game shows it and writes it back on leaving. Moving another
+// save's stash file in while it runs is not enough (seen 2026-11-19: save 2's stash item showed up
+// in save 1 and was written into save 1's stash). So once a game has been played, a change of
+// save, or deleting the save whose stash the game holds, is only noted in camp/next.txt; the game
+// restarts and the plugin makes the change while starting, before the game reads anything.
+//   camp/next.txt   "delete <slot> <stamp>" lines, then "open <slot>"
+
+struct Pending {
+	std::vector<std::pair<int, std::string>> deletes;  // slot, trash stamp
+	int open = 0;                                      // 0 = keep the live slot
+	auto Empty() const -> bool { return deletes.empty() && open == 0; }
+};
+
+inline auto PendingFile(const fs::path& live) -> fs::path {
+	return live / "camp" / "next.txt";
+}
+
+inline auto ReadPending(const fs::path& live) -> Pending {
+	Pending pending;
+	std::istringstream in(ReadFile(PendingFile(live)));
+	std::string line;
+	while (std::getline(in, line)) {
+		std::istringstream words(line);
+		std::string key;
+		int slot = 0;
+		words >> key >> slot;
+		if (slot < 1 || slot > SlotCount) {
+			continue;
+		}
+		if (key == "delete") {
+			std::string stamp;
+			words >> stamp;
+			pending.deletes.emplace_back(slot, stamp.empty() ? std::string("pending") : stamp);
+		} else if (key == "open") {
+			pending.open = slot;
+		}
+	}
+	return pending;
+}
+
+inline auto WritePending(const fs::path& live, const Pending& pending) -> bool {
+	std::ostringstream out;
+	for (const auto& [slot, stamp] : pending.deletes) {
+		out << "delete " << slot << " " << stamp << "\n";
+	}
+	if (pending.open != 0) {
+		out << "open " << pending.open << "\n";
+	}
+	return WriteFile(PendingFile(live), out.str());
+}
+
+// Makes the waiting changes. Call it while the game starts, before it reads the save folder.
+// Returns what happened, one line each, for the log. The file is removed even if a change
+// failed, so a broken change can't stop every start; the log says what went wrong.
+inline auto ApplyPending(const fs::path& live) -> std::vector<std::string> {
+	std::vector<std::string> log;
+	std::error_code ec;
+	if (!fs::exists(PendingFile(live), ec)) {
+		return log;
+	}
+	const Pending pending = ReadPending(live);
+	for (const auto& [slot, stamp] : pending.deletes) {
+		std::string error;
+		log.push_back(DeleteSlot(live, slot, stamp, error)
+			? "save " + std::to_string(slot) + " was deleted (its files are kept in camp/trash)."
+			: "could not delete save " + std::to_string(slot) + ": " + error);
+	}
+	if (pending.open != 0) {
+		std::string error;
+		log.push_back(SwitchSlot(live, pending.open, error)
+			? "switched to save " + std::to_string(pending.open) + "."
+			: "could not switch to save " + std::to_string(pending.open) + ": " + error);
+	}
+	fs::remove(PendingFile(live), ec);
+	return log;
 }
 
 // ---- The bench ----------------------------------------------------------------------------
