@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <ctime>
 #include <exception>
 #include <mutex>
@@ -138,6 +139,66 @@ Spot g_spots[Camp::ClassCount];
 struct ItemLook { char kind = 0; std::string value; };
 std::vector<std::pair<std::string, ItemLook>> g_looks;  // item code -> how it looks on a figure
 
+// ---- The state log -----------------------------------------------------------------------
+// The loader rewrites darkestdiablo.log every time the game starts, so a restart used to wipe
+// the results of a dd-state check. Every "State:" and "Write:" line (dd-state, dd-state watch,
+// dd-set) also goes to d2rloader\logs\darkestdiablo-state.log, which is only ever added to.
+// Over 5 MB at start, it becomes darkestdiablo-state.old.log (replacing the older one).
+
+std::mutex    g_stateLogLock;
+std::ofstream g_stateLog;
+
+auto StateLogPath() -> fs::path {
+	HMODULE self = nullptr;
+	wchar_t path[MAX_PATH] {};
+	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(&StateLogPath),
+	        &self) || GetModuleFileNameW(self, path, MAX_PATH) == 0) {
+		return {};
+	}
+	return fs::path(path).parent_path().parent_path() / "logs" / "darkestdiablo-state.log";  // plugins\..\logs
+}
+
+auto LocalStamp() -> std::string {
+	SYSTEMTIME t {};
+	GetLocalTime(&t);
+	char text[32];
+	std::snprintf(text, sizeof(text), "%04u-%02u-%02u %02u:%02u:%02u.%03u", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
+	return text;
+}
+
+void StateLogLine(const char* line) noexcept {
+	try {
+		const std::lock_guard<std::mutex> guard(g_stateLogLock);
+		if (g_stateLog.is_open()) {
+			g_stateLog << '[' << LocalStamp() << "] " << line << '\n';
+			g_stateLog.flush();
+		}
+	} catch (...) {
+	}
+}
+
+// Called once when the plugin loads.
+void OpenStateLog() noexcept {
+	try {
+		const fs::path file = StateLogPath();
+		if (file.empty()) {
+			return;
+		}
+		std::error_code ec;
+		fs::create_directories(file.parent_path(), ec);
+		if (fs::exists(file, ec) && fs::file_size(file, ec) > 5u * 1024 * 1024) {
+			fs::path old = file;
+			old.replace_filename("darkestdiablo-state.old.log");
+			fs::remove(old, ec);
+			fs::rename(file, old, ec);
+		}
+		const std::lock_guard<std::mutex> guard(g_stateLogLock);
+		g_stateLog.open(file, std::ios::app);
+	} catch (...) {
+	}
+	StateLogLine((std::string("--- session start ") + Campfire::Version + " " + LocalStamp()).c_str());
+}
+
 void Log(const D2RL::PluginContext* context, const char* format, ...) noexcept {
 	char message[512] {};
 	va_list args;
@@ -145,6 +206,9 @@ void Log(const D2RL::PluginContext* context, const char* format, ...) noexcept {
 	std::vsnprintf(message, sizeof(message), format, args);
 	va_end(args);
 	context->LogInfo(message);
+	if (std::strncmp(message, "State:", 6) == 0 || std::strncmp(message, "Write:", 6) == 0) {
+		StateLogLine(message);
+	}
 }
 
 auto IsTown(int levelId) noexcept -> bool {
@@ -2023,6 +2087,7 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 }  // namespace
 
 auto Load(const D2RL::PluginContext* context) noexcept -> bool {
+	OpenStateLog();  // darkestdiablo-state.log: dd-state results survive restarts
 	try {
 		const Lock lock(g_mutex);
 		g_live = FindSaveFolder();

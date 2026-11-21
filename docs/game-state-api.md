@@ -318,12 +318,17 @@ Open the console in game:
 - `dd-state tables`: research for where missiles live.
 
 Everything is also written to the plugin log (`Mods\darkestdiablo\d2rloader\logs\darkestdiablo.log`).
+That log is rewritten every time the game starts (also when it restarts by itself), so every
+`State:` and `Write:` line (dd-state, dd-state watch, dd-set) also goes to
+`Mods\darkestdiablo\d2rloader\logs\darkestdiablo-state.log`, which is only ever added to: each line
+has the local date and time, and each game start adds a `--- session start <version> <time>`
+line. Over 5 MB at start it becomes `darkestdiablo-state.old.log`. Read results from there.
 When a mapped value proves right, mark it checked here; when it's wrong, fix the offset in
 `gameapi.cpp` and note what the game showed.
 
 ### One play session to check the mapped values
 
-Copy the log afterwards (it is rewritten when the game starts again). Type `dd-state watch`
+The results stay in `darkestdiablo-state.log`. Type `dd-state watch`
 first so every event is logged, then:
 
 | Do this | Then type | What should match |
