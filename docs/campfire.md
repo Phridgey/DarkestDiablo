@@ -70,6 +70,9 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
   the same command line, and the plugin moves the files while the game starts, before it reads
   anything, then goes straight to the new save's Campfire. If the helper can't start, the slot
   screen asks the player to restart by hand; the change is made at that next start.
+  **The automatic restart is switched off for now** (`AutoRestart` in `campfire.cpp`, 0.15.11):
+  Sam rejected the game closing itself, so the slot screen always asks the player to close the
+  game and start it again, until a better way replaces it.
 - **Gear at the fire is a copy, not the save.** The hero screen draws its figures from a layout
   file: a class, a weapon model, a shield model and light, medium or heavy armor per body part.
   The plugin notes what a hero wears while it is played, and writes that into the layout of its
