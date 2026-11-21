@@ -8,6 +8,8 @@ data/global/dataversionbuild.txt
 # Room pieces for the hand-made maps (src/maps)
 data/global/tiles/act1/
 data/hd/env/preset/act1/
+data/global/tiles/act2/
+data/hd/env/preset/act2/
 # The Campfire (docs/campfire.md): menu layouts and item and object models
 data/global/ui/layouts/
 data/hd/items/items.json

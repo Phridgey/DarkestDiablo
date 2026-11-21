@@ -1,0 +1,42 @@
+{
+  "name": "darkest_pit",
+  "folder": "act1/caves",
+  "room": 24,
+  "comment": "Pit arena (fork 2 MF run): the same copy of the Pit level 2 room as the Den (Blizzard's act1/caves/caveroom5), as its own map file. Waypoint in the north-west; the fight comes from the south-east. Treasure chests left out.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/caves/caveroom5"
+    }
+  ],
+  "close_edges": true,
+  "extra_objects": [
+    {
+      "type": 2,
+      "id": 52,
+      "tile": [
+        8,
+        8
+      ],
+      "comment": "WaypointOutsideAct1 (objpreset Act 1 Index 52). Its HD look is the prefab below, placed as in the game's act1/outdoors/waypoint map (object at sub-tile 14,14 -> prefab at 37,38).",
+      "hd_prefab": {
+        "prefab": "data/hd/env/model/act1/outdoors/act1_outdoors_props/pf_waypoint01.json",
+        "offset": [
+          9,
+          10
+        ],
+        "models": [
+          "data/hd/env/model/act1/outdoors/act1_outdoors_props/waypoint01.model",
+          "data/hd/objects/waypoint_portals/waypoint_outside_act_1/model/torso.model"
+        ]
+      }
+    }
+  ],
+  "drop_objects": [
+    68,
+    104,
+    111
+  ]
+}

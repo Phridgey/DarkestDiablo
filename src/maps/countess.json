@@ -1,0 +1,42 @@
+{
+  "name": "darkest_countess",
+  "folder": "act1/crypt",
+  "room": 30,
+  "comment": "Countess (fork 2 crafting hunt): a copy of the game's Tower Cellar level 5 (cryptcountess1, one of its two versions) without its monster spots (the Countess and the monster groups), its treasure chests and its stairs: the stairs' tiles (26,12 and 27,12) get the plain wall of their neighbours and the stairway's HD model becomes wall, so the cellar leads nowhere. The plugin's waves are the only monsters.",
+  "keep_monsters": [],
+  "drop_objects": [
+    104
+  ],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/crypt/cryptcountess1"
+    }
+  ],
+  "copy_walls": [
+    [
+      25,
+      12,
+      26,
+      12
+    ],
+    [
+      28,
+      12,
+      27,
+      12
+    ]
+  ],
+  "drop_entities": [
+    "doorway_stairs01",
+    "pf_doorway06"
+  ],
+  "add_entities": [
+    {
+      "copy": "wall_single01_19",
+      "x": 272,
+      "z": 123
+    }
+  ]
+}

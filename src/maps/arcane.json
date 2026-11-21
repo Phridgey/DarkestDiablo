@@ -1,0 +1,35 @@
+{
+  "name": "darkest_arcane",
+  "folder": "act2/arcane",
+  "room": 12,
+  "comment": "Arcane Sanctuary (src/patches/116_act2_tier3.py): one arm of the sanctuary's cross, a copy of four of its own rooms in a line: the hero arrives at the south end (sanctn) and walks north along the walkways (sanctns twice) to the Summoner's platform (summs). Monsters only come from ahead.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/arcane/summs"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act2/arcane/sanctns"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act2/arcane/sanctns"
+    },
+    {
+      "x": 0,
+      "y": 3,
+      "piece": "act2/arcane/sanctn"
+    }
+  ],
+  "allow_holes": [
+    "act2/arcane/summs",
+    "act2/arcane/sanctns",
+    "act2/arcane/sanctn"
+  ],
+  "close_edges": true
+}
