@@ -122,5 +122,8 @@ Plain, jargon-free language in docs and commit messages.
   8x8 open square; the Pit's wide areas are open rooms joined edge to edge.
 - A plugin can show, hide and find widgets (WidgetService) but not change their text. For text
   that varies, make one widget per case and show the right one (`tools/camp_layouts.py`).
+- A plugin panel opened for the first time can't be found (`findPanel`) until the game has built
+  it, so hiding widgets right after `openPanel` does nothing and every widget shows. Set them
+  again a few times over the next second (`OpenSlotsPanel` in `campfire.cpp`).
 - The plugin hears the menus too: `FrontEndNavigation:ToFrontEnd` comes before the main menu
   loads, `CharacterCreate:Select:<Class>` and `CharacterCreate:Create` on the hero screen.

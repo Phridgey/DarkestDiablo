@@ -98,6 +98,8 @@ int  g_travelerChance = 25;     // camp/options.txt: "traveler_chance <0-100>", 
 
 bool g_slotChosen    = false;   // the slot screen was answered this launch
 bool g_awaitingMenu  = false;   // asked the menu to load again after a slot change
+int  g_stashSlot     = 0;       // the save whose shared stash the game holds in memory (0: no game played yet; see camp.h, Pending)
+bool g_openedAtStart = false;   // a save change waiting from the last session was made at this start: go straight to its Campfire
 bool g_inGame        = false;
 int  g_levelId       = -1;
 constexpr int RogueEncampment = 1;  // levels.txt Id
@@ -119,6 +121,7 @@ std::string g_gearNow;              // what the hero in the current game wears (
 struct Spot { int x = 0, y = 0, w = 0, h = 0; std::string px, py, pz, yaw, look; bool known = false; };
 bool g_atFire    = false;  // the Campfire screen is up
 bool g_slotsOpen = false;
+bool g_slotNotice = false;  // the slot screen shows only "close the game and start it again"
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
 bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
@@ -391,7 +394,7 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool;
 // asked before a save is deleted.
 void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 	const std::string panel = PoolName(g_slots);
-	const bool asking = g_confirmSlot != 0;
+	const bool asking = g_confirmSlot != 0 || g_slotNotice;
 	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
 		const std::string n = std::to_string(slot);
 		const bool started = slot == g_slot ? g_camp.started : Camp::LoadState(g_live, slot).started;
@@ -399,16 +402,41 @@ void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 		SetVisible(context, panel.c_str(), ("Delve" + n).c_str(), !asking);
 		SetVisible(context, panel.c_str(), ("Slot" + n + "Last").c_str(), !asking && started && slot == g_slot);
 		SetVisible(context, panel.c_str(), ("Slot" + n + "Delete").c_str(), !asking && started);
-		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), g_confirmSlot == slot && g_confirmStep == 1);
-		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), g_confirmSlot == slot && g_confirmStep == 2);
+		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 1);
+		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 2);
 	}
 	SetVisible(context, panel.c_str(), "Exit", !asking);
 	// The answer buttons are shared by the three saves (a hidden button still takes clicks).
-	SetVisible(context, panel.c_str(), "AskYes", g_confirmStep == 1);
-	SetVisible(context, panel.c_str(), "AskNo", g_confirmStep == 1);
-	SetVisible(context, panel.c_str(), "SureNo", g_confirmStep == 2);
-	SetVisible(context, panel.c_str(), "SureYes", g_confirmStep == 2);
-	SetVisible(context, panel.c_str(), "RestartNotice", false);
+	SetVisible(context, panel.c_str(), "AskYes", !g_slotNotice && g_confirmStep == 1);
+	SetVisible(context, panel.c_str(), "AskNo", !g_slotNotice && g_confirmStep == 1);
+	SetVisible(context, panel.c_str(), "SureNo", !g_slotNotice && g_confirmStep == 2);
+	SetVisible(context, panel.c_str(), "SureYes", !g_slotNotice && g_confirmStep == 2);
+	SetVisible(context, panel.c_str(), "RestartNotice", g_slotNotice);
+}
+
+// The game ignores a layout's "visible": false, so every part of the slot screen (the three
+// saves, both delete questions, the restart notice) starts shown, and a panel opened for the
+// first time can't be found until the game has built it: hiding parts right after opening it
+// does nothing, and everything was drawn on top of each other (Sam, 0.15.5, after a delete gave
+// the screen a fresh panel). So the parts are set again a few times while the panel comes up.
+void __cdecl ReapplySlotWidgets(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_slotsOpen) {
+		ShowSlotWidgets(context);
+	}
+}
+
+// Opens the slot screen as it should look now (see ShowSlotWidgets). Returns false if it can't.
+auto OpenSlotsPanel(const D2RL::PluginContext* context) -> bool {
+	if (!PoolOpen(context, g_slots, "save slot")) {
+		return false;
+	}
+	g_slotsOpen = true;
+	ShowSlotWidgets(context);
+	for (const int delay : { 30, 100, 250, 600, 1200 }) {
+		Later(context, delay, ReapplySlotWidgets);
+	}
+	return true;
 }
 
 void __cdecl ShowSlots(const D2RL::PluginContext* context, void*) noexcept {
@@ -417,14 +445,12 @@ void __cdecl ShowSlots(const D2RL::PluginContext* context, void*) noexcept {
 		return;
 	}
 	RegisterSlotsLayout(context);
-	if (!PoolOpen(context, g_slots, "save slot")) {
-		g_slotChosen = true;  // carry on with the slot that is live
-		return;
-	}
-	g_slotsOpen = true;
 	g_confirmSlot = 0;
 	g_confirmStep = 0;
-	ShowSlotWidgets(context);
+	g_slotNotice = false;
+	if (!OpenSlotsPanel(context)) {
+		g_slotChosen = true;  // carry on with the slot that is live
+	}
 }
 
 // The menu did not load again after a slot change: the list on screen is the old slot's. Keep the
@@ -436,21 +462,143 @@ void __cdecl CheckMenuReloaded(const D2RL::PluginContext* context, void*) noexce
 	}
 	g_awaitingMenu = false;
 	context->LogWarn("Camp: the menu did not load again after the slot change. Restart the game to play the new slot.");
-	if (PoolOpen(context, g_slots, "save slot")) {
-		const std::string panel = PoolName(g_slots);
-		SetVisible(context, panel.c_str(), "RestartNotice", true);
-		for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
-			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot)).c_str(), false);
-			SetVisible(context, panel.c_str(), ("Delve" + std::to_string(slot)).c_str(), false);
-			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Last").c_str(), false);
-			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Delete").c_str(), false);
-		}
-	}
+	g_slotNotice = true;
+	OpenSlotsPanel(context);
 }
 
 void __cdecl ReloadMenu(const D2RL::PluginContext* context, void*) noexcept {
 	Dispatch(context, "FrontEndNavigation", "ToFrontEnd");
 	Later(context, 3000, CheckMenuReloaded);
+}
+
+// ---- Restarting for another save ----------------------------------------------------------
+// The game keeps the stash of its first game in memory until it closes (camp.h, Pending), so after
+// a game has been played another save only opens after a restart. The plugin starts a small
+// helper that waits for this game to close and starts it again with the same command line, then
+// closes the game the way Exit does. The files move while the game starts again (Load).
+
+void __cdecl OpenCurtain(const D2RL::PluginContext* context, void*) noexcept;
+void __cdecl BackToMenu(const D2RL::PluginContext* context, void*) noexcept;
+void __cdecl ExitTimedOut(const D2RL::PluginContext* context, void*) noexcept;
+void __cdecl PressExit(const D2RL::PluginContext* context, void*) noexcept;
+
+auto Base64(const std::string& bytes) -> std::string {
+	static constexpr char Digits[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	std::string out;
+	for (size_t i = 0; i < bytes.size(); i += 3) {
+		const uint32_t n = (static_cast<uint8_t>(bytes[i]) << 16) |
+			(i + 1 < bytes.size() ? static_cast<uint8_t>(bytes[i + 1]) << 8 : 0) |
+			(i + 2 < bytes.size() ? static_cast<uint8_t>(bytes[i + 2]) : 0);
+		out += Digits[(n >> 18) & 63];
+		out += Digits[(n >> 12) & 63];
+		out += i + 1 < bytes.size() ? Digits[(n >> 6) & 63] : '=';
+		out += i + 2 < bytes.size() ? Digits[n & 63] : '=';
+	}
+	return out;
+}
+
+auto StartRelauncher(std::string& error) -> bool {
+	std::wstring exe(32768, L'\0');
+	exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+	if (exe.empty()) {
+		error = "could not find the game's program file";
+		return false;
+	}
+	// The arguments this game was started with: the command line after the program name.
+	const std::wstring line = GetCommandLineW();
+	size_t start = line.empty() ? 0 : line[0] == L'"' ? line.find(L'"', 1) : line.find(L' ');
+	start = start == std::wstring::npos ? line.size() : start + 1;
+	std::wstring args = line.substr(std::min(start, line.size()));
+	args.erase(0, args.find_first_not_of(L' ') == std::wstring::npos ? args.size() : args.find_first_not_of(L' '));
+	const auto quote = [](const std::wstring& text) {
+		std::wstring out = L"'";
+		for (const wchar_t c : text) {
+			out += c == L'\'' ? std::wstring(L"''") : std::wstring(1, c);
+		}
+		return out + L"'";
+	};
+	const std::wstring pid = std::to_wstring(GetCurrentProcessId());
+	const std::wstring script =
+		L"Wait-Process -Id " + pid + L" -Timeout 120 -ErrorAction SilentlyContinue; "
+		L"if (Get-Process -Id " + pid + L" -ErrorAction SilentlyContinue) { exit }; "
+		L"Start-Sleep -Seconds 2; "
+		L"Start-Process -FilePath " + quote(exe) + L" -WorkingDirectory " + quote(fs::path(exe).parent_path().wstring()) +
+		(args.empty() ? L"" : L" -ArgumentList " + quote(args));
+	// -EncodedCommand takes the script as UTF-16LE in base64, so no quoting can break it.
+	std::string utf16;
+	for (const wchar_t c : script) {
+		utf16 += static_cast<char>(c & 0xFF);
+		utf16 += static_cast<char>((c >> 8) & 0xFF);
+	}
+	std::wstring command = L"powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ";
+	for (const char c : Base64(utf16)) {
+		command += static_cast<wchar_t>(c);
+	}
+	STARTUPINFOW startup {};
+	startup.cb = sizeof(startup);
+	PROCESS_INFORMATION process {};
+	// Out of the game's job if it has one, so the helper outlives the game.
+	BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB, nullptr, nullptr, &startup, &process);
+	if (!ok) {
+		ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process);
+	}
+	if (!ok) {
+		error = "could not start the restart helper (error " + std::to_string(GetLastError()) + ")";
+		return false;
+	}
+	CloseHandle(process.hThread);
+	CloseHandle(process.hProcess);
+	return true;
+}
+
+// The hero screen can't close the game; the main menu can. Go there behind a black screen and
+// press its Exit (see CharacterSelectPanel in OnUiMessage).
+void ExitFromFire(const D2RL::PluginContext* context) {
+	g_exiting = true;
+	g_atFire = false;
+	g_emptyFire = false;
+	g_slotsOpen = false;
+	PoolClose(context, g_slots);
+	PoolClose(context, g_fire);
+	g_threads->runOnUiThread(context, OpenCurtain, nullptr);
+	Later(context, 50, BackToMenu);
+	Later(context, 8000, ExitTimedOut);
+}
+
+// Keeps the slot screen up with "close the game and start it again" written on it.
+void ShowRestartNotice(const D2RL::PluginContext* context) {
+	g_slotNotice = true;
+	OpenSlotsPanel(context);
+}
+
+// Notes `change` for the next start and restarts the game. Returns a message for the console.
+auto RestartWith(const D2RL::PluginContext* context, const Camp::Pending& change) -> std::string {
+	Camp::Pending pending = Camp::ReadPending(g_live);  // keep a change noted earlier this session
+	pending.deletes.insert(pending.deletes.end(), change.deletes.begin(), change.deletes.end());
+	if (change.open != 0) {
+		pending.open = change.open;
+	}
+	if (!Camp::WritePending(g_live, pending)) {
+		Log(context, "Camp: could not write camp/next.txt; nothing changes.");
+		return "Could not note the save change.";
+	}
+	g_slotChosen = true;
+	g_slotsOpen = false;
+	PoolClose(context, g_slots);
+	std::string error;
+	const bool fromFire = g_fireOn && g_fireReady && g_threads != nullptr && (g_atFire || g_emptyFire);
+	if (!StartRelauncher(error)) {
+		Log(context, "Camp: %s. The change is made at the next start.", error.c_str());
+		ShowRestartNotice(context);
+		return "Close the game and start it again to make the change.";
+	}
+	Log(context, "Camp: the game holds save %d's stash, so it restarts to make the change.", g_stashSlot);
+	if (fromFire) {
+		ExitFromFire(context);
+	} else {
+		Later(context, 50, PressExit);  // the main menu is up: its Exit closes the game
+	}
+	return "Restarting the game for the save change.";
 }
 
 // Makes `slot` live. Only from the main menu. Returns a message for the console.
@@ -464,6 +612,11 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 	Camp::Unbench(g_live, g_slot);
 	const bool fire = g_fireOn && g_fireReady && g_threads != nullptr;
 	std::string said = "Save " + std::to_string(slot) + " is already loaded.";
+	if (slot != g_slot && g_stashSlot != 0) {  // the game holds this save's stash: restart (camp.h, Pending)
+		Camp::Pending change;
+		change.open = slot;
+		return RestartWith(context, change);
+	}
 	if (slot != g_slot) {
 		std::string error;
 		if (!Camp::SwitchSlot(g_live, slot, error)) {
@@ -1875,8 +2028,17 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 		return;
 	}
 	Camp::Unbench(g_live, g_slot);
+	const std::string stamp = std::to_string(static_cast<long long>(std::time(nullptr)));
+	if (slot == g_stashSlot) {  // the game holds this save's stash: it would follow into a new save here
+		g_confirmSlot = 0;
+		g_confirmStep = 0;
+		Camp::Pending change;
+		change.deletes.emplace_back(slot, stamp);
+		RestartWith(context, change);
+		return;
+	}
 	std::string error;
-	if (Camp::DeleteSlot(g_live, slot, std::to_string(static_cast<long long>(std::time(nullptr))), error)) {
+	if (Camp::DeleteSlot(g_live, slot, stamp, error)) {
 		Log(context, "Camp: save %d was deleted (its files are kept in camp/trash).", slot);
 	} else {
 		Log(context, "Camp: could not delete save %d: %s", slot, error.c_str());
@@ -2010,6 +2172,16 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		std::error_code ec;
 		fs::create_directories(g_live / "camp", ec);
 		ReadOptions();
+		// A save change noted in the last session (restart for another save): made now, before the
+		// game reads the save folder. The bench belongs to the old save, so it comes back first.
+		if (fs::exists(Camp::PendingFile(g_live), ec)) {
+			const Camp::Pending pending = Camp::ReadPending(g_live);
+			Camp::Unbench(g_live, Camp::ActiveSlot(g_live));
+			for (const auto& line : Camp::ApplyPending(g_live)) {
+				Log(context, "Camp: at start, %s", line.c_str());
+			}
+			g_openedAtStart = pending.open != 0 && Camp::ActiveSlot(g_live) == pending.open;
+		}
 		g_slot = Camp::ActiveSlot(g_live);
 		g_camp = Camp::LoadState(g_live, g_slot);
 		if (const int left = Camp::Unbench(g_live, g_slot); left > 0) {
@@ -2070,6 +2242,10 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		} else {
 			g_panels = nullptr;
 			context->LogWarn("Camp: panel service missing; no slot screen, traveler or roster panel.");
+		}
+		if (g_openedAtStart) {  // the save was picked before the restart: straight to its Campfire
+			g_slotChosen = true;
+			g_wantFire = g_fireOn && g_fireReady;
 		}
 	} catch (const std::exception& error) {
 		Log(context, "Camp: setup failed (%s). The Campfire is off.", error.what());
@@ -2143,17 +2319,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				return true;
 			}
 			if (std::strcmp(command, "ToExit") == 0 && (g_atFire || g_emptyFire) && g_threads != nullptr) {
-				// The hero screen can't close the game; the main menu can. Go there behind a black
-				// screen and press its Exit (see CharacterSelectPanel below).
-				g_exiting = true;
-				g_atFire = false;
-				g_emptyFire = false;
-				g_slotsOpen = false;
-				PoolClose(context, g_slots);
-				PoolClose(context, g_fire);
-				g_threads->runOnUiThread(context, OpenCurtain, nullptr);
-				Later(context, 50, BackToMenu);
-				Later(context, 8000, ExitTimedOut);
+				ExitFromFire(context);
 				return true;
 			}
 			if (std::strcmp(command, "ToCharacterCreate") != 0) {
@@ -2327,6 +2493,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 		case Kind::GameJoined:
 			g_inGame = true;
 			g_slotChosen = true;
+			g_stashSlot = g_slot;  // from now on the game keeps this save's stash in memory
 			g_died = false;
 			g_reachedLevel = 0;
 			g_joinTime = fs::file_time_type::clock::now();
