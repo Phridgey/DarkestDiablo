@@ -198,7 +198,7 @@ auto LayoutJson() -> std::string {
 		}
 		add(Button(std::string("Item") + Qualities[q], Margin + q * 323, 600, Qualities[q], action, White, "0.6"));
 	}
-	add(Button("Gold", Column(0), 680, "Gold +50,000", "gold"));
+	add(Button("Gold", Column(0), 680, "Gold +5,000", "gold"));
 	add(Button("Potions", Column(1), 680, "4 full rejuvenations", "potions"));
 	add(Button("Identify", Column(2), 680, "Identify everything", "identify"));
 
@@ -494,7 +494,10 @@ void OnAction(const D2RL::PluginContext* context, const char* action) noexcept {
 		problem = SpawnItem(context, TypedItemCode(context).c_str(), QualityFromName(action + 5), 1);
 		g_itemError = problem[0] != '\0';
 	} else if (std::strcmp(action, "gold") == 0) {
-		RunConsole(context, "cheat gold 50000");
+		// The game allows a hero 10,000 gold per character level, and "cheat gold" empties the purse
+		// when an amount would pass that (50,000 at once left low-level heroes with 0). 5,000 fits
+		// even a level 1 hero; press again for more.
+		RunConsole(context, "cheat gold 5000");
 	} else if (std::strcmp(action, "potions") == 0) {
 		problem = SpawnItem(context, "rvl", D2RL::Items::Quality::Normal, 4);
 	} else if (std::strcmp(action, "identify") == 0) {
