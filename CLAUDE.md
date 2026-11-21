@@ -54,7 +54,9 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
    A new file in `build/darkestdiablo` reaches players only once it is in `SHIPPED`
    (`launcher/ddcore.py`).
 6. To ship releases (later): `python tools/release.py <version> --publish` from an up-to-date `main`
-   build. Updates are deltas of whole changed files; never edit or delete a published release.
+   build. Updates are deltas of whole changed files; never edit or delete a published release
+   (one exception: the `launcher` pre-release holds only the newest launcher .exe, and the Launcher
+   workflow replaces its files on every launcher change to `main`; launchers update themselves from it).
 
 ## Working together (both people's Claude sessions)
 Players and both of us get the mod built from `main`, so content only counts once it is there.
@@ -101,6 +103,10 @@ Plain, jargon-free language in docs and commit messages.
   (`PanelManager:OpenPanel:darkestdiablo/travel-<level>`) and catch it in the UI-message listener.
 - Crowded arenas sometimes refuse a spawn ("Monster not created") and the plugin can't see it, so
   an arena clears with up to `MissingSpawnSlack` monsters unaccounted for.
+- New item rows must be the same rows, in the same order, in `global/excel` and `global/excel/base`
+  (keep Blizzard's empty placeholder rows as placeholders). The game mixes the two copies' row
+  numbers for item pictures: 8 grimoire copies only in `global/excel` made every later item show
+  the picture 8 rows earlier (Identify scroll as a ring, Minor Healing Potion as a ruby; 0.13.2).
 - `createItem` refuses quest items (Book of Skill: `Unsupported`). Give those through a monster's
   treasure class instead.
 - Console typing through computer use: the clipboard paste drops newlines; press Return after
@@ -122,5 +128,14 @@ Plain, jargon-free language in docs and commit messages.
   8x8 open square; the Pit's wide areas are open rooms joined edge to edge.
 - A plugin can show, hide and find widgets (WidgetService) but not change their text. For text
   that varies, make one widget per case and show the right one (`tools/camp_layouts.py`).
+- D2RLoader 1.3.1's `OverlayService` (`overlay.h`) does not work: it calls the draw callback
+  every frame and accepts every draw call without an error, but nothing reaches the screen
+  (tested 2026-11-20, wave counter 0.15.1). The game's HUD panel can't be used either:
+  `findPanel("HUDPanel")` gives Unavailable (0.15.4), and a layout's `"visible": false` is
+  ignored (widgets start shown). For on-screen text in a game, use a small panel of our own
+  and show the right ready-made widget (`src/plugin/waveoverlay.cpp`).
+- A plugin panel opened for the first time can't be found (`findPanel`) until the game has built
+  it, so hiding widgets right after `openPanel` does nothing and every widget shows. Set them
+  again a few times over the next second (`OpenSlotsPanel` in `campfire.cpp`).
 - The plugin hears the menus too: `FrontEndNavigation:ToFrontEnd` comes before the main menu
   loads, `CharacterCreate:Select:<Class>` and `CharacterCreate:Create` on the hero screen.

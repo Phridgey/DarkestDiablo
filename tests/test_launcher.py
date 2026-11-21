@@ -374,3 +374,44 @@ class ChildProgramTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+import ddself  # noqa: E402
+
+
+class SelfUpdateTests(unittest.TestCase):
+    def test_newer_build(self):
+        self.assertTrue(ddself.newer_build({"build": 12, "sha256": "ab"}, current=11))
+        self.assertFalse(ddself.newer_build({"build": 11, "sha256": "ab"}, current=11))
+        self.assertFalse(ddself.newer_build({"build": 10, "sha256": "ab"}, current=11))
+        self.assertFalse(ddself.newer_build({"build": 99, "sha256": "ab"}, current=0))  # own builds never update
+        self.assertFalse(ddself.newer_build({"build": 99}, current=11))  # no checksum, no update
+        self.assertFalse(ddself.newer_build({"build": "x", "sha256": "ab"}, current=11))
+
+    def test_never_from_source(self):
+        self.assertFalse(ddself.can_update())
+        self.assertIsNone(ddself.check())
+
+    def test_swap_script(self):
+        s = ddself.swap_script(r"C:\L\DarkestDiabloLauncher.exe.new", r"C:\L\DarkestDiabloLauncher.exe", [11, 22])
+        self.assertIn('"PID eq 11"', s)
+        self.assertIn('"PID eq 22"', s)
+        self.assertIn(r'move /y "C:\L\DarkestDiabloLauncher.exe.new" "C:\L\DarkestDiabloLauncher.exe"', s)
+        self.assertIn(r'start "" "C:\L\DarkestDiabloLauncher.exe"', s)
+        self.assertLess(s.index(":wait"), s.index(":move"))
+        self.assertLess(s.index("move /y"), s.index("start "))
+
+    def test_download_checks_the_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "built.exe"
+            src.write_bytes(b"new launcher")
+            exe = Path(d) / "DarkestDiabloLauncher.exe"
+            exe.write_bytes(b"old")
+            good = {"url": src.as_uri(), "sha256": ddcore.sha256_file(src), "size": src.stat().st_size}
+            with mock.patch.object(sys, "executable", str(exe)):
+                new = ddself.download(good)
+                self.assertEqual(new.read_bytes(), b"new launcher")
+                new.unlink()
+                with self.assertRaises(RuntimeError):
+                    ddself.download(dict(good, sha256="00" * 32))
+                self.assertFalse((Path(d) / "DarkestDiabloLauncher.exe.new").exists())

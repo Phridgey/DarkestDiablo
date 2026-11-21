@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <ctime>
 #include <exception>
 #include <mutex>
@@ -98,6 +99,8 @@ int  g_travelerChance = 25;     // camp/options.txt: "traveler_chance <0-100>", 
 
 bool g_slotChosen    = false;   // the slot screen was answered this launch
 bool g_awaitingMenu  = false;   // asked the menu to load again after a slot change
+int  g_stashSlot     = 0;       // the save whose shared stash the game holds in memory (0: no game played yet; see camp.h, Pending)
+bool g_openedAtStart = false;   // a save change waiting from the last session was made at this start: go straight to its Campfire
 bool g_inGame        = false;
 int  g_levelId       = -1;
 constexpr int RogueEncampment = 1;  // levels.txt Id
@@ -119,12 +122,16 @@ std::string g_gearNow;              // what the hero in the current game wears (
 struct Spot { int x = 0, y = 0, w = 0, h = 0; std::string px, py, pz, yaw, look; bool known = false; };
 bool g_atFire    = false;  // the Campfire screen is up
 bool g_slotsOpen = false;
+bool g_slotNotice = false;  // the slot screen shows only "close the game and start it again"
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
 bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
 int  g_hoveredHero = -1;    // the class under the mouse at the Campfire (from the game's Hover messages)
 int  g_clickedHero = -1;    // the hero under the mouse when the left button went down (see WatchFireClicks)
 std::atomic<bool> g_watchingClicks { false };
+std::atomic<bool> g_shimmering { false };      // the Campfire's aurora thread runs (see ShimmerFire)
+std::vector<std::string> g_shimmerShown;       // the aurora widgets the last step showed
+bool g_shimmerReset = false;                   // a fresh Campfire panel: hide every aurora widget first
 bool g_emptyFire = false;       // the hero screen is up with nobody at the fire, under the save slots
 bool g_travelerArrives = false; // the fire was used with a traveler waiting: portal and figure are showing
 bool g_travelerMode = false;
@@ -138,6 +145,66 @@ Spot g_spots[Camp::ClassCount];
 struct ItemLook { char kind = 0; std::string value; };
 std::vector<std::pair<std::string, ItemLook>> g_looks;  // item code -> how it looks on a figure
 
+// ---- The state log -----------------------------------------------------------------------
+// The loader rewrites darkestdiablo.log every time the game starts, so a restart used to wipe
+// the results of a dd-state check. Every "State:" and "Write:" line (dd-state, dd-state watch,
+// dd-set) also goes to d2rloader\logs\darkestdiablo-state.log, which is only ever added to.
+// Over 5 MB at start, it becomes darkestdiablo-state.old.log (replacing the older one).
+
+std::mutex    g_stateLogLock;
+std::ofstream g_stateLog;
+
+auto StateLogPath() -> fs::path {
+	HMODULE self = nullptr;
+	wchar_t path[MAX_PATH] {};
+	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(&StateLogPath),
+	        &self) || GetModuleFileNameW(self, path, MAX_PATH) == 0) {
+		return {};
+	}
+	return fs::path(path).parent_path().parent_path() / "logs" / "darkestdiablo-state.log";  // plugins\..\logs
+}
+
+auto LocalStamp() -> std::string {
+	SYSTEMTIME t {};
+	GetLocalTime(&t);
+	char text[32];
+	std::snprintf(text, sizeof(text), "%04u-%02u-%02u %02u:%02u:%02u.%03u", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
+	return text;
+}
+
+void StateLogLine(const char* line) noexcept {
+	try {
+		const std::lock_guard<std::mutex> guard(g_stateLogLock);
+		if (g_stateLog.is_open()) {
+			g_stateLog << '[' << LocalStamp() << "] " << line << '\n';
+			g_stateLog.flush();
+		}
+	} catch (...) {
+	}
+}
+
+// Called once when the plugin loads.
+void OpenStateLog() noexcept {
+	try {
+		const fs::path file = StateLogPath();
+		if (file.empty()) {
+			return;
+		}
+		std::error_code ec;
+		fs::create_directories(file.parent_path(), ec);
+		if (fs::exists(file, ec) && fs::file_size(file, ec) > 5u * 1024 * 1024) {
+			fs::path old = file;
+			old.replace_filename("darkestdiablo-state.old.log");
+			fs::remove(old, ec);
+			fs::rename(file, old, ec);
+		}
+		const std::lock_guard<std::mutex> guard(g_stateLogLock);
+		g_stateLog.open(file, std::ios::app);
+	} catch (...) {
+	}
+	StateLogLine((std::string("--- session start ") + Campfire::Version + " " + LocalStamp()).c_str());
+}
+
 void Log(const D2RL::PluginContext* context, const char* format, ...) noexcept {
 	char message[512] {};
 	va_list args;
@@ -145,6 +212,9 @@ void Log(const D2RL::PluginContext* context, const char* format, ...) noexcept {
 	std::vsnprintf(message, sizeof(message), format, args);
 	va_end(args);
 	context->LogInfo(message);
+	if (std::strncmp(message, "State:", 6) == 0 || std::strncmp(message, "Write:", 6) == 0) {
+		StateLogLine(message);
+	}
 }
 
 auto IsTown(int levelId) noexcept -> bool {
@@ -391,7 +461,7 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool;
 // asked before a save is deleted.
 void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 	const std::string panel = PoolName(g_slots);
-	const bool asking = g_confirmSlot != 0;
+	const bool asking = g_confirmSlot != 0 || g_slotNotice;
 	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
 		const std::string n = std::to_string(slot);
 		const bool started = slot == g_slot ? g_camp.started : Camp::LoadState(g_live, slot).started;
@@ -399,16 +469,41 @@ void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 		SetVisible(context, panel.c_str(), ("Delve" + n).c_str(), !asking);
 		SetVisible(context, panel.c_str(), ("Slot" + n + "Last").c_str(), !asking && started && slot == g_slot);
 		SetVisible(context, panel.c_str(), ("Slot" + n + "Delete").c_str(), !asking && started);
-		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), g_confirmSlot == slot && g_confirmStep == 1);
-		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), g_confirmSlot == slot && g_confirmStep == 2);
+		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 1);
+		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 2);
 	}
 	SetVisible(context, panel.c_str(), "Exit", !asking);
 	// The answer buttons are shared by the three saves (a hidden button still takes clicks).
-	SetVisible(context, panel.c_str(), "AskYes", g_confirmStep == 1);
-	SetVisible(context, panel.c_str(), "AskNo", g_confirmStep == 1);
-	SetVisible(context, panel.c_str(), "SureNo", g_confirmStep == 2);
-	SetVisible(context, panel.c_str(), "SureYes", g_confirmStep == 2);
-	SetVisible(context, panel.c_str(), "RestartNotice", false);
+	SetVisible(context, panel.c_str(), "AskYes", !g_slotNotice && g_confirmStep == 1);
+	SetVisible(context, panel.c_str(), "AskNo", !g_slotNotice && g_confirmStep == 1);
+	SetVisible(context, panel.c_str(), "SureNo", !g_slotNotice && g_confirmStep == 2);
+	SetVisible(context, panel.c_str(), "SureYes", !g_slotNotice && g_confirmStep == 2);
+	SetVisible(context, panel.c_str(), "RestartNotice", g_slotNotice);
+}
+
+// The game ignores a layout's "visible": false, so every part of the slot screen (the three
+// saves, both delete questions, the restart notice) starts shown, and a panel opened for the
+// first time can't be found until the game has built it: hiding parts right after opening it
+// does nothing, and everything was drawn on top of each other (Sam, 0.15.5, after a delete gave
+// the screen a fresh panel). So the parts are set again a few times while the panel comes up.
+void __cdecl ReapplySlotWidgets(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_slotsOpen) {
+		ShowSlotWidgets(context);
+	}
+}
+
+// Opens the slot screen as it should look now (see ShowSlotWidgets). Returns false if it can't.
+auto OpenSlotsPanel(const D2RL::PluginContext* context) -> bool {
+	if (!PoolOpen(context, g_slots, "save slot")) {
+		return false;
+	}
+	g_slotsOpen = true;
+	ShowSlotWidgets(context);
+	for (const int delay : { 30, 100, 250, 600, 1200 }) {
+		Later(context, delay, ReapplySlotWidgets);
+	}
+	return true;
 }
 
 void __cdecl ShowSlots(const D2RL::PluginContext* context, void*) noexcept {
@@ -417,14 +512,12 @@ void __cdecl ShowSlots(const D2RL::PluginContext* context, void*) noexcept {
 		return;
 	}
 	RegisterSlotsLayout(context);
-	if (!PoolOpen(context, g_slots, "save slot")) {
-		g_slotChosen = true;  // carry on with the slot that is live
-		return;
-	}
-	g_slotsOpen = true;
 	g_confirmSlot = 0;
 	g_confirmStep = 0;
-	ShowSlotWidgets(context);
+	g_slotNotice = false;
+	if (!OpenSlotsPanel(context)) {
+		g_slotChosen = true;  // carry on with the slot that is live
+	}
 }
 
 // The menu did not load again after a slot change: the list on screen is the old slot's. Keep the
@@ -436,21 +529,148 @@ void __cdecl CheckMenuReloaded(const D2RL::PluginContext* context, void*) noexce
 	}
 	g_awaitingMenu = false;
 	context->LogWarn("Camp: the menu did not load again after the slot change. Restart the game to play the new slot.");
-	if (PoolOpen(context, g_slots, "save slot")) {
-		const std::string panel = PoolName(g_slots);
-		SetVisible(context, panel.c_str(), "RestartNotice", true);
-		for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
-			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot)).c_str(), false);
-			SetVisible(context, panel.c_str(), ("Delve" + std::to_string(slot)).c_str(), false);
-			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Last").c_str(), false);
-			SetVisible(context, panel.c_str(), ("Slot" + std::to_string(slot) + "Delete").c_str(), false);
-		}
-	}
+	g_slotNotice = true;
+	OpenSlotsPanel(context);
 }
 
 void __cdecl ReloadMenu(const D2RL::PluginContext* context, void*) noexcept {
 	Dispatch(context, "FrontEndNavigation", "ToFrontEnd");
 	Later(context, 3000, CheckMenuReloaded);
+}
+
+// ---- Restarting for another save ----------------------------------------------------------
+// The game keeps the stash of its first game in memory until it closes (camp.h, Pending), so after
+// a game has been played another save only opens after a restart. The plugin starts a small
+// helper that waits for this game to close and starts it again with the same command line, then
+// closes the game the way Exit does. The files move while the game starts again (Load).
+
+void __cdecl OpenCurtain(const D2RL::PluginContext* context, void*) noexcept;
+void __cdecl BackToMenu(const D2RL::PluginContext* context, void*) noexcept;
+void __cdecl ExitTimedOut(const D2RL::PluginContext* context, void*) noexcept;
+void __cdecl PressExit(const D2RL::PluginContext* context, void*) noexcept;
+
+auto Base64(const std::string& bytes) -> std::string {
+	static constexpr char Digits[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	std::string out;
+	for (size_t i = 0; i < bytes.size(); i += 3) {
+		const uint32_t n = (static_cast<uint8_t>(bytes[i]) << 16) |
+			(i + 1 < bytes.size() ? static_cast<uint8_t>(bytes[i + 1]) << 8 : 0) |
+			(i + 2 < bytes.size() ? static_cast<uint8_t>(bytes[i + 2]) : 0);
+		out += Digits[(n >> 18) & 63];
+		out += Digits[(n >> 12) & 63];
+		out += i + 1 < bytes.size() ? Digits[(n >> 6) & 63] : '=';
+		out += i + 2 < bytes.size() ? Digits[n & 63] : '=';
+	}
+	return out;
+}
+
+auto StartRelauncher(std::string& error) -> bool {
+	std::wstring exe(32768, L'\0');
+	exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+	if (exe.empty()) {
+		error = "could not find the game's program file";
+		return false;
+	}
+	// The arguments this game was started with: the command line after the program name.
+	const std::wstring line = GetCommandLineW();
+	size_t start = line.empty() ? 0 : line[0] == L'"' ? line.find(L'"', 1) : line.find(L' ');
+	start = start == std::wstring::npos ? line.size() : start + 1;
+	std::wstring args = line.substr(start);  // start is at most line.size() here
+	args.erase(0, args.find_first_not_of(L' ') == std::wstring::npos ? args.size() : args.find_first_not_of(L' '));
+	const auto quote = [](const std::wstring& text) {
+		std::wstring out = L"'";
+		for (const wchar_t c : text) {
+			out += c == L'\'' ? std::wstring(L"''") : std::wstring(1, c);
+		}
+		return out + L"'";
+	};
+	const std::wstring pid = std::to_wstring(GetCurrentProcessId());
+	const std::wstring script =
+		L"Wait-Process -Id " + pid + L" -Timeout 120 -ErrorAction SilentlyContinue; "
+		L"if (Get-Process -Id " + pid + L" -ErrorAction SilentlyContinue) { exit }; "
+		L"Start-Sleep -Seconds 2; "
+		L"Start-Process -FilePath " + quote(exe) + L" -WorkingDirectory " + quote(fs::path(exe).parent_path().wstring()) +
+		(args.empty() ? L"" : L" -ArgumentList " + quote(args));
+	// -EncodedCommand takes the script as UTF-16LE in base64, so no quoting can break it.
+	std::string utf16;
+	for (const wchar_t c : script) {
+		utf16 += static_cast<char>(c & 0xFF);
+		utf16 += static_cast<char>((c >> 8) & 0xFF);
+	}
+	std::wstring command = L"powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ";
+	for (const char c : Base64(utf16)) {
+		command += static_cast<wchar_t>(c);
+	}
+	STARTUPINFOW startup {};
+	startup.cb = sizeof(startup);
+	PROCESS_INFORMATION process {};
+	// Out of the game's job if it has one, so the helper outlives the game.
+	BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB, nullptr, nullptr, &startup, &process);
+	if (!ok) {
+		ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process);
+	}
+	if (!ok) {
+		error = "could not start the restart helper (error " + std::to_string(GetLastError()) + ")";
+		return false;
+	}
+	CloseHandle(process.hThread);
+	CloseHandle(process.hProcess);
+	return true;
+}
+
+// The hero screen can't close the game; the main menu can. Go there behind a black screen and
+// press its Exit (see CharacterSelectPanel in OnUiMessage).
+void ExitFromFire(const D2RL::PluginContext* context) {
+	g_exiting = true;
+	g_atFire = false;
+	g_emptyFire = false;
+	g_slotsOpen = false;
+	PoolClose(context, g_slots);
+	PoolClose(context, g_fire);
+	g_threads->runOnUiThread(context, OpenCurtain, nullptr);
+	Later(context, 50, BackToMenu);
+	Later(context, 8000, ExitTimedOut);
+}
+
+// Keeps the slot screen up with "close the game and start it again" written on it.
+void ShowRestartNotice(const D2RL::PluginContext* context) {
+	g_slotNotice = true;
+	OpenSlotsPanel(context);
+}
+
+// The game closing and starting itself again for a save change is switched off: Sam rejected it
+// (2026-11-21) and a better way is being worked on. Until then the slot screen asks the player to
+// close the game and start it again; the change is made at the next start.
+constexpr bool AutoRestart = false;
+
+// Notes `change` for the next start and restarts the game. Returns a message for the console.
+auto RestartWith(const D2RL::PluginContext* context, const Camp::Pending& change) -> std::string {
+	Camp::Pending pending = Camp::ReadPending(g_live);  // keep a change noted earlier this session
+	pending.deletes.insert(pending.deletes.end(), change.deletes.begin(), change.deletes.end());
+	if (change.open != 0) {
+		pending.open = change.open;
+	}
+	if (!Camp::WritePending(g_live, pending)) {
+		Log(context, "Camp: could not write camp/next.txt; nothing changes.");
+		return "Could not note the save change.";
+	}
+	g_slotChosen = true;
+	g_slotsOpen = false;
+	PoolClose(context, g_slots);
+	std::string error = "the automatic restart is off (AutoRestart)";
+	const bool fromFire = g_fireOn && g_fireReady && g_threads != nullptr && (g_atFire || g_emptyFire);
+	if (!AutoRestart || !StartRelauncher(error)) {
+		Log(context, "Camp: %s. The change is made at the next start.", error.c_str());
+		ShowRestartNotice(context);
+		return "Close the game and start it again to make the change.";
+	}
+	Log(context, "Camp: the game holds save %d's stash, so it restarts to make the change.", g_stashSlot);
+	if (fromFire) {
+		ExitFromFire(context);
+	} else {
+		Later(context, 50, PressExit);  // the main menu is up: its Exit closes the game
+	}
+	return "Restarting the game for the save change.";
 }
 
 // Makes `slot` live. Only from the main menu. Returns a message for the console.
@@ -464,6 +684,11 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 	Camp::Unbench(g_live, g_slot);
 	const bool fire = g_fireOn && g_fireReady && g_threads != nullptr;
 	std::string said = "Save " + std::to_string(slot) + " is already loaded.";
+	if (slot != g_slot && g_stashSlot != 0) {  // the game holds this save's stash: restart (camp.h, Pending)
+		Camp::Pending change;
+		change.open = slot;
+		return RestartWith(context, change);
+	}
 	if (slot != g_slot) {
 		std::string error;
 		if (!Camp::SwitchSlot(g_live, slot, error)) {
@@ -626,6 +851,68 @@ auto Allowed() -> std::vector<int> {
 	return g_travelerMode ? g_camp.offer : Camp::Creatable(g_camp, g_rng);
 }
 
+// The selection aurora: soft patches of gold light (src/patches/042_campfire_glow.py) sit all
+// around the picked hero's plate and the lit Enter button, each slowly brightening and fading
+// on its own rhythm, so the glow breathes and wavers in place. The plugin can only show and
+// hide widgets, so each patch is drawn at AuraLevels brightnesses, one widget per level, and
+// AuraStep shows the right one (or none).
+constexpr int AuraLevels = 6;
+constexpr int PlateAuras = 10;    // patches around a name plate (380x128)
+constexpr int EnterAuras = 16;    // patches around the Enter button (824x162)
+constexpr int AuraOut = 14;       // how far outside the box edge a patch's centre sits
+// Picture sizes: along a top or bottom edge (H) and along a side (V).
+constexpr int AuraHW = 280, AuraHH = 130, AuraVW = 130, AuraVH = 200;
+
+struct AuraSpot { int x; int y; bool side; };
+
+// `n` patch centres evenly around a box, clockwise from its top left corner, just outside it.
+auto AuraSpots(int x, int y, int w, int h, int n) -> std::vector<AuraSpot> {
+	std::vector<AuraSpot> out;
+	const double around = 2.0 * (w + h);
+	for (int i = 0; i < n; ++i) {
+		double d = around * (i + 0.5) / n;
+		if (d < w) {
+			out.push_back({ x + static_cast<int>(d), y - AuraOut, false });
+		} else if ((d -= w) < h) {
+			out.push_back({ x + w + AuraOut, y + static_cast<int>(d), true });
+		} else if ((d -= h) < w) {
+			out.push_back({ x + w - static_cast<int>(d), y + h + AuraOut, false });
+		} else {
+			d -= w;
+			out.push_back({ x - AuraOut, y + h - static_cast<int>(d), true });
+		}
+	}
+	return out;
+}
+
+// The aurora widgets for one box: "<prefix>_<patch>_<level>", level 1..AuraLevels.
+auto AuraWidgets(const std::string& prefix, int x, int y, int w, int h, int n) -> std::string {
+	std::string out;
+	const auto spots = AuraSpots(x, y, w, h, n);
+	for (int i = 0; i < n; ++i) {
+		const AuraSpot& s = spots[i];
+		const int pw = s.side ? AuraVW : AuraHW;
+		const int ph = s.side ? AuraVH : AuraHH;
+		const std::string at = "{\"x\":" + std::to_string(s.x - pw / 2) + ",\"y\":" + std::to_string(s.y - ph / 2) + "}";
+		for (int k = 1; k <= AuraLevels; ++k) {
+			out += "{\"type\":\"ImageWidget\",\"name\":\"" + prefix + "_" + std::to_string(i) + "_" + std::to_string(k) + "\",\"fields\":{\"rect\":" + at +
+				",\"filename\":\"PANEL\\\\DarkestDiablo\\\\Aura" + (s.side ? "V" : "H") + std::to_string(k) + "\"}},";
+		}
+	}
+	return out;
+}
+
+// How bright patch `i` is at time `t` (seconds): 0 (hidden) .. AuraLevels. Two slow waves
+// with periods and starts of its own, so neighbours never pulse together.
+auto AuraLevel(int i, double t) -> int {
+	constexpr double Tau = 6.283185307179586;
+	const double start = i * 2.399963;  // the golden angle spreads the starts evenly
+	const double p1 = 2.7 + 0.37 * (i % 5);
+	const double p2 = 4.1 + 0.53 * (i % 3);
+	const double v = 0.55 + 0.28 * std::sin(Tau * t / p1 + start) + 0.2 * std::sin(Tau * t / p2 + 2 * start);
+	return std::clamp(static_cast<int>(std::lround(v * AuraLevels)), 0, AuraLevels);
+}
+
 // The Fire panel's layout for the camp as it is now: each living hero as a figure in its gear
 // where its class stands, a name plate under it, and the Options, Delete and Exit buttons.
 auto FireLayoutJson() -> std::string {
@@ -655,9 +942,13 @@ auto FireLayoutJson() -> std::string {
 		const int plateX = s.x + (s.w - 300) / 2;
 		// The name plate: a dark framed plaque with the name in gold and "Level N Class" under it.
 		const int plaqueX = s.x + (s.w - 380) / 2;
-		// The picked hero's plate glows red behind its frame, like the Enter button (Sam).
-		kids += "{\"type\":\"RectangleWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - 18) +
-			",\"y\":1432,\"width\":416,\"height\":164},\"color\":[0.85,0.05,0.02,0.55]}},";
+		// The picked hero's plate has a soft gold glow behind its frame, like the Enter button (Sam).
+		// The picture is drawn at build time (src/patches/042_campfire_glow.py): the plate's size
+		// plus a 56 margin on each side.
+		kids += "{\"type\":\"ImageWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - 56) +
+			",\"y\":1394},\"filename\":\"PANEL\\\\DarkestDiablo\\\\HeroGlow\"}},";
+		// Its aurora, between the glow and the plate.
+		kids += AuraWidgets("Aura" + cls, plaqueX, 1450, 380, 128, PlateAuras);
 		kids += "{\"type\":\"NineTileImageWidget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\","
 			"\"backgroundColor\":[0.0,0.0,0.0,0.8],\"tileScale\":1.0,\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":1450,\"width\":380,\"height\":128}},\"children\":["
 			"{\"type\":\"TextBoxWidget\",\"name\":\"Name" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
@@ -691,19 +982,23 @@ auto FireLayoutJson() -> std::string {
 		"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
 	static constexpr char Large[] = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonLarge";
 	if (!g_camp.heroes.empty()) {
-		// Enter: the game's largest button, drawn bigger. Grey until a hero is picked; then the
-		// button itself is red, with a red glow behind it.
+		// Enter: the game's largest button, drawn bigger. Grey until a hero is picked; then it is
+		// lit: warm stone, gold text and a soft gold glow behind it.
 		const auto enter = [&](const char* name, bool ready) {
 			std::string out = std::string("{\"type\":\"Widget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":1740}},\"children\":[";
 			if (ready) {
-				out += "{\"type\":\"RectangleWidget\",\"name\":\"Glow\",\"fields\":{\"rect\":{\"x\":-432,\"y\":-14,\"width\":864,\"height\":190},\"color\":[0.85,0.05,0.02,0.55]}},";
+				// The button's size (824x162) plus a 72 margin on each side (042_campfire_glow.py).
+				out += "{\"type\":\"ImageWidget\",\"name\":\"Glow\",\"fields\":{\"rect\":{\"x\":-484,\"y\":-72},\"filename\":\"PANEL\\\\DarkestDiablo\\\\EnterGlow\"}},";
 			}
 			out += std::string("{\"type\":\"ButtonWidget\",\"name\":\"Button\",\"fields\":{\"rect\":{\"x\":-412,\"y\":0,\"scale\":1.35},\"filename\":\"") + Large +
 				"\",\"textString\":\"ENTER\",\"onClickMessage\":\"" + act + "enter\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"
 				"\"text/style\":\"$StyleFEButtonText\",\"pointSize\":\"$XExtraLargeFontSize\"," +
-				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.22,\"b\":0.16,\"a\":1.0},\"textColor\":\"$FontColorWhite\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
+				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.94,\"b\":0.80,\"a\":1.0},\"textColor\":\"$FontColorGoldYellow\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
 			return out;
 		};
+		// Enter's aurora, in the glow around the button and under it (an image over a button might
+		// take its clicks).
+		kids += AuraWidgets("AuraEnter", -412, 1740, 824, 162, EnterAuras);
 		kids += enter("EnterIdle", false) + "," + enter("EnterReady", true) + ",";
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
@@ -851,6 +1146,77 @@ void WatchFireClicks(const D2RL::PluginContext* context) {
 	}).detach();
 }
 
+// One moment of the aurora around the picked hero and Enter.
+void __cdecl ShimmerStep(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (!g_atFire) {
+		return;
+	}
+	const std::string panel = PoolName(g_fire);
+	const auto name = [](const std::string& prefix, int i, int k) { return prefix + "_" + std::to_string(i) + "_" + std::to_string(k); };
+	if (g_shimmerReset) {
+		g_shimmerReset = false;
+		g_shimmerShown.clear();
+		const auto hideAll = [&](const std::string& prefix, int n) {
+			for (int i = 0; i < n; ++i) {
+				for (int k = 1; k <= AuraLevels; ++k) {
+					SetVisible(context, panel.c_str(), name(prefix, i, k).c_str(), false);
+				}
+			}
+		};
+		for (const auto& hero : g_camp.heroes) {
+			hideAll("Aura" + std::string(Camp::ClassNames[hero.cls]), PlateAuras);
+		}
+		hideAll("AuraEnter", EnterAuras);
+	}
+	const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	std::vector<std::string> show;
+	const bool lit = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr && !g_deleteMode && !g_travelerMode && !g_createMode;
+	if (lit) {
+		const auto add = [&](const std::string& prefix, int n, int seed) {
+			for (int i = 0; i < n; ++i) {
+				const int k = AuraLevel(i + seed, t);
+				if (k > 0) {
+					show.push_back(name(prefix, i, k));
+				}
+			}
+		};
+		add("Aura" + std::string(Camp::ClassNames[g_chosenHero]), PlateAuras, 0);
+		add("AuraEnter", EnterAuras, 17);
+	}
+	for (const auto& n : g_shimmerShown) {
+		if (std::find(show.begin(), show.end(), n) == show.end()) {
+			SetVisible(context, panel.c_str(), n.c_str(), false);
+		}
+	}
+	for (const auto& n : show) {
+		if (std::find(g_shimmerShown.begin(), g_shimmerShown.end(), n) == g_shimmerShown.end()) {
+			SetVisible(context, panel.c_str(), n.c_str(), true);
+		}
+	}
+	g_shimmerShown = std::move(show);
+}
+
+// While the Campfire is up, moves the aurora along every 80 ms.
+void ShimmerFire(const D2RL::PluginContext* context) {
+	if (g_shimmering.exchange(true) || g_threads == nullptr) {
+		return;
+	}
+	std::thread([context] {
+		for (;;) {
+			{
+				const Lock lock(g_mutex);
+				if (!g_atFire) {
+					break;
+				}
+			}
+			g_threads->runOnUiThread(context, ShimmerStep, nullptr);
+			std::this_thread::sleep_for(std::chrono::milliseconds(80));
+		}
+		g_shimmering = false;
+	}).detach();
+}
+
 // The hero screen has opened: lay the camp's figures over it.
 void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
@@ -867,6 +1233,8 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 		g_clickedHero = -1;
 		g_selectedClass = -1;
 		WatchFireClicks(context);
+		g_shimmerReset = true;
+		ShimmerFire(context);
 		if (g_justRecruited >= 0) {             // after Accept: the new class steps in, name box ready
 			g_createMode = true;
 			g_selectedClass = g_justRecruited;
@@ -1435,24 +1803,28 @@ auto UnitsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 // "dd-state watch" logs changes (Game::Poll) every 250 ms until typed again; "dd-state tables"
 // lists every unit-list-shaped address in the game's code (research: where missiles live);
 // "dd-state skills" the hero's skills; "dd-state items" what the hero wears and carries;
-// "dd-state players" every player, corpse and the mercenary.
-std::atomic<bool> g_watching { false };
+// "dd-state players" every player, corpse and the mercenary; "dd-state counters" the run and
+// stop counters ("dd-state counters reset" starts them again).
 
-void __cdecl WatchTick(const D2RL::PluginContext* context, void*) noexcept {
-	if (!g_watching) {
-		return;
-	}
+// The game-state API's one tick (gameapi.h, "The shared event feed"): every 250 ms on the UI
+// thread, from the moment the plugin loads. It feeds every subscriber and the run counters.
+void __cdecl TrackTick(const D2RL::PluginContext* context, void*) noexcept {
 	try {
-		for (const Game::Event& e : Game::Poll()) {
-			if (e.type == Game::EventType::UnitAppeared || e.type == Game::EventType::UnitGone) {
-				continue;  // too many to log; the API still reports them
-			}
-			Log(context, "State: %s: %s row %u #%u at %d,%d (%d -> %d)", Game::EventName(e.type), GameState::KindName(e.unit.kind), e.unit.row,
-				e.unit.id, e.unit.x, e.unit.y, e.before, e.after);
-		}
+		Game::Tick();
 	} catch (...) {
 	}
-	Later(context, 250, WatchTick);
+	Later(context, 250, TrackTick);
+}
+
+// "dd-state watch": a subscriber that logs each event (not units coming and going: too many).
+std::atomic<int> g_watchId { 0 };
+
+void WatchEvent(const Game::Event& e, void* userData) {
+	if (e.type == Game::EventType::UnitAppeared || e.type == Game::EventType::UnitGone) {
+		return;
+	}
+	Log(static_cast<const D2RL::PluginContext*>(userData), "State: %s: %s row %u #%u at %d,%d (%d -> %d)", Game::EventName(e.type),
+		GameState::KindName(e.unit.kind), e.unit.row, e.unit.id, e.unit.x, e.unit.y, e.before, e.after);
 }
 
 auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
@@ -1476,13 +1848,32 @@ auto StateCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 			return D2RL::ConsoleCommandResult::Handled;
 		}
 		if (args == "watch") {
-			g_watching = !g_watching;
-			say(g_watching ? "Watching for changes (hero died, object used, monster died, area, hits); see the log. 'dd-state watch' stops."
-			               : "Stopped watching.");
-			if (g_watching) {
-				Game::Poll();
-				Later(command->plugin, 250, WatchTick);
+			if (const int id = g_watchId.exchange(0); id != 0) {
+				Game::Unsubscribe(id);
+				say("Stopped watching.");
+			} else {
+				g_watchId = Game::Subscribe(WatchEvent, const_cast<D2RL::PluginContext*>(command->plugin));
+				say("Watching for changes (hero died, object used, monster died, area, hits); see the log. 'dd-state watch' stops.");
 			}
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (args == "counters" || args == "counters reset") {
+			if (args == "counters reset") {
+				Game::ResetCounters();
+				say("Counters reset.");
+			}
+			const Game::CounterSet c = Game::Counters();
+			const auto line = [&](const char* name, const Game::Tally& t) {
+				char text[320];
+				std::snprintf(text, sizeof(text),
+					"%s: %.0f s; kills %d (normal %d, champion %d, unique %d, boss %d); deaths hero %d, merc %d; gold +%lld; items found %d; "
+					"levels +%d; shrines %d; chests %d.",
+					name, t.seconds, t.kills, t.killsNormal, t.killsChampion, t.killsUnique, t.killsBoss, t.heroDeaths, t.mercDeaths, t.goldGained,
+					t.itemsFound, t.levelsGained, t.shrinesUsed, t.chestsOpened);
+				say(text);
+			};
+			line("Run", c.run);
+			line(("Stop (area " + std::to_string(c.stopArea) + ")").c_str(), c.stop);
 			return D2RL::ConsoleCommandResult::Handled;
 		}
 		if (!GameState::Ready()) {
@@ -1875,8 +2266,17 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 		return;
 	}
 	Camp::Unbench(g_live, g_slot);
+	const std::string stamp = std::to_string(static_cast<long long>(std::time(nullptr)));
+	if (slot == g_stashSlot) {  // the game holds this save's stash: it would follow into a new save here
+		g_confirmSlot = 0;
+		g_confirmStep = 0;
+		Camp::Pending change;
+		change.deletes.emplace_back(slot, stamp);
+		RestartWith(context, change);
+		return;
+	}
 	std::string error;
-	if (Camp::DeleteSlot(g_live, slot, std::to_string(static_cast<long long>(std::time(nullptr))), error)) {
+	if (Camp::DeleteSlot(g_live, slot, stamp, error)) {
 		Log(context, "Camp: save %d was deleted (its files are kept in camp/trash).", slot);
 	} else {
 		Log(context, "Camp: could not delete save %d: %s", slot, error.c_str());
@@ -2000,6 +2400,7 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 }  // namespace
 
 auto Load(const D2RL::PluginContext* context) noexcept -> bool {
+	OpenStateLog();  // darkestdiablo-state.log: dd-state results survive restarts
 	try {
 		const Lock lock(g_mutex);
 		g_live = FindSaveFolder();
@@ -2010,6 +2411,16 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		std::error_code ec;
 		fs::create_directories(g_live / "camp", ec);
 		ReadOptions();
+		// A save change noted in the last session (restart for another save): made now, before the
+		// game reads the save folder. The bench belongs to the old save, so it comes back first.
+		if (fs::exists(Camp::PendingFile(g_live), ec)) {
+			const Camp::Pending pending = Camp::ReadPending(g_live);
+			Camp::Unbench(g_live, Camp::ActiveSlot(g_live));
+			for (const auto& line : Camp::ApplyPending(g_live)) {
+				Log(context, "Camp: at start, %s", line.c_str());
+			}
+			g_openedAtStart = pending.open != 0 && Camp::ActiveSlot(g_live) == pending.open;
+		}
 		g_slot = Camp::ActiveSlot(g_live);
 		g_camp = Camp::LoadState(g_live, g_slot);
 		if (const int left = Camp::Unbench(g_live, g_slot); left > 0) {
@@ -2034,6 +2445,10 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		}
 		if (context->QueryService(&g_threads) != D2RL::ServiceQueryResult::Success || !D2RL::HasThreadServiceField(g_threads, D2RL::ThreadServiceRequiredSize)) {
 			g_threads = nullptr;
+		}
+		static std::atomic<bool> tracking { false };
+		if (g_threads != nullptr && !tracking.exchange(true)) {
+			Later(context, 250, TrackTick);  // the game-state API's event feed and counters (gameapi.h)
 		}
 		if (context->QueryService(&g_widgets) != D2RL::ServiceQueryResult::Success || !D2RL::HasWidgetServiceField(g_widgets, D2RL::WidgetServiceRequiredSize)) {
 			g_widgets = nullptr;
@@ -2071,6 +2486,10 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 			g_panels = nullptr;
 			context->LogWarn("Camp: panel service missing; no slot screen, traveler or roster panel.");
 		}
+		if (g_openedAtStart) {  // the save was picked before the restart: straight to its Campfire
+			g_slotChosen = true;
+			g_wantFire = g_fireOn && g_fireReady;
+		}
 	} catch (const std::exception& error) {
 		Log(context, "Camp: setup failed (%s). The Campfire is off.", error.what());
 		g_live.clear();
@@ -2081,7 +2500,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		context->RegisterConsoleCommand("dd-traveler", TravelerCommand, "Make a traveler turn up now (in town; test).") &&
 		context->RegisterConsoleCommand("dd-where", WhereCommand, "Show the hero and fire positions the plugin reads; 'dd-where scan' looks again (test).") &&
 		context->RegisterConsoleCommand("dd-set", SetCommand, "Game-state WRITES test: dd-set copies | stat <id> <value> | hold <id> <value> | state <row> end|stat ...") &&
-		context->RegisterConsoleCommand("dd-state", StateCommand, "Game-state API test: hero, world, monsters, objects, items; 'dd-state stats', 'states', 'skills', 'items', 'players', 'watch', 'tables'.") &&
+		context->RegisterConsoleCommand("dd-state", StateCommand, "Game-state API test: hero, world, monsters, objects, items; 'dd-state stats', 'states', 'skills', 'items', 'players', 'counters', 'watch', 'tables'.") &&
 		context->RegisterConsoleCommand("dd-units", UnitsCommand, "List the units the game has loaded: 'dd-units', 'dd-units objects 39', 'dd-units monsters', 'dd-units find' (test).");
 }
 
@@ -2143,17 +2562,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				return true;
 			}
 			if (std::strcmp(command, "ToExit") == 0 && (g_atFire || g_emptyFire) && g_threads != nullptr) {
-				// The hero screen can't close the game; the main menu can. Go there behind a black
-				// screen and press its Exit (see CharacterSelectPanel below).
-				g_exiting = true;
-				g_atFire = false;
-				g_emptyFire = false;
-				g_slotsOpen = false;
-				PoolClose(context, g_slots);
-				PoolClose(context, g_fire);
-				g_threads->runOnUiThread(context, OpenCurtain, nullptr);
-				Later(context, 50, BackToMenu);
-				Later(context, 8000, ExitTimedOut);
+				ExitFromFire(context);
 				return true;
 			}
 			if (std::strcmp(command, "ToCharacterCreate") != 0) {
@@ -2325,8 +2734,10 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 		using Kind = D2RL::Lifecycle::GameplayEventKind;
 		switch (event->kind) {
 		case Kind::GameJoined:
+			Game::ResetCounters();  // a game with a hero starts the run's counters (gameapi.h)
 			g_inGame = true;
 			g_slotChosen = true;
+			g_stashSlot = g_slot;  // from now on the game keeps this save's stash in memory
 			g_died = false;
 			g_reachedLevel = 0;
 			g_joinTime = fs::file_time_type::clock::now();
