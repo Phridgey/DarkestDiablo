@@ -21,12 +21,11 @@ Town Portal).
   one crafting (which map gets which kind is a first choice and can be swapped). Each is linear
   and about twice the size of the usual arena maps.
 - **Hellforge** is cut down to a short path to the forge, with Hephasto at it. Its monsters use
-  the crafting-hunt copies. The forge's rune reward is tripled (three runes), within the Ohm cap.
+  the crafting-hunt copies. The forge's reward is tripled: three runes, each Pul or higher (an
+  exception to the Ohm cap). Ber, Sur, Jah, Cham and Zod are 5% each; the other 75% is shared
+  evenly by Pul, Um, Mal, Ist, Gul, Vex, Ohm and Lo (about 9.4% each).
 - **Chaos Sanctuary** keeps its full map: the five seals, their three seal bosses, then Diablo.
   It is both an XP and an MF stop: monster copies worth 40% more experience, triple gold, and
   magic-find loot. Diablo's death clears it and the act.
 - No River of Flame: the route map takes the hero straight to the Hellforge, then to the
   sanctuary.
-
-## Open questions
-- Hellforge reward: which three runes (the game gives one random rune from a band per difficulty).

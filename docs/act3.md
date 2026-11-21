@@ -30,12 +30,10 @@ every map is linear: one way forward, nowhere to get lost.
   sparkling ones). It is the crafting-materials run.
 - **Travincal** uses the MF-run monster copies (magic-find loot, as Ancient Tunnels). The High
   Council (three members) drops Khalim's Flail as usual.
+- **One hero crafts Khalim's Will:** the camp clears the three tier 1 stops with any heroes, but
+  the hero who smashes the orb must hold all three parts and the Flail (quest items cannot go in
+  the shared stash). A hero missing a part re-runs that stop for it (each tier 1 stop gives its
+  part again on every run).
 - **Khalim's Will is kept:** the hero cubes the Flail with the Eye, Brain and Heart into Khalim's
   Will and smashes the Compelling Orb; that clears Travincal and opens Durance 3 on the route map.
 - **Durance 3:** the hero arrives near Mephisto's bridge; his death clears the stop and the act.
-
-## Open questions
-- **Khalim's parts and the orb:** tier 1 allows different heroes to collect the three parts, but
-  Khalim's Will needs all four pieces on one hero, and quest items cannot go in the shared stash.
-  Options: one hero must hold all three (tier 1 still clears per stop for the camp); or the
-  plugin gives the missing parts to the hero who enters Travincal.
