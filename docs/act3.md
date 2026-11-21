@@ -22,8 +22,8 @@ every map is linear: one way forward, nowhere to get lost.
   its own). They are XP stops (+40% experience, triple gold), to keep the hero on the act's
   level curve.
 - **The Jade Figurine:** any unique monster in the tier 1 stops may drop it (Meshif's quest,
-  the Golden Bird). Its reward, Alkor's potion of life, is given once and so is tripled like
-  every once-only reward: open question below.
+  the Golden Bird). Its reward, Alkor's potion of life, is tripled like every once-only reward:
+  +60 life instead of +20 (the potion gives 20, the plugin adds 40 on the hero's first use).
 - **Lam Esen's Tome** gives 15 stat points instead of 5: reading it gives the usual 5, and the
   plugin adds 10 on the camp's first clear (as Radament's book).
 - **Lower Kurast** is cut down to a straight path, and every chest on it is a super chest (the
@@ -39,4 +39,3 @@ every map is linear: one way forward, nowhere to get lost.
   Khalim's Will needs all four pieces on one hero, and quest items cannot go in the shared stash.
   Options: one hero must hold all three (tier 1 still clears per stop for the camp); or the
   plugin gives the missing parts to the hero who enters Travincal.
-- **The Golden Bird:** +20 life tripled to +60, or kept at +20.
