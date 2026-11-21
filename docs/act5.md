@@ -1,7 +1,7 @@
 # Act V plan (decided 2026-11-21, not built yet)
 
 Act V under the flattening plan (`docs/flattening.md`): about levels 72 to 90, camp-wide
-progress, re-runs until a hero is more than 2 levels over a stop, forks with no pick limit.
+progress, no rune limit, re-runs until a hero is more than 2 levels over a stop, forks with no pick limit.
 Every map is a copy with no stairs (reached by the route map, left by Town Portal).
 
 | Tier | Stop | Kind | Target level | Cleared when |
@@ -16,14 +16,15 @@ Every map is a copy with no stairs (reached by the route map, left by Town Porta
 | 5 | Ancients (Arreat Summit) | forced | 86-87 | the three Ancients die |
 | 6 | Throne of Destruction, Baal | forced, MF | 88-90 | Baal dies |
 
-- **Shenk** waits in a short cut of the Bloody Foothills, with Eldritch the Rectifier as a bonus
+- **Shenk** gives Larzuk's socketing three times (once-only rewards are tripled). He waits in a short cut of the Bloody Foothills, with Eldritch the Rectifier as a bonus
   unique close by.
 - **Frigid Highlands** is the barbarian rescue (it gives the barbarian mercenaries), as an XP stop
   (+40% experience, triple gold). The three prison pens stand reasonably close to each other.
+  Its reward is 3 random runes from Pul to Ohm.
 - **Pindleskin's area** (Nihlathak's Temple entrance) keeps its full size, as an MF run.
 - **Icy Cellar** is the crafting hunt.
-- **Anya's rescue** is forced and uses MF loot. What Anya's reward becomes is still open (her
-  resistance scroll is being reworked: `docs/flattening.md`).
+- **Anya's rescue** is forced and uses MF loot. Her reward is a scroll that raises the maximum
+  of one resistance, of the player's choice, by 5 (instead of the base game's +30 to all).
 - **Halls of Vaught** (Nihlathak's level) is an MF run; **the Cow Level** is a crafting hunt,
   reached from the route map (no Wirt's Leg needed).
 - **Ancients:** their reward is a full character level instead of the usual experience.
@@ -32,7 +33,5 @@ Every map is a copy with no stairs (reached by the route map, left by Town Porta
   one guaranteed elite unique item and one guaranteed elite set item. His death ends the run.
 
 ## Open questions
-- Shenk's reward (Larzuk's socketing) tripled to three items, as other once-only rewards?
-- The barbarians' rune reward tripled?
-- Anya's reward after the scroll rework.
-- Highest rune in Act V (presumably no cap).
+- How the player chooses the resistance for Anya's scroll (for example four scrolls to pick one
+  from, or a choice in a camp menu).

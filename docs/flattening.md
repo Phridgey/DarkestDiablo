@@ -31,9 +31,11 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
 - **Quest rewards given once per difficulty are tripled** (decided 2026-11-20), since there is
   only one pass: for example the Den's skill point becomes 3, Radament's book 3 skill points,
   Lam Esen's tome +15 stat points, Izual's 2 skill points 6, the Golden Bird's +20 life +60, and
-  Larzuk's socket quest 3 uses. Anya's resistance scroll is the exception: it is being reworked.
+  Larzuk's socket quest 3 uses. Two exceptions (decided 2026-11-21): the barbarians' rescue gives
+  3 random runes from Pul to Ohm, and Anya's scroll becomes a scroll that raises the maximum of one
+  resistance of the player's choice by 5.
 - **Highest rune per act** (decided 2026-11-20, replacing every earlier Act I limit): Act I Ral,
-  Act II Shael, Act III Lem, Act IV Ohm (Act V: no limit set yet). Every rune source in an act
+  Act II Shael, Act III Lem, Act IV Ohm, Act V no limit. Every rune source in an act
   stays at or below its cap, at the game's own odds between runes.
 - **Every XP grind** (in every act) gives +40% experience and gold piles worth 3 times as much.
 - Why: resistances and immunities are fixed per encounter, so players learn which hero suits which
@@ -60,13 +62,15 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
      drops El to Ral, the Countess Ith to Ral.
 5. **Penalties and rewards.** The resistance penalty becomes the linear, camp-based one above,
    to -70 (the game always runs on Normal, which has none, so the plugin applies it). The quest
-   rewards given once per difficulty are tripled; Anya's scroll gets its own rework (to decide).
+   rewards given once per difficulty are tripled; Anya's scroll is reworked (+5 to one maximum resistance).
    Note: our Den arena is not the real Den, so its quest (skill point, Akara's respec) needs a new
    way to be given.
 
 ## Act plans
 - Act II: `docs/act2.md`.
+- Act III: `docs/act3.md`.
+- Act IV: `docs/act4.md`.
+- Act V: `docs/act5.md`.
 
 ## Still to decide (ask Fabrizio)
-- What Anya's resistance scroll becomes.
 - Item levels for 4, 5 and 6 sockets.
