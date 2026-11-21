@@ -31,7 +31,9 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
 - **Quest rewards given once per difficulty are tripled** (decided 2026-11-20), since there is
   only one pass: for example the Den's skill point becomes 3, Radament's book 3 skill points,
   Lam Esen's tome +15 stat points, Izual's 2 skill points 6, the Golden Bird's +20 life +60, and
-  Larzuk's socket quest 3 uses. Two exceptions (decided 2026-11-21): the barbarians' rescue gives
+  Larzuk's socket quest 2 uses (decided 2026-11-21). Two more socket rewards are added: Charsi
+  after the Malus (Act I) and Hratli once the hero holds Khalim's three parts, before Khalim's Will
+  is made (Act III); see "Socket rewards" below. Two exceptions (decided 2026-11-21): the barbarians' rescue gives
   3 random runes from Pul to Ohm, and Anya's scroll becomes a scroll that raises the maximum of one
   resistance of the player's choice by 5.
 - **Highest rune per act** (decided 2026-11-20, replacing every earlier Act I limit): Act I Ral,
@@ -65,6 +67,14 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
    rewards given once per difficulty are tripled; Anya's scroll is reworked (+5 to one maximum resistance).
    Note: our Den arena is not the real Den, so its quest (skill point, Akara's respec) needs a new
    way to be given.
+
+## Socket rewards
+The game's only socket reward is Larzuk's, a quest flag the plugin cannot set again. The added
+rewards (Charsi in Act I, Hratli in Act III) work with an item of our own instead: the smith hands
+over a socket token (the plugin creates it; it is not a quest item, so `createItem` accepts it),
+and a Horadric Cube recipe turns token + any item without sockets into the same item with one
+socket (the game's own recipe shape: `"any,nos"` input, `"useitem,sock=1"` output, as the Stone of
+Jordan rare-socket recipe). To test: that the recipe adds a socket to unique and set items too.
 
 ## Act plans
 - Act II: `docs/act2.md`.

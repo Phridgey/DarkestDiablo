@@ -16,7 +16,7 @@ Every map is a copy with no stairs (reached by the route map, left by Town Porta
 | 5 | Ancients (Arreat Summit) | forced | 86-87 | the three Ancients die |
 | 6 | Throne of Destruction, Baal | forced, MF | 88-90 | Baal dies |
 
-- **Shenk** gives Larzuk's socketing three times (once-only rewards are tripled). He waits in a short cut of the Bloody Foothills, with Eldritch the Rectifier as a bonus
+- **Shenk** gives Larzuk's socketing twice. He waits in a short cut of the Bloody Foothills, with Eldritch the Rectifier as a bonus
   unique close by.
 - **Frigid Highlands** is the barbarian rescue (it gives the barbarian mercenaries), as an XP stop
   (+40% experience, triple gold). The three prison pens stand reasonably close to each other.

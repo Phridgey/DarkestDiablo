@@ -34,6 +34,8 @@ every map is linear: one way forward, nowhere to get lost.
   the hero who smashes the orb must hold all three parts and the Flail (quest items cannot go in
   the shared stash). A hero missing a part re-runs that stop for it (each tier 1 stop gives its
   part again on every run).
+- **Hratli's socket:** once a hero holds all three of Khalim's parts (before making Khalim's Will),
+  Hratli gives a socket reward (`docs/flattening.md`, "Socket rewards").
 - **Khalim's Will is kept:** the hero cubes the Flail with the Eye, Brain and Heart into Khalim's
   Will and smashes the Compelling Orb; that clears Travincal and opens Durance 3 on the route map.
 - **Durance 3:** the hero arrives near Mephisto's bridge; his death clears the stop and the act.
