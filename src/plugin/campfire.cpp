@@ -638,6 +638,11 @@ void ShowRestartNotice(const D2RL::PluginContext* context) {
 	OpenSlotsPanel(context);
 }
 
+// The game closing and starting itself again for a save change is switched off: Sam rejected it
+// (2026-11-21) and a better way is being worked on. Until then the slot screen asks the player to
+// close the game and start it again; the change is made at the next start.
+constexpr bool AutoRestart = false;
+
 // Notes `change` for the next start and restarts the game. Returns a message for the console.
 auto RestartWith(const D2RL::PluginContext* context, const Camp::Pending& change) -> std::string {
 	Camp::Pending pending = Camp::ReadPending(g_live);  // keep a change noted earlier this session
@@ -652,9 +657,9 @@ auto RestartWith(const D2RL::PluginContext* context, const Camp::Pending& change
 	g_slotChosen = true;
 	g_slotsOpen = false;
 	PoolClose(context, g_slots);
-	std::string error;
+	std::string error = "the automatic restart is off (AutoRestart)";
 	const bool fromFire = g_fireOn && g_fireReady && g_threads != nullptr && (g_atFire || g_emptyFire);
-	if (!StartRelauncher(error)) {
+	if (!AutoRestart || !StartRelauncher(error)) {
 		Log(context, "Camp: %s. The change is made at the next start.", error.c_str());
 		ShowRestartNotice(context);
 		return "Close the game and start it again to make the change.";
