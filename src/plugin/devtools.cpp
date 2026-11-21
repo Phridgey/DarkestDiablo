@@ -502,7 +502,7 @@ void OnAction(const D2RL::PluginContext* context, const char* action) noexcept {
 		int amount = 5000;
 		const Game::HeroDetails hero = Game::HeroInfo();
 		if (hero.level > 0 && hero.gold >= 0) {
-			amount = std::min(50000, hero.level * 10000 - hero.gold);
+			amount = (std::min)(50000, hero.level * 10000 - hero.gold);
 		}
 		if (amount > 0) {
 			char command[40] {};
