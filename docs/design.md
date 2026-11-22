@@ -101,7 +101,9 @@ every stop built, not yet tested). Patches `113_act3.py`, `114_act4.py`, `114a_a
   level for the Ancients.
 - The route map opens on the act of the hero's next open stop, wherever the hero stands (Town
   Portals from Act IV's red portals or the Cow Level land in another act's town).
-- Monster levels are still the game's own Normal ones; the flattening's level curve comes later.
+- Monster levels and loot follow the level progression (004_area_levels.py, 996_monster_levels.py).
+- Act I's runes (El to Ral) need levels 3 to 16 instead of 11 to 19, so they work in Act I
+  (008_act1_rune_levels.py); later runes keep the game's requirements.
 
 ## Healing (decided 2026-11-19)
 - No health potions drop or are sold. Each cleared stop earns 3 (by difficulty: light, greater,
