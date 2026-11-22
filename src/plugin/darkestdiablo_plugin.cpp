@@ -1356,8 +1356,21 @@ static void __cdecl CheckBossSpawned(const D2RL::PluginContext* context, void* r
 		Trace(context, "Boss: not found after every try; the stop clears when everything else is dead.");
 		return;
 	}
-	Trace(context, "Boss: not found; spawning again.");
-	RunConsole(context, boss.command.c_str());
+	// Its spot may be full (a crowded wave: "Monster not created"), so each retry spawns it close
+	// to the hero instead, a little further round each time; the hero stands on open floor.
+	std::string command = boss.command;
+	try {
+		const Game::Unit hero = Game::Hero();
+		if (hero.x > 0 && hero.y > 0) {
+			static constexpr int Offsets[][2] = { { 0, 8 }, { 8, 0 }, { -8, 0 }, { 0, -8 } };
+			const auto& o = Offsets[static_cast<size_t>(boss.triesLeft) % 4];
+			command = command.substr(0, command.find(" @ ")) + " @ " + std::to_string(static_cast<int>(hero.x) + o[0]) + "," +
+				std::to_string(static_cast<int>(hero.y) + o[1]);
+		}
+	} catch (...) {
+	}
+	Trace(context, "Boss: not found; spawning again near the hero.");
+	RunConsole(context, command.c_str());
 	{
 		const std::lock_guard<std::mutex> guard(g_bossSpawnLock);
 		g_bossSpawn.triesLeft = boss.triesLeft - 1;
