@@ -104,8 +104,11 @@ class SpecialDropsTest(unittest.TestCase):
         import csv
         with self.TCS.open(encoding="utf-8") as f:
             tcs = {r["Treasure Class"]: r for r in csv.DictReader(f, delimiter="\t")}
+        # Treehead's table name follows his level (004_area_levels.py moves it up its group).
         for tag in ("", " (N)", " (H)"):
-            self.assertEqual(tcs[f"DD MF Act 1{tag} Super B Treehead"]["Item1"], f"DD Treehead Bonus{tag}")
+            names = [n for n in tcs if n.startswith("DD MF ") and n.endswith(" Treehead") and (tag in n if tag else "(" not in n)]
+            self.assertEqual(len(names), 1, names)
+            self.assertEqual(tcs[names[0]]["Item1"], f"DD Treehead Bonus{tag}")
 
     def test_no_table_drops_keys(self):
         if not self.TCS.exists():

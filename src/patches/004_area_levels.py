@@ -8,7 +8,24 @@ of the boss that ends an act. Experience, gold and what can drop (item level) fo
 
 This runs first (004), so later patches that read an arena's level (crafting loot's white
 bases, the Pit's and Treehead's set/unique picks) see the new one.
+
+Loot follows the level too (decided 2026-11-21: "we follow my level progression objective in all
+things"). In Nightmare and Hell the game moves a monster's loot table up its group (Act 1 H2H A,
+B, C, Act 2 H2H A ... Act 5 (H) H2H C) to the highest one at or below the monster's level; in
+Normal it never does. So here every monster type a stop's waves are made from gets, before the
+stops copy it, the table of its group that fits the stop's level (champion tables 2 levels up,
+unique tables 3). A type used by several stops takes the lowest of their levels. The monsters'
+own levels are set on the copies at the end (996_monster_levels.py).
 """
+import importlib.util
+from pathlib import Path
+
+
+def _load(name, file):
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(file))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 # Area level by levels.txt Id (the stops' arena and arrival levels, route.h).
 AREA_LEVELS = {
@@ -54,7 +71,108 @@ BOSS_LEVELS = {
 }
 
 
+# Superuniques a stop spawns or keeps: their stop's level (their loot table moves up its group
+# to the stop's level + 3, as their monster level is).
+SUPER_LEVELS = {
+    "Corpsefire": 3, "Rakanishu": 7, "Treehead WoodFist": 7, "Bloodwitch the Wild": 20,
+    "Coldworm the Burrower": 27, "Fangskin": 27, "Sarina the Battlemaid": 46,
+    "Ismail Vilehand": 50, "Geleb Flamefinger": 50, "Toorc Icefist": 50,
+    "Bremm Sparkfist": 53, "Wyand Voidfinger": 53, "Maffer Dragonhand": 53,
+    "Grand Vizier of Chaos": 71, "Lord De Seis": 71, "Infector of Souls": 71,
+    "Siege Boss": 74, "Megaflow Rectifier": 74, "Pindleskin": 78, "Frozenstein": 81,
+}
+
+
+def wave_sources():
+    """{monster type: the lowest stop level it is used at} from the stops' patches."""
+    uses = {}
+
+    def add(types, level):
+        for m in types:
+            uses[m] = min(uses.get(m, 999), level)
+
+    add(_load("p035", "035_inifuss_loot.py").WAVE_TYPES, 7)
+    add(_load("p060", "060_mausoleum.py").WAVE_TYPES, 7)
+    add(_load("p070", "070_crypt.py").WAVE_TYPES, 7)
+    add(_load("p090", "090_pit.py").WAVE_TYPES, 13)
+    add(_load("p110", "110_malus.py").WAVE_TYPES, 13)
+    add(_load("p120", "120_linear_zone.py").TOWER_MONSTERS, 5)
+    add(["zombie1", "fallen1", "fallenshaman1"], 3)                                # the Den (plugin waves)
+    add(["skeleton1", "fallen3", "goatman3", "wraith1", "cr_archer3"], 5)       # Burial Grounds and the Tower (plugin)
+    add(["zombie3", "bighead2", "vampire5", "bighead1", "fallen4", "arach1"], 17)  # Andariel's packs (andariel.cpp)
+    for name, file in (("p111", "111_act2_arenas.py"), ("p112", "112_act2_later.py"), ("p113", "113_act3.py"),
+                       ("p114", "114_act4.py"), ("p114a", "114a_act5.py")):
+        module = _load(name, file)
+        for value in vars(module).values():
+            if isinstance(value, dict) and "waves" in value and "id" in value and value["waves"]:
+                add(value["waves"], AREA_LEVELS[int(value["id"])])
+    return uses
+
+
+def scale_loot(t, uses):
+    tcs = t.table("treasureclassex")
+    ladders = {}
+    for r in tcs.rows:
+        if r.get("group", "").strip() and r.get("level", "").strip().isdigit():
+            ladders.setdefault(r["group"], []).append((int(r["level"]), r["Treasure Class"]))
+    where = {name: group for group, rows in ladders.items() for _, name in rows}
+    stats = t.table("monstats")
+    for monster, level in uses.items():
+        row = stats.first("Id", monster)
+        for col, extra in (("TreasureClass", 0), ("TreasureClassChamp", 2), ("TreasureClassUnique", 3)):
+            group = where.get(row.get(col, ""))
+            if group is None:
+                continue
+            fits = [tc for lvl, tc in sorted(ladders[group]) if lvl <= level + extra]
+            if fits:
+                row[col] = fits[-1]
+
+
+def ladder_pick(ladders, where, name, level):
+    group = where.get(name)
+    if group is None:
+        return name
+    fits = [tc for lvl, tc in sorted(ladders[group]) if lvl <= level]
+    return fits[-1] if fits else name
+
+
+def scale_supers_and_bosses(t):
+    tcs = t.table("treasureclassex")
+    ladders = {}
+    for r in tcs.rows:
+        if r.get("group", "").strip() and r.get("level", "").strip().isdigit():
+            ladders.setdefault(r["group"], []).append((int(r["level"]), r["Treasure Class"]))
+    where = {name: group for group, rows in ladders.items() for _, name in rows}
+    supers = t.table("superuniques")
+    for name, level in SUPER_LEVELS.items():
+        row = supers.first("Superunique", name)
+        row["TC"] = ladder_pick(ladders, where, row["TC"], level + 3)
+    # Act bosses have their own tables, one per difficulty: the one whose (vanilla) monster level
+    # is the highest at or below the boss's new level (e.g. Diablo at 71 drops as in Nightmare).
+    stats = t.table("monstats")
+    for monster, level in BOSS_LEVELS.items():
+        row = stats.first("Id", monster)
+        tiers = [(row.get(c, ""), suffix) for c, suffix in (("Level", ""), ("Level(N)", "(N)"), ("Level(H)", "(H)"))]
+        best = ""
+        for lvl, suffix in tiers:
+            if lvl.strip().isdigit() and int(lvl) <= level:
+                best = suffix
+        if best:
+            for col in ("TreasureClass", "TreasureClassChamp", "TreasureClassUnique", "TreasureClassQuest"):
+                if row.get(col + best):
+                    row[col] = row[col + best]
+
+
 def patch(t):
+    scale_supers_and_bosses(t)  # before the bosses' levels change below
+    uses = wave_sources()
+    levels_table = t.table("levels")
+    for level_id, level in ((38, 10), (108, 71)):  # Tristram and the Chaos Sanctuary copy their level's own monsters
+        row = levels_table.first("Id", str(level_id))
+        for col, value in row.items():
+            if col.rstrip("0123456789") in ("mon", "nmon", "umon") and value:
+                uses[value] = min(uses.get(value, 999), level)
+    scale_loot(t, uses)
     levels = t.table("levels")
     for level_id, lvl in AREA_LEVELS.items():
         row = levels.first("Id", str(level_id))

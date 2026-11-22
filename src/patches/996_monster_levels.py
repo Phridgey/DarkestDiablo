@@ -26,6 +26,10 @@ COPY_LEVELS = {
 # The game's own types used for a stop's superuniques or kept bosses: the stop's level minus 3
 # for superunique types (they add 3), the stop's level for act bosses (004_area_levels.py).
 TYPE_LEVELS = {
+    # spawned as they are by the plugin: the Den, Burial Grounds and the Tower, Andariel's packs
+    "zombie1": 3, "fallen1": 3, "fallenshaman1": 3,
+    "skeleton1": 5, "fallen3": 5, "goatman3": 5, "wraith1": 5, "cr_archer3": 5,
+    "zombie3": 17, "bighead2": 17, "vampire5": 17, "bighead1": 17, "fallen4": 17, "arach1": 17,
     "pantherwoman1": 17, "maggotqueen1": 24, "clawviper3": 24,          # Bloodwitch, Coldworm, Fangskin
     "corruptrogue5": 43, "councilmember1": 47, "councilmember2": 47, "councilmember3": 47,
     "mephistospirit": 53,
