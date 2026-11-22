@@ -860,7 +860,10 @@ auto Allowed() -> std::vector<int> {
 // hide widgets, so each patch is drawn at AuraLevels brightnesses, one widget per level, and
 // AuraStep shows the right one (or none).
 constexpr int AuraLevels = 6;
-constexpr int PlateAuras = 10;    // patches around a name plate (380x128)
+// The name plate under each hero. 280x92 since 0.15.23 (was 380x128): neighbouring heroes'
+// plates overlapped (Sam). The glow picture is drawn to this size (042_campfire_glow.py).
+constexpr int PlateW = 280, PlateH = 92, PlateY = 1450, PlateGlowMargin = 56;
+constexpr int PlateAuras = 8;     // patches around a name plate
 constexpr int EnterAuras = 16;    // patches around the Enter button (824x162)
 constexpr int AuraOut = 14;       // how far outside the box edge a patch's centre sits
 // Picture sizes: along a top or bottom edge (H) and along a side (V).
@@ -944,23 +947,23 @@ auto FireLayoutJson() -> std::string {
 		figure(hero.cls, GearFields(hero.gear));
 		const int plateX = s.x + (s.w - 300) / 2;
 		// The name plate: a dark framed plaque with the name in gold and "Level N Class" under it.
-		const int plaqueX = s.x + (s.w - 380) / 2;
+		const int plaqueX = s.x + (s.w - PlateW) / 2;
 		// The picked hero's plate has a soft gold glow behind its frame, like the Enter button (Sam).
 		// The picture is drawn at build time (src/patches/042_campfire_glow.py): the plate's size
-		// plus a 56 margin on each side.
-		kids += "{\"type\":\"ImageWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - 56) +
-			",\"y\":1394},\"filename\":\"PANEL\\\\DarkestDiablo\\\\HeroGlow\"}},";
+		// plus PlateGlowMargin on each side.
+		kids += "{\"type\":\"ImageWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - PlateGlowMargin) +
+			",\"y\":" + std::to_string(PlateY - PlateGlowMargin) + "},\"filename\":\"PANEL\\\\DarkestDiablo\\\\HeroGlow\"}},";
 		// Its aurora, between the glow and the plate.
-		kids += AuraWidgets("Aura" + cls, plaqueX, 1450, 380, 128, PlateAuras);
+		kids += AuraWidgets("Aura" + cls, plaqueX, PlateY, PlateW, PlateH, PlateAuras);
 		kids += "{\"type\":\"NineTileImageWidget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\","
-			"\"backgroundColor\":[0.0,0.0,0.0,0.8],\"tileScale\":1.0,\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":1450,\"width\":380,\"height\":128}},\"children\":["
-			"{\"type\":\"TextBoxWidget\",\"name\":\"Name" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
-			"\"style\":{\"pointSize\":\"$ExtraLargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorGoldYellow\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
+			"\"backgroundColor\":[0.0,0.0,0.0,0.8],\"tileScale\":1.0,\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":" + std::to_string(PlateY) + ",\"width\":" + std::to_string(PlateW) + ",\"height\":" + std::to_string(PlateH) + "}},\"children\":["
+			"{\"type\":\"TextBoxWidget\",\"name\":\"Name" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":8,\"width\":" + std::to_string(PlateW) + ",\"height\":46},\"text\":\"" + hero.name + "\","
+			"\"style\":{\"pointSize\":\"$LargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorGoldYellow\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
 			// The same name in white, shown instead of the gold one while this hero is picked.
-			"{\"type\":\"TextBoxWidget\",\"name\":\"NameLit" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":12,\"width\":380,\"height\":60},\"text\":\"" + hero.name + "\","
-			"\"style\":{\"pointSize\":\"$ExtraLargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorWhite\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
-			"{\"type\":\"TextBoxWidget\",\"name\":\"Rank\",\"fields\":{\"rect\":{\"x\":0,\"y\":72,\"width\":380,\"height\":44},\"text\":\"Level " + std::to_string(hero.level) + " " + cls + "\","
-			"\"style\":{\"pointSize\":\"$MediumFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
+			"{\"type\":\"TextBoxWidget\",\"name\":\"NameLit" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":8,\"width\":" + std::to_string(PlateW) + ",\"height\":46},\"text\":\"" + hero.name + "\","
+			"\"style\":{\"pointSize\":\"$LargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorWhite\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
+			"{\"type\":\"TextBoxWidget\",\"name\":\"Rank\",\"fields\":{\"rect\":{\"x\":0,\"y\":52,\"width\":" + std::to_string(PlateW) + ",\"height\":32},\"text\":\"Level " + std::to_string(hero.level) + " " + cls + "\","
+			"\"style\":{\"pointSize\":\"$SmallFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
 		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, and a waiting traveler's offer, in the game's
