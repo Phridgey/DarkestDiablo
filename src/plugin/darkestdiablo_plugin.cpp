@@ -906,6 +906,11 @@ static std::string g_runStop;
 static auto LoadProgress() noexcept -> Route::Progress;
 static auto SaveProgress(const D2RL::PluginContext* context, const Route::Progress& progress) noexcept -> bool;
 
+// A quest stop clears when both are true (2026-11-22: a hero ran to the Cube with one wave out,
+// and the stop ended almost empty): the quest item taken, and every wave out and dead.
+static std::atomic<bool> g_questDone { false };
+static std::atomic<bool> g_wavesDone { false };
+
 static void ResetArena() noexcept {
 	g_targetPack = -1;
 	g_packsSpawned = 0;
@@ -1252,10 +1257,6 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 // Every half second while the hero is in a quest stop, the plugin counts the quest item in
 // everything the hero owns. More than on arrival: picked up, cleared.
 static std::atomic<int> g_questBaseline { -1 };  // the count on arrival; -1 not counted yet
-// A quest stop clears when both are true (2026-11-22: a hero ran to the Cube with one wave out,
-// and the stop ended almost empty): the quest item taken, and every wave out and dead.
-static std::atomic<bool> g_questDone { false };
-static std::atomic<bool> g_wavesDone { false };
 static std::atomic<int64_t> g_questChestOpenedMs { 0 };  // when the quest chest was seen open; 0 not yet
 static constexpr int64_t QuestChestGraceMs = 10000;  // then the stop clears even without a pickup
 
