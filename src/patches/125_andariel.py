@@ -22,7 +22,7 @@ NO_MONSTERS = ("MonDen", "MonDen(N)", "MonDen(H)", "MonUMin", "MonUMax", "MonUMi
 # The two uniques: (monster type Id, made from, key code, key name, item it looks like)
 KEEPERS = [
     ("dd_andy_fallenshaman4_k1", "fallenshaman4", "za1", "Vial of Maiden's Venom", "xyz"),
-    ("dd_andy_arach1_k2",        "arach1",        "za2", "Shard of Anguish",       "mss"),
+    ("dd_andy_arach1_k2",        "arach1",        "za2", "Shard of Anguish",       "tes"),
 ]
 STRING_ID = 91200                   # clear of the traveler (91000), camp heroes (91001) and the Tower (91100)
 
