@@ -17,16 +17,17 @@ own with one text box, opened or closed whole. `src/plugin/waveoverlay.cpp` make
 load and registers them:
 
 - `darkestdiablo/WaveK1` .. `WaveK8`: "Wave k", ending just left of the screen's centre,
-- `darkestdiablo/WaveN1` .. `WaveN8`: "/ n", starting just right of it (together: "Wave 3 / 6"),
 - `darkestdiablo/WaveNext1` .. `WaveNext5`: "Next wave in s",
+- `darkestdiablo/WaveN<n>`: "/ n", starting just right of the centre (together: "Wave 3 / 6"),
+  only for the wave totals the arenas really have (the plugin passes them in at load; on main
+  4, 6 and 8),
 - `darkestdiablo/WaveCleared`: "Arena cleared".
 
-That is 22 panels. A plugin may register at most 64, and the rest of the plugin uses about 42
-(the Campfire's panel pools alone take 38). The counter registers last and in order of need
-("Wave k", the countdown, then "/ n" for the most common totals 4, 5, 6, 3, 8, 1, 2, 7, then
-"Arena cleared"); if the limit is reached it keeps what fit and the log says "the rest hit the
-plugin's panel limit". Arenas have at most 8 waves today; for more, raise `MaxWaves` in
-`waveoverlay.h` and count the panels first.
+On main that is 17 panels. A plugin may register at most 64, and the rest of the plugin uses
+about 43 (the Campfire's panel pools alone take 38). The counter registers last and in that
+order, the most common totals first; if the limit is reached it keeps what fit and the log
+lists what was left out ("the plugin's panel limit left out: ..."). Arenas have at most 8 waves
+today; for more, raise `MaxWaves` in `waveoverlay.h` and count the panels first.
 
 A small timer thread checks five times a second what should be up and asks the UI thread to open
 and close the right panels; once a second it also checks that the game hasn't closed one of them.

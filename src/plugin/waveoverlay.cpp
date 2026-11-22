@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <string>
 #include <thread>
+#include <algorithm>
 #include <vector>
 
 namespace WaveOverlay {
@@ -29,7 +30,7 @@ struct Piece {
 };
 std::vector<Piece> g_pieces;
 int g_waveK[MaxWaves + 1] {};          // piece index of "Wave k", by k
-int g_waveN[MaxWaves + 1] {};          // piece index of "/ n", by n
+int g_waveN[MaxWaves + 1] { -1, -1, -1, -1, -1, -1, -1, -1, -1 };  // piece index of "/ n", by n; -1 none
 int g_next[CountdownSeconds + 1] {};   // piece index of "Next wave in s", by s
 int g_clear = -1;                      // "Arena cleared"
 
@@ -122,7 +123,7 @@ auto Wanted(const State& s) -> std::vector<bool> {
 	}
 	if (s.wave >= 1 && s.wave <= MaxWaves) {
 		want[static_cast<size_t>(g_waveK[s.wave])] = true;
-		if (s.total >= 1 && s.total <= MaxWaves) {
+		if (s.total >= 1 && s.total <= MaxWaves && g_waveN[s.total] >= 0) {
 			want[static_cast<size_t>(g_waveN[s.total])] = true;
 		}
 	}
@@ -212,11 +213,10 @@ void Add(const std::string& localId, std::string layout) {
 
 // "Wave 3" ends just left of the centre and "/ 6" starts just right of it, so together they read
 // "Wave 3 / 6" centred. Made in the order they are registered: most needed first, so if the
-// 64-panel limit is reached only the least needed are left out.
-constexpr int TotalsByNeed[MaxWaves] = { 4, 5, 6, 3, 8, 1, 2, 7 };  // arena wave counts, most common first
-
-void MakePieces() {
-	g_pieces.reserve(MaxWaves * 2 + CountdownSeconds + 1);
+// 64-panel limit is reached only the least needed are left out. `totals`: one "/ n" per distinct
+// arena wave total, the most common first.
+void MakePieces(const std::vector<int>& totals) {
+	g_pieces.reserve(MaxWaves + CountdownSeconds + 1 + totals.size());
 	for (int k = 1; k <= MaxWaves; ++k) {
 		const std::string id = "WaveK" + std::to_string(k);
 		g_waveK[k] = static_cast<int>(g_pieces.size());
@@ -227,7 +227,7 @@ void MakePieces() {
 		g_next[s] = static_cast<int>(g_pieces.size());
 		Add(id, PieceLayout(id, -700, SubY, "center", "Next wave in " + std::to_string(s), s <= 3 ? "$FontColorRed" : "$FontColorWhite", "$LargeFontSize"));
 	}
-	for (const int n : TotalsByNeed) {
+	for (const int n : totals) {
 		const std::string id = "WaveN" + std::to_string(n);
 		g_waveN[n] = static_cast<int>(g_pieces.size());
 		Add(id, PieceLayout(id, 12, TitleY, "left", "/ " + std::to_string(n), "$FontColorGoldYellow", "$ExtraLargeFontSize"));
@@ -236,9 +236,27 @@ void MakePieces() {
 	Add("WaveCleared", PieceLayout("WaveCleared", -700, TitleY, "center", "Arena cleared", "$FontColorGoldYellow", "$ExtraLargeFontSize"));
 }
 
+// The distinct totals between 1 and MaxWaves, the most common first (ties: smaller first).
+auto DistinctTotals(const int* totals, int count) -> std::vector<int> {
+	int seen[MaxWaves + 1] {};
+	for (int i = 0; totals != nullptr && i < count; ++i) {
+		if (totals[i] >= 1 && totals[i] <= MaxWaves) {
+			++seen[totals[i]];
+		}
+	}
+	std::vector<int> out;
+	for (int n = 1; n <= MaxWaves; ++n) {
+		if (seen[n] > 0) {
+			out.push_back(n);
+		}
+	}
+	std::stable_sort(out.begin(), out.end(), [&](int a, int b) { return seen[a] > seen[b]; });
+	return out;
+}
+
 }  // namespace
 
-auto Load(const D2RL::PluginContext* context) noexcept -> bool {
+auto Load(const D2RL::PluginContext* context, const int* totals, int count) noexcept -> bool {
 	if (context->QueryService(&g_threads) != D2RL::ServiceQueryResult::Success || !D2RL::HasThreadServiceField(g_threads, D2RL::ThreadServiceRequiredSize) ||
 		context->QueryService(&g_resources) != D2RL::ServiceQueryResult::Success || !D2RL::HasResourceServiceField(g_resources, D2RL::ResourceServiceRequiredSize) ||
 		context->QueryService(&g_panels) != D2RL::ServiceQueryResult::Success || !D2RL::HasPanelServiceField(g_panels, D2RL::PanelServiceRequiredSize)) {
@@ -246,7 +264,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		return true;
 	}
 	try {
-		MakePieces();
+		MakePieces(DistinctTotals(totals, count));
 		int registered = 0;
 		for (Piece& piece : g_pieces) {
 			const std::string path = "data/global/ui/layouts/darkestdiablo/" + piece.localId + "hd.json";
@@ -278,9 +296,15 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 			return true;
 		}
 		std::thread(Ticker, context).detach();
-		char message[160] {};
-		std::snprintf(message, sizeof(message), "Wave counter: ready (%d of %d text panels%s).", registered, static_cast<int>(g_pieces.size()),
-			registered < static_cast<int>(g_pieces.size()) ? "; the rest hit the plugin's panel limit" : "");
+		char message[256] {};
+		std::string left;
+		for (const Piece& piece : g_pieces) {
+			if (piece.panel == D2RL::Panels::InvalidHandle) {
+				left += " " + piece.localId;
+			}
+		}
+		std::snprintf(message, sizeof(message), "Wave counter: ready (%d of %d text panels%s%s).", registered, static_cast<int>(g_pieces.size()),
+			left.empty() ? "" : "; the plugin's panel limit left out:", left.c_str());
 		(registered < static_cast<int>(g_pieces.size()) ? context->LogWarn(message) : context->LogInfo(message));
 	} catch (...) {
 		g_pieces.clear();
