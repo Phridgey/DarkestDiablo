@@ -66,6 +66,9 @@ auto Encode(const State& s) noexcept -> int {
 }
 
 void WaveState(State& out, int wave, int total, int64_t msToNext) noexcept {
+	if (total < 1) {
+		return;  // a stop without waves: nothing to count
+	}
 	out.wave  = wave < 1 ? 1 : (wave > total ? total : wave);
 	out.total = total;
 	if (msToNext >= 0 && msToNext <= CountdownSeconds * 1000) {
