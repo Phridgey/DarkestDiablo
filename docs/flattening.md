@@ -37,8 +37,9 @@ The same plan is on a whiteboard: https://claude.ai/artifact/1SPdF9aSPgn8n562khH
   3 random runes from Pul to Ohm, and Anya's scroll becomes a scroll that raises the maximum of one
   resistance of the player's choice by 5.
 - **Highest rune per act** (decided 2026-11-20, replacing every earlier Act I limit): Act I Ral,
-  Act II Shael, Act III Lem, Act IV Ohm, Act V no limit. Every rune source in an act
-  stays at or below its cap, at the game's own odds between runes.
+  Act II Shael, Act III Lem, Act IV Ohm, Act V no limit. The caps hold for the crafting hunts
+  and quest rewards; regular monster loot is not capped (decided 2026-11-21): it follows the
+  monsters' levels, and higher tables can drop higher runes.
 - **Every XP grind** (in every act) gives +40% experience and gold piles worth 3 times as much.
 - Why: resistances and immunities are fixed per encounter, so players learn which hero suits which
   stop and bring another hero when one is resisted.
