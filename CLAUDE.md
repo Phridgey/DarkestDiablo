@@ -79,6 +79,13 @@ Plain, jargon-free language in docs and commit messages.
 
 ## Lessons learned (map and plugin work)
 - Close the game before `tools\build-plugin.cmd`: the running game locks the plugin DLL.
+- Close the game before `tools/build.py` too: it deletes and rewrites `build/darkestdiablo`, which
+  the game reads through the `Mods` link, so a map loading meanwhile is gone (crash
+  `hnd->IsValid()`, Preset.cpp, loading Andariel's level, 2026-11-21). The plugin's trace file
+  lives there too and is wiped.
+- In Normal (the only difficulty the mod plays) a monster's level is its monstats.txt `Level`,
+  not the area level (levels.txt MonLvlEx counts only in Nightmare and Hell); uniques and
+  superuniques add 3. Item levels of drops follow the monster's level (`996_monster_levels.py`).
 - When a patch stops changing a table (or is shelved), the build stops making that file, but a
   file copied in earlier stays in `Mods/darkestdiablo` and the game keeps loading it. The
   launcher deletes files its last install placed that the new build no longer makes; a manual
