@@ -1,26 +1,32 @@
 #pragma once
-// The wave counter at the top of the screen (waveoverlay.cpp): "Wave 2 / 5" while an arena runs,
-// a "Next wave in 5" countdown during the last seconds before each wave, and "Arena cleared" at
-// the end. Every text is a ready-made widget in a small panel of our own at the top centre
-// (darkestdiablo/WaveCounter, made in waveoverlay.cpp); the plugin shows the right ones.
-// (D2RLoader 1.3.1's OverlayService took our drawing without errors but nothing reached the
-// screen, 0.15.1; the game's HUD panel can't be reached by WidgetService, 0.15.4.)
+// The wave counter (waveoverlay.cpp): "Wave 2 / 5" near the top of the screen while an arena
+// runs, "Next wave in 5" during the last seconds before each wave, and "Arena cleared" at the
+// end. Plain text, no frame.
 //
-// All functions are safe from any thread; widgets are only touched on the UI thread.
+// In a game the plugin can open and close its own panels but can't reach their widgets
+// (WidgetService findPanel gives Unavailable, 0.15.5), so a widget can't be hidden there. So each
+// piece of text is a small panel of its own, opened or closed whole: "Wave k" (k = 1..MaxWaves),
+// "/ n" (n = 1..MaxWaves), "Next wave in s" (s = 1..5) and "Arena cleared": 22 panels. A plugin
+// may register at most 64 panels and the rest of the plugin uses about 42, so if the limit is hit
+// the counter registers what fits, most needed first ("Wave k", the countdown, the common totals)
+// and leaves the rest out.
+//
+// All functions are safe from any thread; panels are only opened and closed on the UI thread.
 
 #include <D2RLPlugin/api.h>
 #include <cstdint>
 
 namespace WaveOverlay {
 
-inline constexpr int CountdownSeconds = 5;   // the countdown shows during the last 5 s before a wave
-inline constexpr int MaxWaves         = 15;  // the most waves the counter has texts for
+inline constexpr int CountdownSeconds = 5;  // the countdown shows during the last 5 s before a wave
+inline constexpr int MaxWaves         = 8;  // the most waves the counter can show (Tree of Inifuss has 8)
 
-// Called once from D2RLoaderLoadPlugin. Without the widget or thread services the mod runs as
-// before, just without the counter (always returns true).
+// Called once from D2RLoaderLoadPlugin. Without the panel, resource or thread services the mod
+// runs as before, just without the counter (always returns true).
 auto Load(const D2RL::PluginContext* context) noexcept -> bool;
 
-// The hero is in a game: the panel is closed and reopened fresh when next needed.
+// The hero is in a game: the counter's panels are checked again (the game closes panels when it
+// loads a game).
 void OnPlayerReady() noexcept;
 
 // `wave` of `total` waves have spawned (0 = none yet). `nextWaveInMs` is the time until the next
