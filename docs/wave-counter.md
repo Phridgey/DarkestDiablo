@@ -24,7 +24,8 @@ load and registers them:
 - `darkestdiablo/WaveCleared`: "Arena cleared".
 
 On main that is 17 panels. A plugin may register at most 64, and the rest of the plugin uses
-about 43 (the Campfire's panel pools alone take 38). The counter registers last and in that
+about 35 (the Campfire's panel pools take 30: 16 Fire spares, cut from 24 for room, and 14 save
+slot spares). The counter registers last and in that
 order, the most common totals first; if the limit is reached it keeps what fit and the log
 lists what was left out ("the plugin's panel limit left out: ..."). Arenas have at most 8 waves
 today; for more, raise `MaxWaves` in `waveoverlay.h` and count the panels first.
