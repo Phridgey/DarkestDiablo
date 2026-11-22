@@ -1142,6 +1142,23 @@ static void __cdecl GiveBarbarianRunes(const D2RL::PluginContext* context, void*
 
 static void OpenAnyaScroll(const D2RL::PluginContext* context) noexcept;
 
+// ---- The level curve (Act I, decided 2026-11-22) ----------------------------------------
+// A hero arrives at Andariel at level 15 having taken no XP grind at the forks, and one level
+// higher for each of the four fork picks that was an XP grind (19 with all four). The monsters'
+// own experience falls far short of that (about 50,000 for the whole act), so every counted clear
+// adds the rest: the stop's share of the curve minus what its monsters give (estimated from the
+// wave tables, monstats Exp and monlvl.txt, 2026-11-22). Shares, as total experience at the end of
+// each step: Den 3,750 (level 4), Burial Grounds 14,175 (6), fork 1 57,715 (9), Tristram 112,725
+// (13), fork 2 176,132 (15); an XP grind gives 63,470 more than the other picks of its fork
+// ((430,010 - 176,132) / 4, level 19 with four).
+struct StopExperience { const char* stop; int experience; };
+static constexpr StopExperience ClearExperience[] = {
+	{ "den",        1257 }, { "burial",     8038 },
+	{ "inifuss",   16668 }, { "mausoleum", 16919 }, { "crypt",  67303 },
+	{ "tristram",  36755 },
+	{ "pit",       24080 }, { "countess",  27341 }, { "malus",  83881 },
+};
+
 // UI thread. A stop's once-per-hero reward (quest rewards given once per difficulty are tripled,
 // docs/flattening.md; the game's own part of a reward comes from the quest as usual).
 static void FirstClearReward(const D2RL::PluginContext* context, const Route::Stop& stop, Route::Progress& progress,
@@ -1213,6 +1230,13 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 			}
 			if (counted && progress.Clears(*stop) == 1) {
 				FirstClearReward(context, *stop, progress, file);
+			}
+			for (const auto& e : ClearExperience) {
+				if (counted && std::strcmp(e.stop, stop->id) == 0) {
+					char command[64] {};
+					std::snprintf(command, sizeof(command), "cheat experience %d", e.experience);
+					RunConsole(context, command);
+				}
 			}
 			std::snprintf(message, sizeof(message), "Route: %s %s; tier %d of %d is open now.", stop->id,
 				counted ? "counts as cleared" : "was not open for this hero, so it doesn't count", progress.CurrentTier() + 1, Route::TierCount);

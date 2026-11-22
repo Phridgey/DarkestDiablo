@@ -103,6 +103,11 @@ every stop built, not yet tested). Patches `113_act3.py`, `114_act4.py`, `114a_a
 - The route map opens on the act of the hero's next open stop, wherever the hero stands (Town
   Portals from Act IV's red portals or the Cow Level land in another act's town).
 - Monster levels and loot follow the level progression (004_area_levels.py, 996_monster_levels.py).
+- Act I's level curve (decided 2026-11-22): a hero reaches Andariel at level 15 with no XP grind
+  among the four fork picks, and one level higher per XP grind pick (16, 17, 18, 19). The
+  monsters give far too little for that, so each counted clear adds the stop's share of the
+  curve as experience (ClearExperience in darkestdiablo_plugin.cpp): Den level 4, Burial Grounds
+  6, fork 1 9, Tristram 13, fork 2 15; an XP grind pick is worth one level at the end.
 - Act I's runes (El to Ral) need levels 3 to 16 instead of 11 to 19, so they work in Act I
   (008_act1_rune_levels.py); later runes keep the game's requirements.
 
