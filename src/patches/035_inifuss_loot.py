@@ -23,11 +23,15 @@ TREEHEAD_TYPE = "dd_treehead"
 TREEHEAD_CLASS = 752                # TreeheadClass in src/plugin/darkestdiablo_plugin.cpp
 RAKANISHU_TYPE = "dd_rakanishu"
 RAKANISHU_CLASS = 759               # RakanishuClass in the plugin (after the 6 dd_mf_ copies)
-SUPERUNIQUE_LEVEL_BONUS = 3         # superuniques are 3 levels above the area
+SUPERUNIQUE_LEVEL_BONUS = 0         # a superunique spawned by the plugin is at the area's level (as the
+                                    # Pit's uniques, 090_pit.py): with +3 a picked base's unique could be
+                                    # above his item level and fall back to a rare (2026-11-21)
 # Normal monster types in the arena's waves, and Rakanishu's (fallen2). Treehead is a brute2.
 WAVE_TYPES = ["fallen1", "fallenshaman1", "cr_lancer1", "brute2", "quillrat1", "fallen2"]
 RAKANISHU, TREEHEAD = "Rakanishu", "Treehead WoodFist"
 QUALITIES = ("Unique", "Set", "Rare", "Magic")
+MAX_NAME = 44  # longest loot table name we make; "DD Gold3 DD Charm Act 2 Worldstone Shard Parent
+               # Citem A" (55) failed to load: "Couldn't parse treasure class item" (2026-11-21)
 
 
 def ratio_times(ratio, factor=CHANCE_FACTOR):
@@ -78,6 +82,8 @@ class Loot:
             return self.copies[key]
         row = dict(self.by_name[name])
         row["Treasure Class"] = f"{prefix} {name}"
+        if len(row["Treasure Class"]) > MAX_NAME:  # the game can't read longer names (a copy of a copy)
+            row["Treasure Class"] = f"{prefix} #{len(self.copies)}"
         self.copies[key] = row["Treasure Class"]
         # Out of the game's level groups: a copy left in its original's group could be picked for
         # other monsters when the game moves a table up by monster level.
