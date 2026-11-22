@@ -78,6 +78,9 @@ bool g_keeperOut[2] {};
 bool g_andyOut = false;
 bool g_hallArmed = true;               // reset once the hero steps out of her hall
 bool g_keyEarned[2] {};
+bool g_keeperSeen[2] {};               // the unique was seen alive in this visit
+bool g_keyGiven[2] {};                 // its key was handed over at its death (2026-11-22)
+int  g_keeperTries[2] {};              // spawn attempts so far
 int  g_tick = 0;
 std::atomic<uintptr_t> g_visit { 1 };
 
@@ -230,6 +233,64 @@ void MoveBack(const D2RL::PluginContext* context, D2RL::PlayerHandle player, con
 	g_items->executeExistingItemTransaction(context, &transaction, &result);
 }
 
+// Game thread: a unique died; its key goes straight into the inventory. Its loot drops it too,
+// but that drop failed in play (2026-11-22); a second copy vanishes in CheckKeys.
+void __cdecl GiveKey(const D2RL::PluginContext* context, void* which) noexcept {
+	const int n = static_cast<int>(reinterpret_cast<uintptr_t>(which));
+	if (g_items == nullptr || g_inventory == nullptr || n < 0 || n > 1 || g_keyCode[n] == 0) {
+		return;
+	}
+	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+	for (const Found& f : FindKeys(context, player)) {
+		if (f.key == n) {
+			return;  // already has it (picked up from the drop)
+		}
+	}
+	if (player == D2RL::InvalidPlayerHandle && g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
+		return;
+	}
+	D2RL::Items::ItemCreateSpec spec {
+		.structSize      = D2RL::Items::ItemCreateSpecSize,
+		.code            = g_keyCode[n],
+		.quality         = D2RL::Items::Quality::Normal,
+		.qualityRecordId = D2RL::Items::RandomQualityRecord,
+		.itemLevel       = 1,
+		.seedMode        = D2RL::Items::SeedMode::Random,
+		.quantity        = D2RL::Items::DefaultValue,
+		.durability      = D2RL::Items::DefaultValue,
+		.destination     = {
+			.structSize = D2RL::Items::ItemDestinationSize,
+			.container  = D2RL::Items::ItemContainer::Inventory,
+			.placement  = D2RL::Items::Placement::Automatic,
+		},
+	};
+	D2RL::ItemHandle item = D2RL::InvalidItemHandle;
+	{
+		const std::lock_guard lock(g_mutex);
+		g_keyEarned[n] = true;
+	}
+	const auto result = g_items->createItem(context, player, &spec, &item);
+	Log(context, "Andariel: key %d handed over -> %s (code %d).", n + 1, result == D2RL::Items::Result::Success ? "done" : "failed",
+		static_cast<int>(result));
+	if (result == D2RL::Items::Result::Success) {
+		context->WriteConsoleMessage(n == 0 ? "You take the Vial of Maiden's Venom." : "You take the Shard of Anguish.");
+	}
+}
+
+// UI thread: a unique that didn't come out (a crowded or blocked spot) is spawned next to the hero.
+void __cdecl RespawnKeeper(const D2RL::PluginContext* context, void* which) noexcept {
+	const int n = static_cast<int>(reinterpret_cast<uintptr_t>(which));
+	const Game::Unit hero = Game::Hero();
+	if (!hero || n < 0 || n > 1 || g_keeperClass[n] < 0) {
+		return;
+	}
+	char command[96] {};
+	RunConsole(context, "cheat nominions 1");
+	std::snprintf(command, sizeof(command), "cheat monster unique:%d @ %d,%d", g_keeperClass[n], hero.x + (n == 0 ? 8 : -8), hero.y + 8);
+	RunConsole(context, command);
+	RunConsole(context, "cheat resetnominions");
+}
+
 // Game thread, once a second.
 void __cdecl CheckKeys(const D2RL::PluginContext* context, void*) noexcept {
 	if (g_items == nullptr || g_keyCode[0] == 0) {
@@ -302,8 +363,40 @@ void TickLair(const D2RL::PluginContext* context, const Game::Unit& hero) {
 	for (int n = 0; n < 2; ++n) {
 		if (!g_keeperOut[n] && close(Keepers[n].at, SpawnReach)) {
 			g_keeperOut[n] = true;
+			g_keeperTries[n] = 1;
 			Log(context, "Andariel: unique %d comes out.", n + 1);
 			g_threads->runOnUiThread(context, Spawn, reinterpret_cast<void*>(static_cast<uintptr_t>(100 + n)));
+		}
+	}
+	// Each unique once out: alive (seen), dead (its key is handed over), or never seen while the hero
+	// is near its spot (spawned again next to the hero, every 3 s, up to 3 more times).
+	if ((g_tick % 5) == 0 && (g_keeperOut[0] || g_keeperOut[1])) {
+		bool alive[2] = { false, false }, dead[2] = { false, false };
+		try {
+			for (const Game::MonsterDetails& m : Game::Monsters(-1, false)) {
+				for (int n = 0; n < 2; ++n) {
+					if (g_keeperClass[n] >= 0 && m.unit.row == static_cast<uint32_t>(g_keeperClass[n])) {
+						(m.alive ? alive[n] : dead[n]) = true;
+					}
+				}
+			}
+		} catch (...) {
+		}
+		for (int n = 0; n < 2; ++n) {
+			if (!g_keeperOut[n] || g_keyGiven[n]) {
+				continue;
+			}
+			if (alive[n]) {
+				g_keeperSeen[n] = true;
+			} else if (dead[n]) {
+				g_keyGiven[n] = true;
+				Log(context, "Andariel: unique %d is dead.", n + 1);
+				g_threads->runOnGameThread(context, GiveKey, reinterpret_cast<void*>(static_cast<uintptr_t>(n)));
+			} else if (!g_keeperSeen[n] && (g_tick % 15) == 0 && g_keeperTries[n] < 4 && close(Keepers[n].at, SpawnReach)) {
+				++g_keeperTries[n];
+				Log(context, "Andariel: unique %d not found; spawning it again next to the hero.", n + 1);
+				g_threads->runOnUiThread(context, RespawnKeeper, reinterpret_cast<void*>(static_cast<uintptr_t>(n)));
+			}
 		}
 	}
 	if (g_andyOut) {
@@ -461,6 +554,9 @@ void OnGameLeft() noexcept {
 	for (bool& b : g_packOut) b = false;
 	for (bool& b : g_keeperOut) b = false;
 	for (bool& b : g_keyEarned) b = false;
+	for (bool& b : g_keeperSeen) b = false;
+	for (bool& b : g_keyGiven) b = false;
+	for (int& n : g_keeperTries) n = 0;
 	g_andyOut = false;
 	g_hallArmed = true;
 }
