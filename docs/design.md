@@ -68,7 +68,8 @@ Act II (plan: `docs/act2.md`; status 2026-11-21: every stop built, not yet teste
 page opens from the waypoint in Lut Gholein.
 1. **Halls of the Dead** (forced) — a copy of three Halls 3 rooms in a line, no stairs and no doors:
    waves on the way to the Horadric Cube's chest, Bloodwitch the Wild by it. Cleared on picking up
-   the Cube (a hero who already has one: on opening the chest).
+   the Cube (a hero who already has one: on opening the chest) once every wave has come and died.
+   Every quest stop works this way (2026-11-22): rushing to the item doesn't skip the fight.
 2. Fork: **Sewers & Radament** (XP grind: +40% XP, triple gold; three sewer rooms ending in his lair;
    he always drops his Book of Skill first, and picking it up clears it; the book's 1 skill point
    plus 2 from the plugin on the first clear) · **Stony Tomb** (crafting hunt like the Mausoleum,

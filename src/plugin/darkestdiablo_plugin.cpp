@@ -917,6 +917,8 @@ static void ResetArena() noexcept {
 	g_bossCount = 0;
 	g_bossesDead = 0;
 	g_portalDropped = false;
+	g_questDone = false;
+	g_wavesDone = false;
 	g_finalKills = 0;
 	g_finalSize = 0;
 	WaveOverlay::Hide();
@@ -1226,6 +1228,10 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 // Every half second while the hero is in a quest stop, the plugin counts the quest item in
 // everything the hero owns. More than on arrival: picked up, cleared.
 static std::atomic<int> g_questBaseline { -1 };  // the count on arrival; -1 not counted yet
+// A quest stop clears when both are true (2026-11-22: a hero ran to the Cube with one wave out,
+// and the stop ended almost empty): the quest item taken, and every wave out and dead.
+static std::atomic<bool> g_questDone { false };
+static std::atomic<bool> g_wavesDone { false };
 static std::atomic<int64_t> g_questChestOpenedMs { 0 };  // when the quest chest was seen open; 0 not yet
 static constexpr int64_t QuestChestGraceMs = 10000;  // then the stop clears even without a pickup
 
@@ -1240,6 +1246,18 @@ static auto __cdecl CountItem(const D2RL::PluginContext*, const D2RL::Items::Ite
 }
 
 static void __cdecl QuestItemTick(const D2RL::PluginContext* context, void* run) noexcept;
+
+// Game thread. The quest item is the hero's: the stop clears now if the waves are done, else when
+// the last of them dies (OnMonsterDeath).
+static void QuestDone(const D2RL::PluginContext* context, void* run) noexcept {
+	g_questDone = true;
+	if (g_wavesDone.load()) {
+		g_threads->runOnUiThread(context, ClearArena, run);
+	} else {
+		Trace(context, "Quest item taken; the stop clears once every wave is out and dead.");
+		context->WriteConsoleMessage("The way back opens once the dead are put to rest.");
+	}
+}
 
 // Game thread.
 static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run) noexcept {
@@ -1297,7 +1315,7 @@ static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run
 		} else if (count.count > baseline) {
 			std::snprintf(message, sizeof(message), "%s: quest item picked up.", arena.name);
 			Trace(context, message);
-			g_threads->runOnUiThread(context, ClearArena, run);
+			QuestDone(context, run);
 			return;
 		} else if (arena.questChest >= 0) {
 			// The game gives a quest item once per hero (and a staff may be in the Horadric
@@ -1314,7 +1332,7 @@ static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run
 			if (open && (baseline > 0 || now - g_questChestOpenedMs.load() >= QuestChestGraceMs)) {
 				std::snprintf(message, sizeof(message), "%s: quest chest opened; no pickup needed (the hero had the item or the quest).", arena.name);
 				Trace(context, message);
-				g_threads->runOnUiThread(context, ClearArena, run);
+				QuestDone(context, run);
 				return;
 			}
 		}
@@ -1740,6 +1758,11 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 	// allow a few missing monsters.
 	if (g_wave.load() >= arena.waveCount && left <= MissingSpawnSlack && finalKills >= g_finalSize.load() - MissingSpawnSlack &&
 		AllBossesDead()) {
+		g_wavesDone = true;
+		if (arena.clearOnItem != nullptr && !g_questDone.load()) {
+			Trace(context, "Waves done; the stop clears once the quest item is taken.");
+			return;
+		}
 		g_threads->runOnUiThread(context, ClearArena, reinterpret_cast<void*>(g_run.load()));
 	}
 }
