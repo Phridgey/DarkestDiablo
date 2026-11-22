@@ -49,7 +49,7 @@ waves arena (see "The run"); the numbers are under "Drop and experience numbers"
    hunt: a round crypt hall; runes, gems and white items only) · **Crypt** (XP grind: the same
    hall; +40% experience; every pack led by a unique; killing a random one of them wins)
 4. **Tristram** — forced. The game's own Tristram map and quest (rescue Cain, unlock identify), but
-   its monsters are waves around the player (each pack three times at once), ending with Griswold. Cleared by killing Griswold.
+   its monsters are waves around the player (each pack three times at once), ending with Griswold. Cleared by freeing Cain from his gibbet (2026-11-21); a hero who freed him in an earlier game clears it by killing Griswold.
    The whole zone has +40% magic find.
 5. Fork (2 picks): **Pit** (MF: the real Pit level 2; 5 packs led by uniques, a random one is the
    target and drops a guaranteed unique or set) · **Countess** (crafting hunt: Tower Cellar 5; she

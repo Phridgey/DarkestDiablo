@@ -388,6 +388,7 @@ static constexpr uint32_t AnyClass       = 0xFFFFFFFFU;
 static constexpr uint32_t ZombieClass    = 5;    // monstats row of zombie1 (Corpsefire's minions; he has his own type)
 static constexpr uint32_t BloodRavenClass = 267; // monstats row of bloodraven
 static constexpr uint32_t GriswoldClass  = 365;  // monstats row of griswold (Tristram's boss)
+static constexpr int      GibbetRow      = 26;   // objects.txt: Gibbet, Cain's cage in Tristram
 static constexpr uint32_t SmithClass     = 402;  // monstats row of smith (the Malus's guard)
 static constexpr uint32_t AndarielClass  = 156;  // monstats row of andariel
 static constexpr uint32_t RadamentClass  = 229;  // monstats row of radament
@@ -812,7 +813,9 @@ static constexpr Arena Arenas[] = {
 	{ "Chaos Sanctuary", 108, 1500, 1000, nullptr, 0, false, { 0, 0 }, 0, DiabloClass },
 	{ "Throne of Destruction", 131, 3000, 1000, nullptr, 0, false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 3, 48 } },
 	{ "Worldstone Chamber", 132, 3000, 1152, nullptr, 0, false, { 0, 0 }, 0, BaalClass },
-	{ "Tristram",       38,               0,    0,    TristramWaves,  static_cast<int>(sizeof(TristramWaves) / sizeof(TristramWaves[0])),   true, { 0, 0 }, 0, GriswoldClass, false, false, 3 },
+	// Tristram: freeing Cain from his gibbet (objects.txt row 26) clears it; a hero who freed him in
+	// an earlier game (the gibbet is already open) clears it by killing Griswold.
+	{ "Tristram",       38,               0,    0,    TristramWaves,  static_cast<int>(sizeof(TristramWaves) / sizeof(TristramWaves[0])),   true, { 0, 0 }, 0, GriswoldClass, false, false, 3, nullptr, -1, { -1, -1 }, false, GibbetRow, 1 },
 };
 
 // ---- Spawning off screen ----------------------------------------------------------------
@@ -1247,11 +1250,23 @@ static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run
 	}
 	const Arena& arena = Arenas[index];
 	if (arena.clearOnItem == nullptr) {
-		// Cleared by using objects (the Compelling Orb, the barbarians' cages, frozen Anya).
+		// Cleared by using objects (Cain's gibbet, the Compelling Orb, the barbarians' cages, frozen
+		// Anya). Only objects first seen unused count: one already open when it comes into view (Cain
+		// freed in an earlier game) does not, and the stop then clears the usual way.
+		static std::set<uint32_t> s_seenUnused;
+		static uintptr_t s_run = 0;
+		if (s_run != reinterpret_cast<uintptr_t>(run)) {
+			s_run = reinterpret_cast<uintptr_t>(run);
+			s_seenUnused.clear();
+		}
 		int used = 0;
 		try {
 			for (const Game::Unit& object : Game::Objects(-1, static_cast<uint32_t>(arena.clearOnObject))) {
-				used += object.mode != 0 ? 1 : 0;
+				if (object.mode == 0) {
+					s_seenUnused.insert(object.id);
+				} else if (s_seenUnused.count(object.id) != 0) {
+					++used;
+				}
 			}
 		} catch (...) {
 		}
