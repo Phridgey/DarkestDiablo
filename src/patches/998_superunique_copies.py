@@ -11,7 +11,10 @@ get their changes too.
 """
 
 SPAWNED = ["Corpsefire", "Rakanishu", "Treehead WoodFist", "Griswold", "The Countess", "Radament", "Bloodwitch the Wild",
-           "Coldworm the Burrower", "Fangskin", "The Summoner"]
+           "Coldworm the Burrower", "Fangskin", "The Summoner",
+           # Acts III-V (113_act3.py, 114_act4.py, 114a_act5.py)
+           "Sarina the Battlemaid", "The Feature Creep", "Siege Boss", "Megaflow Rectifier", "Pindleskin", "Frozenstein",
+           "Nihlathak Boss", "The Cow King", "Ancient Barbarian 1", "Ancient Barbarian 2", "Ancient Barbarian 3"]
 
 
 def patch(t):

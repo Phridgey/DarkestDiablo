@@ -1,0 +1,35 @@
+{
+  "name": "darkest_spider",
+  "folder": "act3/spider",
+  "room": 16,
+  "comment": "Spider Cavern (113_act3.py): two of the lair's own rooms side by side, no stairs; Khalim's Eye chest added in the east room.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/spider/lairnw"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "piece": "act3/spider/lairnecon"
+    }
+  ],
+  "extra_objects": [
+    {
+      "type": 2,
+      "id": 114,
+      "tile": [
+        24,
+        8
+      ],
+      "comment": "KhalimEyeChest (objpreset Act 3 Index 114)"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true,
+  "allow_holes": [
+    "act3/spider/lairnw",
+    "act3/spider/lairnecon"
+  ]
+}

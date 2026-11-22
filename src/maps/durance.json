@@ -1,0 +1,17 @@
+{
+  "name": "darkest_durance",
+  "folder": "act3/travincal",
+  "room": 41,
+  "comment": "Durance of Hate 3 (113_act3.py): a copy of Mephisto's hall with him and his council.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/travincal/mephcomp"
+    }
+  ],
+  "keep_monsters": [
+    "act3/travincal/mephcomp"
+  ],
+  "close_edges": true
+}

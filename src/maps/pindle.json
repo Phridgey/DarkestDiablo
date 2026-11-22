@@ -1,0 +1,15 @@
+{
+  "name": "darkest_pindle",
+  "folder": "expansion/wildtemple",
+  "room": 22,
+  "comment": "Nihlathak's Temple entrance (114a_act5.py): Pindleskin's courtyard.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "expansion/wildtemple/tempenter"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

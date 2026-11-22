@@ -84,6 +84,25 @@ page opens from the waypoint in Lut Gholein.
    own event); his death in his lair clears the stop.
 Linear maps (Halls, Sewers, Maggot Lair, Arcane, Tunnels) only spawn monsters ahead of the hero.
 
+Acts III-V (plans: `docs/act3.md`, `act4.md`, `act5.md` on the plan branch; status 2026-11-21:
+every stop built, not yet tested). Patches `113_act3.py`, `114_act4.py`, `114a_act5.py`; maps in
+`src/maps/`; route map pages from `tools/route_pages.py`. Where the build differs from the plan:
+- Khalim's three stops are one or two rooms each, without a swamp strip in front (a swamp is an
+  outdoor level, which the game places anew every game).
+- Outdoor stops borrow a spare level of the same act and copy the real one's look and name:
+  Lower Kurast (level 95), Travincal (96), the Hellforge (107), Shenk's foothills (116), the
+  Frigid Highlands (113). The Plains of Despair (105) get a fixed spot of their own.
+- The Hellforge clears when Hephasto dies (Mephisto's Soulstone comes from a quest the hero may
+  not have); the plugin then gives the three runes.
+- Rewards the plugin gives on a hero's first clear: Lam Esen +10 stat points, Izual +4 skill
+  points, the Hellforge's and the barbarians' runes, a Socket Chisel after the Malus (Charsi),
+  after Shenk (Larzuk's second) and once Khalim's three parts are held in Kurast Docks (Hratli),
+  the Golden Bird's +40 life when its potion is drunk, Anya's scroll (a choice panel), and a
+  level for the Ancients.
+- The route map opens on the act of the hero's next open stop, wherever the hero stands (Town
+  Portals from Act IV's red portals or the Cow Level land in another act's town).
+- Monster levels are still the game's own Normal ones; the flattening's level curve comes later.
+
 ## Healing (decided 2026-11-19)
 - No health potions drop or are sold. Each cleared stop earns 3 (by difficulty: light, greater,
   super), put in the hero's stash in town; what doesn't fit stays owed and piles up.

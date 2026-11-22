@@ -15,8 +15,9 @@
 //   pick quit with nothing left to spawn (the last wave out) ends as given up: it counts as done,
 //   with no reward. A main-line stop is never given up: it resumes with its last wave.
 // On disk: camp/slot<N>/progress/<hero>.txt, one line per stop: "clear <stop id> <times>", and
-// "run <stop id> <waves spawned>" for a run in progress, and "potions owed <n>": health potions
-// earned by clears and not yet handed out (the plugin puts them in the stash in town).
+// "run <stop id> <waves spawned>" for a run in progress, "potions owed <n>": health potions
+// earned by clears and not yet handed out (the plugin puts them in the stash in town), and
+// "flag <name> <n>": one-off rewards already given (Hratli's socket, the Golden Bird's life).
 #pragma once
 
 #include <filesystem>
@@ -38,7 +39,7 @@ struct Stop {
 	int         arenaLevel;  // the level whose clear counts for this stop; -1 = not built yet
 };
 
-inline constexpr int TierCount    = 11;  // Act I: tiers 0-5, Act II: 6-10
+inline constexpr int TierCount    = 25;  // Act I: tiers 0-5, II: 6-10, III: 11-14, IV: 15-18, V: 19-24
 inline constexpr int PicksPerFork = 2;
 
 inline constexpr Stop Stops[] = {
@@ -62,21 +63,53 @@ inline constexpr Stop Stops[] = {
 	{ "tunnels",   "Fork4Tunnels",   9, 65, 65 },  // MF run
 	{ "canyon",    "Fork4Canyon",    9, 46, 46 },  // XP grind
 	{ "duriel",    "NodeDuriel",    10, 66, 73 },  // arrive at the orifice (66); Duriel dies in his lair (73)
+	// Act III (docs/act3.md)
+	{ "spider",    "NodeSpider",    11, 85, 85 },  // tier 11: all three, any order; Khalim's Eye
+	{ "flayer",    "NodeFlayer",    11, 91, 91 },  // Khalim's Brain
+	{ "ksewers",   "NodeKSewers",   11, 93, 93 },  // Khalim's Heart
+	{ "lamesen",   "Fork5LamEsen",  12, 94, 94 },  // XP grind: the Ruined Temple; Lam Esen's Tome ends it
+	{ "swampy",    "Fork5Swampy",   12, 90, 90 },  // MF run: one Swampy Pit room
+	{ "lowerkurast", "Fork5LowerKurast", 12, 95, 95 },  // crafting hunt: Lower Kurast's streets (on level 95)
+	{ "travincal", "NodeTravincal", 13, 96, 96 },  // Travincal (on level 96); smashing the Compelling Orb ends it
+	{ "durance",   "NodeDurance",   14, 102, 102 },  // Durance of Hate 3; Mephisto dies
+	// Act IV (docs/act4.md)
+	{ "plains",    "NodePlains",    15, 105, 105 },  // XP grind: Plains of Despair; Izual dies
+	{ "abaddon",   "Fork6Abaddon",  16, 125, 125 },  // XP grind (an Act V red portal)
+	{ "acheron",   "Fork6Acheron",  16, 126, 126 },  // MF run
+	{ "infernal",  "Fork6Infernal", 16, 127, 127 },  // crafting hunt
+	{ "hellforge", "NodeHellforge", 17, 107, 107 },  // the Hellforge (on level 107); Hephasto dies
+	{ "chaos",     "NodeChaos",     18, 108, 108 },  // Chaos Sanctuary, full; Diablo dies
+	// Act V (docs/act5.md)
+	{ "shenk",     "NodeShenk",     19, 116, 116 },  // the Bloody Foothills (on level 116); Shenk dies
+	{ "highlands", "Fork7Highlands", 20, 113, 113 },  // XP grind: the barbarians' pens (on level 113)
+	{ "pindle",    "Fork7Pindle",   20, 121, 121 },  // MF run: Nihlathak's Temple entrance; Pindleskin
+	{ "cellar",    "Fork7Cellar",   20, 119, 119 },  // crafting hunt: the Icy Cellar
+	{ "anya",      "NodeAnya",      21, 114, 114 },  // the Frozen River; freeing Anya ends it
+	{ "vaught",    "Fork8Vaught",   22, 124, 124 },  // MF run: the Halls of Vaught; Nihlathak dies
+	{ "cows",      "Fork8Cows",     22, 39, 39 },  // crafting hunt: the Cow Level
+	{ "ancients",  "NodeAncients",  23, 120, 120 },  // Arreat Summit; the three Ancients die
+	{ "baal",      "NodeBaal",      24, 131, 132 },  // the Throne room's waves (131); Baal dies in the Worldstone Chamber (132)
 };
 
 inline constexpr auto IsFork(int tier) -> bool {
-	return tier == 2 || tier == 4 || tier == 7 || tier == 9;
+	return tier == 2 || tier == 4 || tier == 7 || tier == 9 || tier == 12 || tier == 16 || tier == 20 || tier == 22;
 }
 
-// A tier of several forced stops on one row (Act II: Maggot Lair and Claw Viper Temple): each is
-// cleared once, in any order, and the next tier opens when all of them are.
+// A tier of several forced stops on one row (Act II: Maggot Lair and Claw Viper Temple; Act III:
+// Khalim's three parts): each is cleared once, in any order, and the next tier opens when all of
+// them are.
 inline constexpr auto IsAllOf(int tier) -> bool {
-	return tier == 8;
+	return tier == 8 || tier == 11;
 }
 
 // Which act a tier belongs to (1-based): its route map page.
 inline constexpr auto ActOfTier(int tier) -> int {
-	return tier < 6 ? 1 : 2;
+	return tier < 6 ? 1 : tier < 11 ? 2 : tier < 15 ? 3 : tier < 19 ? 4 : 5;
+}
+
+// The town of an act (levels.txt Ids).
+inline constexpr auto TownOfAct(int act) -> int {
+	return act == 2 ? 40 : act == 3 ? 75 : act == 4 ? 103 : act == 5 ? 109 : 1;
 }
 
 inline auto StopById(const std::string& id) -> const Stop* {
@@ -111,6 +144,12 @@ struct Progress {
 	std::string running;                // the stop of the run in progress ("" none)
 	int         runWaves = 0;           // its waves spawned so far (a stop without waves: 1 once entered)
 	int         potionsOwed = 0;        // health potions earned by clears, not yet handed out
+	std::map<std::string, int> flags;   // one-off rewards already given ("hratli", "goldenbird"...)
+
+	auto Flag(const std::string& name) const -> int {
+		const auto it = flags.find(name);
+		return it == flags.end() ? 0 : it->second;
+	}
 
 	auto Clears(const Stop& stop) const -> int {
 		const auto it = clears.find(stop.id);
@@ -203,6 +242,8 @@ inline auto Load(const fs::path& file) -> Progress {
 			progress.clears[id] = times;
 		} else if (kind == "potions" && id == "owed" && times > 0) {
 			progress.potionsOwed = times;
+		} else if (kind == "flag" && !id.empty() && times > 0) {
+			progress.flags[id] = times;
 		} else if (kind == "run" && StopById(id) != nullptr && times >= 0) {
 			progress.running = id;
 			progress.runWaves = times;
@@ -217,6 +258,9 @@ inline auto Save(const fs::path& file, const Progress& progress) -> bool {
 	std::ostringstream out;
 	for (const auto& [id, times] : progress.clears) {
 		out << "clear " << id << ' ' << times << '\n';
+	}
+	for (const auto& [name, value] : progress.flags) {
+		out << "flag " << name << ' ' << value << '\n';
 	}
 	if (progress.potionsOwed > 0) {
 		out << "potions owed " << progress.potionsOwed << '\n';

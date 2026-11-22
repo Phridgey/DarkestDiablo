@@ -1,0 +1,149 @@
+{
+  "type": "Panel",
+  "name": "darkestdiablo/AnyaScroll",
+  "fields": {
+    "rect": "$LeftPanelRect",
+    "anchor": "$LeftPanelAnchor",
+    "priority": 8500
+  },
+  "children": [
+    {
+      "type": "ImageWidget",
+      "name": "Background",
+      "fields": {
+        "rect": {
+          "x": 0,
+          "y": 0
+        },
+        "filename": "PANEL\\Waypoints\\Waypoints_Base",
+        "frame": 0
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "LeftHinge",
+      "fields": {
+        "rect": "$LeftHingeRect",
+        "filename": "$LeftHingeSprite"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Title",
+      "fields": {
+        "rect": "$InGamePanelTitleRect",
+        "text": "Anya's Scroll",
+        "style": "$StyleTitleBlock"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Hint",
+      "fields": {
+        "rect": {
+          "x": 0,
+          "y": 160,
+          "width": 1162,
+          "height": 60
+        },
+        "text": "Choose a resistance: its maximum rises by 5.",
+        "style": {
+          "fontColor": "$FontColorDarkGrayGold",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "AnyaFire",
+      "fields": {
+        "rect": {
+          "x": 406,
+          "y": 260
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Fire resistance",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/anya-fire"
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "AnyaCold",
+      "fields": {
+        "rect": {
+          "x": 406,
+          "y": 390
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Cold resistance",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/anya-cold"
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "AnyaLightning",
+      "fields": {
+        "rect": {
+          "x": 406,
+          "y": 520
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Lightning resistance",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/anya-lightning"
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "AnyaPoison",
+      "fields": {
+        "rect": {
+          "x": 406,
+          "y": 650
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Poison resistance",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/anya-poison"
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "CloseButton",
+      "fields": {
+        "rect": {
+          "x": 1075,
+          "y": 9
+        },
+        "filename": "PANEL\\closebtn_4x",
+        "hoveredFrame": 3,
+        "tooltipString": "@d2r:strClose",
+        "sound": "cursor_close_window_hd",
+        "onClickMessage": "PanelManager:ClosePanel:darkestdiablo/AnyaScroll",
+        "pressedFrame": 1
+      }
+    }
+  ]
+}

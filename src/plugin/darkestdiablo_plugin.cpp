@@ -31,6 +31,7 @@
 #include "zone.h"
 #include "andariel.h"
 #include "waveoverlay.h"
+#include "routepages.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <atomic>
@@ -377,6 +378,10 @@ struct Arena {
 	// A map walked one way, south to north (the Arcane Sanctuary's arm, the tunnels): monsters
 	// only spawn ahead of the hero (north of them), never behind.
 	bool        ahead       = false;
+	// Cleared when this many objects of this objects.txt row have been used (opened, smashed,
+	// freed): Travincal's Compelling Orb, the barbarians' three cages, frozen Anya. -1: none.
+	int         clearOnObject    = -1;
+	int         clearObjectCount = 1;
 };
 
 static constexpr uint32_t AnyClass       = 0xFFFFFFFFU;
@@ -392,6 +397,16 @@ static constexpr int      StaffChestRow  = 356;  // objects.txt: StaffOfKingsChe
 static constexpr int      SunAltarRow    = 149;  // objects.txt: TaintedSunShrine (gives the Amulet of the Viper)
 static constexpr uint32_t SummonerClass  = 250;  // monstats row of summoner
 static constexpr uint32_t DurielClass    = 211;  // monstats row of duriel
+// Acts III-V (monstats rows)
+static constexpr uint32_t MephistoClass  = 242;
+static constexpr uint32_t DiabloClass    = 243;
+static constexpr uint32_t IzualClass     = 256;
+static constexpr uint32_t HephastoClass  = 409;
+static constexpr uint32_t PindleskinClass = 441;  // reanimatedhorde5, Pindleskin's type
+static constexpr uint32_t ShenkClass     = 480;   // overseer1, Shenk's type (the waves use no overseers)
+static constexpr uint32_t NihlathakClass = 527;
+static constexpr uint32_t BaalClass      = 545;   // baalcrab, Baal in the Worldstone Chamber
+static constexpr uint32_t CowKingClass   = 736;
 static constexpr uint32_t CorpsefireClass = 751;  // monstats row of dd_corpsefire, Corpsefire's own type
                                                   // (CORPSEFIRE_CLASS in src/patches/010_den_of_evil.py)
 static constexpr uint32_t TreeheadClass   = 752;  // monstats row of dd_treehead, Treehead WoodFist's own type
@@ -596,6 +611,160 @@ static constexpr Wave CanyonWaves[] = {
 	{ { { "mspawn", "dd_xp_a2b_sandmaggot3", 5, { 20, 12 } }, { "mspawn", "dd_xp_a2b_slinger4", 4, { 14, 20 } }, { "mspawn", "dd_xp_a2b_brute4", 3, { 14, 4 } } }, 3, AnyClass },
 };
 
+// ---- Acts III-V (docs/act3.md, act4.md, act5.md; src/patches/113_act3.py, 114_act4.py, 114a_act5.py) ----
+// Spots and arrivals sit on tiles where the game's own maps place things (so they are floor), not
+// tested in game yet.
+// Spider Cavern (level 85, src/maps/spider.json).
+static constexpr Wave SpiderWaves[] = {
+	{ { { "mspawn", "dd_xp_a3a_arach3", 3, { 5, 3 } }, { "mspawn", "dd_xp_a3a_arach4", 4, { 11, 5 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3a_batdemon2", 4, { 11, 5 } }, { "mspawn", "dd_xp_a3a_arach3", 5, { 11, 5 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3a_arach4", 5, { 17, 10 } }, { "mspawn", "dd_xp_a3a_batdemon2", 3, { 17, 10 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3a_arach3", 3, { 23, 4 } }, { "mspawn", "dd_xp_a3a_arach4", 4, { 24, 5 } } }, 2, AnyClass },
+};
+// Flayer Dungeon (level 91, src/maps/flayer.json).
+static constexpr Wave FlayerWaves[] = {
+	{ { { "mspawn", "dd_xp_a3b_fetish3", 3, { 4, 20 } }, { "mspawn", "dd_xp_a3b_fetishshaman3", 4, { 4, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3b_fetishblow3", 4, { 8, 16 } }, { "mspawn", "dd_xp_a3b_fetish3", 5, { 6, 12 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3b_fetishshaman3", 5, { 6, 12 } }, { "mspawn", "dd_xp_a3b_fetishblow3", 3, { 6, 12 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3b_fetish3", 3, { 6, 12 } }, { "mspawn", "dd_xp_a3b_fetishshaman3", 4, { 6, 4 } } }, 2, AnyClass },
+};
+// Kurast Sewers (level 93, src/maps/ksewers.json).
+static constexpr Wave KSewersWaves[] = {
+	{ { { "mspawn", "dd_xp_a3c_mummy4", 3, { 8, 17 } }, { "mspawn", "dd_xp_a3c_unraveler4", 4, { 10, 15 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3c_frogdemon3", 4, { 9, 13 } }, { "mspawn", "dd_xp_a3c_mummy4", 5, { 10, 11 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3c_unraveler4", 5, { 9, 8 } }, { "mspawn", "dd_xp_a3c_frogdemon3", 3, { 9, 8 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3c_mummy4", 3, { 9, 4 } }, { "mspawn", "dd_xp_a3c_unraveler4", 4, { 8, 3 } } }, 2, AnyClass },
+};
+// Ruined Temple (level 94, src/maps/lamesen.json).
+static constexpr Wave LamEsenWaves[] = {
+	{ { { "mspawn", "dd_xp_a3d_brute5", 3, { 13, 5 } }, { "mspawn", "dd_xp_a3d_corruptrogue5", 4, { 13, 7 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3d_arach5", 4, { 13, 7 } }, { "mspawn", "dd_xp_a3d_vampire2", 5, { 13, 7 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3d_brute5", 5, { 13, 7 } }, { "mspawn", "dd_xp_a3d_corruptrogue5", 3, { 13, 12 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3d_arach5", 3, { 13, 12 } }, { "mspawn", "dd_xp_a3d_vampire2", 4, { 13, 12 } }, { "monster", "super:24", 1, { 13, 12 } } }, 3, AnyClass },
+};
+// Swampy Pit (level 90, src/maps/swampy.json).
+static constexpr Wave SwampyWaves[] = {
+	{ { { "mspawn", "dd_mf_a3_bonefetish4", 3, { 3, 4 } }, { "mspawn", "dd_mf_a3_bonefetish5", 4, { 3, 4 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_batdemon2", 4, { 8, 10 } }, { "mspawn", "dd_mf_a3_willowisp1", 5, { 9, 10 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_bonefetish4", 5, { 16, 14 } }, { "mspawn", "dd_mf_a3_bonefetish5", 3, { 16, 14 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_batdemon2", 3, { 18, 17 } }, { "mspawn", "dd_mf_a3_willowisp1", 4, { 18, 20 } } }, 2, AnyClass },
+};
+// Lower Kurast (level 95, src/maps/lowerkurast.json).
+static constexpr Wave LowerKurastWaves[] = {
+	{ { { "mspawn", "dd_craft_a3_baboon4", 3, { 14, 43 } }, { "mspawn", "dd_craft_a3_sandleaper4", 4, { 13, 38 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a3_zealot1", 4, { 10, 33 } }, { "mspawn", "dd_craft_a3_baboon4", 5, { 11, 27 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a3_sandleaper4", 5, { 11, 27 } }, { "mspawn", "dd_craft_a3_zealot1", 3, { 9, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a3_baboon4", 3, { 10, 16 } }, { "mspawn", "dd_craft_a3_sandleaper4", 4, { 10, 14 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a3_zealot1", 4, { 10, 9 } }, { "mspawn", "dd_craft_a3_baboon4", 5, { 8, 5 } } }, 2, AnyClass },
+};
+// Travincal (level 96, src/maps/travincal.json).
+static constexpr Wave TravincalWaves[] = {
+	{ { { "mspawn", "dd_mf_a3b_cantor3", 3, { 28, 24 } }, { "mspawn", "dd_mf_a3b_vampire2", 4, { 28, 24 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3b_cantor3", 4, { 17, 22 } }, { "mspawn", "dd_mf_a3b_vampire2", 5, { 17, 22 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3b_cantor3", 5, { 17, 22 } }, { "mspawn", "dd_mf_a3b_vampire2", 3, { 16, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3b_cantor3", 3, { 14, 20 } }, { "mspawn", "dd_mf_a3b_vampire2", 4, { 12, 18 } } }, 2, AnyClass },
+};
+// Plains of Despair (level 105, src/maps/plains.json).
+static constexpr Wave PlainsWaves[] = {
+	{ { { "mspawn", "dd_xp_a4_willowisp3", 3, { 12, 39 } }, { "mspawn", "dd_xp_a4_vilemother1", 4, { 12, 39 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4_fingermage1", 4, { 12, 33 } }, { "mspawn", "dd_xp_a4_regurgitator1", 5, { 12, 33 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4_doomknight1", 5, { 12, 26 } }, { "mspawn", "dd_xp_a4_willowisp3", 3, { 12, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4_vilemother1", 3, { 12, 15 } }, { "mspawn", "dd_xp_a4_fingermage1", 4, { 12, 15 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4_regurgitator1", 4, { 12, 9 } }, { "mspawn", "dd_xp_a4_doomknight1", 5, { 12, 3 } }, { "mspawn", "izual", 1, { 12, 3 } } }, 3, AnyClass, IzualClass },
+};
+// Abaddon (level 125, src/maps/abaddon.json).
+static constexpr Wave AbaddonWaves[] = {
+	{ { { "mspawn", "dd_xp_a4b_bloodlord3", 3, { 9, 86 } }, { "mspawn", "dd_xp_a4b_imp2", 4, { 9, 76 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4b_bloodlord3", 4, { 9, 74 } }, { "mspawn", "dd_xp_a4b_imp2", 5, { 10, 63 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4b_bloodlord3", 5, { 11, 57 } }, { "mspawn", "dd_xp_a4b_imp2", 3, { 17, 49 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4b_bloodlord3", 3, { 12, 40 } }, { "mspawn", "dd_xp_a4b_imp2", 4, { 11, 33 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4b_bloodlord3", 4, { 9, 26 } }, { "mspawn", "dd_xp_a4b_imp2", 5, { 15, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a4b_bloodlord3", 5, { 10, 17 } }, { "mspawn", "dd_xp_a4b_imp2", 3, { 12, 6 } } }, 2, AnyClass },
+};
+// Pit of Acheron (level 126, src/maps/acheron.json).
+static constexpr Wave AcheronWaves[] = {
+	{ { { "mspawn", "dd_mf_a4_bloodlord2", 3, { 18, 83 } }, { "mspawn", "dd_mf_a4_overseer3", 4, { 14, 78 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a4_bloodlord2", 4, { 18, 70 } }, { "mspawn", "dd_mf_a4_overseer3", 5, { 16, 63 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a4_bloodlord2", 5, { 16, 57 } }, { "mspawn", "dd_mf_a4_overseer3", 3, { 16, 49 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a4_bloodlord2", 3, { 14, 41 } }, { "mspawn", "dd_mf_a4_overseer3", 4, { 16, 38 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a4_bloodlord2", 4, { 16, 31 } }, { "mspawn", "dd_mf_a4_overseer3", 5, { 15, 18 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a4_bloodlord2", 5, { 15, 11 } }, { "mspawn", "dd_mf_a4_overseer3", 3, { 13, 5 } } }, 2, AnyClass },
+};
+// Infernal Pit (level 127, src/maps/infernal.json).
+static constexpr Wave InfernalWaves[] = {
+	{ { { "mspawn", "dd_craft_a4_imp4", 3, { 18, 83 } }, { "mspawn", "dd_craft_a4_overseer4", 4, { 14, 78 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a4_imp4", 4, { 18, 70 } }, { "mspawn", "dd_craft_a4_overseer4", 5, { 16, 63 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a4_imp4", 5, { 16, 57 } }, { "mspawn", "dd_craft_a4_overseer4", 3, { 16, 49 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a4_imp4", 3, { 14, 41 } }, { "mspawn", "dd_craft_a4_overseer4", 4, { 16, 38 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a4_imp4", 4, { 16, 31 } }, { "mspawn", "dd_craft_a4_overseer4", 5, { 15, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a4_imp4", 5, { 14, 10 } }, { "mspawn", "dd_craft_a4_overseer4", 3, { 12, 6 } } }, 2, AnyClass },
+};
+// Hellforge (level 107, src/maps/hellforge.json).
+static constexpr Wave HellforgeWaves[] = {
+	{ { { "mspawn", "dd_craft_a4b_blunderbore4", 3, { 11, 12 } }, { "mspawn", "dd_craft_a4b_vilemother3", 4, { 11, 12 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a4b_fingermage2", 4, { 15, 11 } }, { "mspawn", "dd_craft_a4b_doomknight2", 5, { 19, 14 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a4b_blunderbore4", 5, { 21, 9 } }, { "mspawn", "dd_craft_a4b_vilemother3", 3, { 22, 8 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a4b_fingermage2", 3, { 29, 15 } }, { "mspawn", "dd_craft_a4b_doomknight2", 4, { 33, 11 } }, { "monster", "super:41", 1, { 33, 11 } } }, 3, AnyClass, HephastoClass },
+};
+// Bloody Foothills (level 116, src/maps/shenk.json).
+static constexpr Wave ShenkWaves[] = {
+	{ { { "mspawn", "dd_shenk_minion1", 3, { 12, 36 } }, { "mspawn", "dd_shenk_deathmauler1", 4, { 11, 33 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_shenk_imp1", 4, { 11, 33 } }, { "mspawn", "dd_shenk_minion1", 5, { 10, 24 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_shenk_deathmauler1", 5, { 10, 24 } }, { "mspawn", "dd_shenk_imp1", 3, { 9, 18 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_shenk_minion1", 3, { 8, 16 } }, { "mspawn", "dd_shenk_deathmauler1", 4, { 11, 12 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_shenk_imp1", 4, { 6, 10 } }, { "monster", "super:43", 1, { 4, 6 } }, { "monster", "super:50", 1, { 4, 6 } } }, 3, AnyClass, ShenkClass },
+};
+// Frigid Highlands (level 113, src/maps/highlands.json).
+static constexpr Wave HighlandsWaves[] = {
+	{ { { "mspawn", "dd_xp_a5_imp1", 3, { 10, 43 } }, { "mspawn", "dd_xp_a5_siegebeast2", 4, { 11, 38 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a5_minion1", 4, { 10, 32 } }, { "mspawn", "dd_xp_a5_imp1", 5, { 10, 32 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a5_siegebeast2", 5, { 11, 27 } }, { "mspawn", "dd_xp_a5_minion1", 3, { 9, 23 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a5_imp1", 3, { 8, 18 } }, { "mspawn", "dd_xp_a5_siegebeast2", 4, { 8, 18 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a5_minion1", 4, { 10, 11 } }, { "mspawn", "dd_xp_a5_imp1", 5, { 9, 9 } } }, 2, AnyClass },
+};
+// Pindleskin (level 121, src/maps/pindle.json).
+static constexpr Wave PindleWaves[] = {
+	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 3, { 15, 20 } }, { "mspawn", "dd_mf_a5_succubus1", 4, { 14, 19 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 4, { 14, 16 } }, { "mspawn", "dd_mf_a5_succubus1", 5, { 13, 16 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 5, { 12, 15 } }, { "mspawn", "dd_mf_a5_succubus1", 3, { 12, 11 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 3, { 12, 9 } }, { "mspawn", "dd_mf_a5_succubus1", 4, { 12, 8 } }, { "monster", "super:53", 1, { 11, 7 } } }, 3, AnyClass, PindleskinClass },
+};
+// Icy Cellar (level 119, src/maps/cellar.json).
+static constexpr Wave CellarWaves[] = {
+	{ { { "mspawn", "dd_craft_a5_snowyeti4", 3, { 5, 55 } }, { "mspawn", "dd_craft_a5_succubus3", 4, { 4, 46 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a5_reanimatedhorde3", 4, { 7, 43 } }, { "mspawn", "dd_craft_a5_snowyeti4", 5, { 7, 35 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a5_succubus3", 5, { 7, 35 } }, { "mspawn", "dd_craft_a5_reanimatedhorde3", 3, { 6, 30 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a5_snowyeti4", 3, { 9, 19 } }, { "mspawn", "dd_craft_a5_succubus3", 4, { 9, 19 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a5_reanimatedhorde3", 4, { 5, 13 } }, { "mspawn", "dd_craft_a5_snowyeti4", 5, { 6, 8 } } }, 2, AnyClass },
+};
+// Frozen River (level 114, src/maps/anya.json).
+static constexpr Wave AnyaWaves[] = {
+	{ { { "mspawn", "dd_mf_a5b_snowyeti2", 3, { 39, 9 } }, { "mspawn", "dd_mf_a5b_succubus5", 4, { 36, 19 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5b_reanimatedhorde1", 4, { 31, 21 } }, { "mspawn", "dd_mf_a5b_snowyeti2", 5, { 31, 29 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5b_succubus5", 5, { 25, 36 } }, { "mspawn", "dd_mf_a5b_reanimatedhorde1", 3, { 21, 37 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5b_snowyeti2", 3, { 16, 46 } }, { "mspawn", "dd_mf_a5b_succubus5", 4, { 12, 50 } }, { "monster", "super:60", 1, { 12, 52 } } }, 3, AnyClass },
+};
+// Halls of Vaught (level 124, src/maps/vaught.json).
+static constexpr Wave VaughtWaves[] = {
+	{ { { "mspawn", "dd_mf_a5c_minion6", 3, { 42, 74 } }, { "mspawn", "dd_mf_a5c_succubus4", 4, { 41, 73 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5c_putriddefiler2", 4, { 41, 65 } }, { "mspawn", "dd_mf_a5c_minion6", 5, { 41, 65 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5c_succubus4", 5, { 40, 60 } }, { "mspawn", "dd_mf_a5c_putriddefiler2", 3, { 41, 54 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5c_minion6", 3, { 39, 48 } }, { "mspawn", "dd_mf_a5c_succubus4", 4, { 40, 45 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a5c_putriddefiler2", 4, { 40, 45 } }, { "mspawn", "dd_mf_a5c_minion6", 5, { 42, 38 } }, { "monster", "super:61", 1, { 41, 36 } } }, 3, AnyClass, NihlathakClass },
+};
+// Cow Level (level 39, src/maps/cows.json).
+static constexpr Wave CowWaves[] = {
+	{ { { "mspawn", "dd_craft_a5b_hellbovine", 3, { 6, 24 } }, { "mspawn", "dd_craft_a5b_hellbovine", 4, { 6, 24 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a5b_hellbovine", 4, { 6, 24 } }, { "mspawn", "dd_craft_a5b_hellbovine", 5, { 6, 24 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a5b_hellbovine", 5, { 6, 24 } }, { "mspawn", "dd_craft_a5b_hellbovine", 3, { 24, 8 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a5b_hellbovine", 3, { 24, 8 } }, { "mspawn", "dd_craft_a5b_hellbovine", 4, { 24, 8 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a5b_hellbovine", 4, { 24, 8 } }, { "mspawn", "dd_craft_a5b_hellbovine", 5, { 24, 8 } }, { "monster", "super:39", 1, { 24, 8 } } }, 3, AnyClass, CowKingClass },
+};
+// Arreat Summit (level 120, src/maps/ancients.json): the three Ancients at once (their altar is gone).
+static constexpr Wave AncientsWaves[] = {
+	{ { { "monster", "super:44", 1, { 9, 13 } }, { "monster", "super:45", 1, { 7, 15 } }, { "monster", "super:46", 1, { 11, 15 } } }, 3, AnyClass },
+};
+
 static constexpr Arena Arenas[] = {
 	{ "Den of Evil",    DenOfEvilLevelId, 1500, 2500, DenWaves,    static_cast<int>(sizeof(DenWaves) / sizeof(DenWaves[0])) },
 	{ "Burial Grounds", 9,                1500, 1300, BurialWaves, static_cast<int>(sizeof(BurialWaves) / sizeof(BurialWaves[0])) },
@@ -619,6 +788,30 @@ static constexpr Arena Arenas[] = {
 	// the way to his lair (level 73, Blizzard's), where his death clears the stop.
 	{ "Tal Rasha's Tomb", 66,             4500, 1000, nullptr,        0,                                                                     false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 9, 4 } },
 	{ "Duriel",         73,               4500, 3100, nullptr,        0,                                                                     false, { 0, 0 }, 0, DurielClass },
+	{ "Spider Cavern", 85, 1500, 1300, SpiderWaves, static_cast<int>(sizeof(SpiderWaves) / sizeof(SpiderWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qey", 407, { 5, 3 }, false, -1, 1 },
+	{ "Flayer Dungeon", 91, 2000, 2340, FlayerWaves, static_cast<int>(sizeof(FlayerWaves) / sizeof(FlayerWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qbr", 406, { 4, 20 }, true, -1, 1 },
+	{ "Kurast Sewers", 93, 2500, 1300, KSewersWaves, static_cast<int>(sizeof(KSewersWaves) / sizeof(KSewersWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qhr", 405, { 9, 19 }, true, -1, 1 },
+	{ "Ruined Temple", 94, 3000, 1000, LamEsenWaves, static_cast<int>(sizeof(LamEsenWaves) / sizeof(LamEsenWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "bbb", 193, { 13, 5 }, false, -1, 1 },
+	{ "Swampy Pit", 90, 2000, 2200, SwampyWaves, static_cast<int>(sizeof(SwampyWaves) / sizeof(SwampyWaves[0])), false, { 0, 0 }, 0, AnyClass, true, true, 1, nullptr, -1, { 2, 2 }, false, -1, 1 },
+	{ "Lower Kurast", 95, 3000, 1124, LowerKurastWaves, static_cast<int>(sizeof(LowerKurastWaves) / sizeof(LowerKurastWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 13, 46 }, true, -1, 1 },
+	{ "Travincal", 96, 3000, 1248, TravincalWaves, static_cast<int>(sizeof(TravincalWaves) / sizeof(TravincalWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 28, 24 }, false, 404, 1 },
+	{ "Plains of Despair", 105, 2000, 1000, PlainsWaves, static_cast<int>(sizeof(PlainsWaves) / sizeof(PlainsWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 12, 46 }, true, -1, 1 },
+	{ "Abaddon", 125, 2500, 1184, AbaddonWaves, static_cast<int>(sizeof(AbaddonWaves) / sizeof(AbaddonWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 10, 91 }, true, -1, 1 },
+	{ "Pit of Acheron", 126, 2500, 1484, AcheronWaves, static_cast<int>(sizeof(AcheronWaves) / sizeof(AcheronWaves[0])), false, { 0, 0 }, 0, AnyClass, true, true, 1, nullptr, -1, { 20, 92 }, true, -1, 1 },
+	{ "Infernal Pit", 127, 2500, 1784, InfernalWaves, static_cast<int>(sizeof(InfernalWaves) / sizeof(InfernalWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 20, 92 }, true, -1, 1 },
+	{ "Hellforge", 107, 2000, 1000, HellforgeWaves, static_cast<int>(sizeof(HellforgeWaves) / sizeof(HellforgeWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 4, 12 }, false, -1, 1 },
+	{ "Bloody Foothills", 116, 2000, 1764, ShenkWaves, static_cast<int>(sizeof(ShenkWaves) / sizeof(ShenkWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 11, 40 }, true, -1, 1 },
+	{ "Frigid Highlands", 113, 2000, 1000, HighlandsWaves, static_cast<int>(sizeof(HighlandsWaves) / sizeof(HighlandsWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 12, 46 }, true, 474, 3 },
+	{ "Pindleskin", 121, 2000, 2636, PindleWaves, static_cast<int>(sizeof(PindleWaves) / sizeof(PindleWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 15, 22 }, true, -1, 1 },
+	{ "Icy Cellar", 119, 2000, 2376, CellarWaves, static_cast<int>(sizeof(CellarWaves) / sizeof(CellarWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 5, 57 }, true, -1, 1 },
+	{ "Frozen River", 114, 2000, 1300, AnyaWaves, static_cast<int>(sizeof(AnyaWaves) / sizeof(AnyaWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 43, 7 }, false, 461, 1 },
+	{ "Halls of Vaught", 124, 2500, 1000, VaughtWaves, static_cast<int>(sizeof(VaughtWaves) / sizeof(VaughtWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 42, 79 }, false, -1, 1 },
+	{ "Cow Level", 39, 5000, 1148, CowWaves, static_cast<int>(sizeof(CowWaves) / sizeof(CowWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 6, 24 }, false, -1, 1 },
+	{ "Arreat Summit", 120, 2000, 2508, AncientsWaves, 1, false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 11, 25 } },
+	{ "Durance of Hate", 102, 3500, 1600, nullptr, 0, false, { 0, 0 }, 0, MephistoClass, false, false, 1, nullptr, -1, { 29, 19 } },
+	{ "Chaos Sanctuary", 108, 1500, 1000, nullptr, 0, false, { 0, 0 }, 0, DiabloClass },
+	{ "Throne of Destruction", 131, 3000, 1000, nullptr, 0, false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 3, 48 } },
+	{ "Worldstone Chamber", 132, 3000, 1152, nullptr, 0, false, { 0, 0 }, 0, BaalClass },
 	{ "Tristram",       38,               0,    0,    TristramWaves,  static_cast<int>(sizeof(TristramWaves) / sizeof(TristramWaves[0])),   true, { 0, 0 }, 0, GriswoldClass, false, false, 3 },
 };
 
@@ -895,6 +1088,86 @@ static void WatchTownHealing(const D2RL::PluginContext* context, int townLevel) 
 	}).detach();
 }
 
+// ---- Rewards of Acts I-V given by the plugin (docs/act3.md, act4.md, act5.md) -----------------
+// Game thread: a Socket Chisel (114a_act5.py; cube it with an item without sockets).
+static void __cdecl GiveChisel(const D2RL::PluginContext* context, void*) noexcept {
+	GiveItem(context, "zsk", "Socket Chisel");
+}
+
+static auto RandomRune(int lowest, int highest, int topWeight) noexcept -> int {
+	// Runes lowest..highest (r<nn>): the five highest (Sur..Zod, r29-r33) at `topWeight` each out of
+	// 100 when in range, the rest share what is left evenly.
+	static std::mt19937 random { std::random_device {}() };
+	int top = 0, rest = 0;
+	for (int r = lowest; r <= highest; ++r) {
+		(r >= 29 ? top : rest) += 1;
+	}
+	const int restWeight = rest > 0 ? (100 * 8 - top * topWeight * 8) / rest : 0;
+	int total = 0;
+	for (int r = lowest; r <= highest; ++r) {
+		total += r >= 29 ? topWeight * 8 : restWeight;
+	}
+	int roll = std::uniform_int_distribution<int>(0, total - 1)(random);
+	for (int r = lowest; r <= highest; ++r) {
+		roll -= r >= 29 ? topWeight * 8 : restWeight;
+		if (roll < 0) {
+			return r;
+		}
+	}
+	return highest;
+}
+
+// Game thread: the Hellforge's three runes, Pul (r21) or higher; Sur, Ber, Jah, Cham, Zod 5% each.
+static void __cdecl GiveHellforgeRunes(const D2RL::PluginContext* context, void*) noexcept {
+	for (int k = 0; k < 3; ++k) {
+		char code[4] {};
+		std::snprintf(code, sizeof(code), "r%02d", RandomRune(21, 33, 5));
+		GiveItem(context, code, "Hellforge rune");
+	}
+}
+
+// Game thread: the barbarians' three runes, Pul to Ohm (r21-r27), evenly.
+static void __cdecl GiveBarbarianRunes(const D2RL::PluginContext* context, void*) noexcept {
+	for (int k = 0; k < 3; ++k) {
+		char code[4] {};
+		std::snprintf(code, sizeof(code), "r%02d", RandomRune(21, 27, 0));
+		GiveItem(context, code, "Barbarians' rune");
+	}
+}
+
+static void OpenAnyaScroll(const D2RL::PluginContext* context) noexcept;
+
+// UI thread. A stop's once-per-hero reward (quest rewards given once per difficulty are tripled,
+// docs/flattening.md; the game's own part of a reward comes from the quest as usual).
+static void FirstClearReward(const D2RL::PluginContext* context, const Route::Stop& stop, Route::Progress& progress,
+	const std::filesystem::path& file) noexcept {
+	const std::string id = stop.id;
+	char command[96] {};
+	if (id == "lamesen") {         // the tome gives 5 stat points when read; 10 more here
+		const int points = Game::Stat(Game::Hero(), Game::StatId::StatPoints, 0, false).value_or(0);
+		std::snprintf(command, sizeof(command), "cheat stat statpts,%d", points + 10);
+		RunConsole(context, command);
+	} else if (id == "plains") {   // Tyrael gives Izual's 2 skill points; 4 more here
+		RunConsole(context, "cheat skillpoints 4");
+	} else if (id == "hellforge") {
+		g_threads->runOnGameThread(context, GiveHellforgeRunes, nullptr);
+	} else if (id == "highlands") {
+		g_threads->runOnGameThread(context, GiveBarbarianRunes, nullptr);
+	} else if (id == "malus" || id == "shenk") {  // Charsi's socket; Larzuk's second socket
+		g_threads->runOnGameThread(context, GiveChisel, nullptr);
+	} else if (id == "ancients") { // a full level instead of the usual experience
+		const int level = Game::HeroInfo().level;
+		if (level > 0 && level < 99) {
+			std::snprintf(command, sizeof(command), "cheat level %d", level + 1);
+			RunConsole(context, command);
+		}
+	} else if (id == "anya") {     // her scroll: +5 to the maximum of one resistance, the hero's choice
+		progress.flags["anyaowed"] = 1;
+		Route::Save(file, progress);
+		OpenAnyaScroll(context);
+	}
+}
+
 // UI thread. All waves spawned and every spawned monster (and the boss) dead: give the scroll.
 static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) noexcept {
 	const int index = g_arena.load();
@@ -933,6 +1206,9 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 			if (counted && Arenas[index].levelId == SewersLevelId && progress.Clears(*stop) == 1) {
 				RunConsole(context, "cheat skillpoints 2");
 			}
+			if (counted && progress.Clears(*stop) == 1) {
+				FirstClearReward(context, *stop, progress, file);
+			}
 			std::snprintf(message, sizeof(message), "Route: %s %s; tier %d of %d is open now.", stop->id,
 				counted ? "counts as cleared" : "was not open for this hero, so it doesn't count", progress.CurrentTier() + 1, Route::TierCount);
 			context->LogInfo(message);
@@ -965,10 +1241,30 @@ static void __cdecl QuestItemTick(const D2RL::PluginContext* context, void* run)
 // Game thread.
 static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run) noexcept {
 	const int index = g_arena.load();
-	if (index < 0 || reinterpret_cast<uintptr_t>(run) != g_run.load() || g_portalDropped.load() || Arenas[index].clearOnItem == nullptr) {
+	if (index < 0 || reinterpret_cast<uintptr_t>(run) != g_run.load() || g_portalDropped.load() ||
+		(Arenas[index].clearOnItem == nullptr && Arenas[index].clearOnObject < 0)) {
 		return;
 	}
 	const Arena& arena = Arenas[index];
+	if (arena.clearOnItem == nullptr) {
+		// Cleared by using objects (the Compelling Orb, the barbarians' cages, frozen Anya).
+		int used = 0;
+		try {
+			for (const Game::Unit& object : Game::Objects(-1, static_cast<uint32_t>(arena.clearOnObject))) {
+				used += object.mode != 0 ? 1 : 0;
+			}
+		} catch (...) {
+		}
+		if (used >= arena.clearObjectCount) {
+			char message[128] {};
+			std::snprintf(message, sizeof(message), "%s: %d of the objects used; cleared.", arena.name, used);
+			Trace(context, message);
+			g_threads->runOnUiThread(context, ClearArena, run);
+			return;
+		}
+		Later(context, 500, QuestItemTick);
+		return;
+	}
 	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 	ItemCount count { ItemCode(arena.clearOnItem), 0 };
 	if (g_inventory != nullptr && g_inventory->getLocalPlayer(context, &player) == D2RL::Inventory::Result::Success) {
@@ -1432,15 +1728,32 @@ static const D2RL::PanelService*     g_panels = nullptr;
 static const D2RL::WidgetService*    g_widgets = nullptr;  // sends native panel messages (optional)
 static D2RL::Panels::RegistrationHandle g_routeMap = D2RL::Panels::InvalidHandle;   // Act I's page
 static D2RL::Panels::RegistrationHandle g_routeMap2 = D2RL::Panels::InvalidHandle;  // Act II's page
+static D2RL::Panels::RegistrationHandle g_routeLater[3] = { D2RL::Panels::InvalidHandle, D2RL::Panels::InvalidHandle,
+	D2RL::Panels::InvalidHandle };  // Acts III-V (routepages.h)
 static std::atomic<int> g_routeAct { 1 };  // the page last opened
+static D2RL::Panels::RegistrationHandle g_anyaPanel = D2RL::Panels::InvalidHandle;  // Anya's scroll (routepages.h)
 
-// The act a level belongs to (levels.txt Ids: Act I 1-39, Act II 40-74, ...), for its route map page.
-static auto ActOfLevel(int level) noexcept -> int {
-	return level >= 40 && level < 75 ? 2 : 1;
+static auto LoadProgress() noexcept -> Route::Progress;
+
+// The page the route map opens on: the act of the hero's first open tier, wherever the hero
+// stands (a Town Portal from a borrowed level, e.g. Act IV's red portals or the Cow Level, lands
+// in another act's town, and the map must still lead on).
+static auto CurrentAct() noexcept -> int {
+	const int tier = LoadProgress().CurrentTier();
+	return Route::ActOfTier(tier < Route::TierCount ? tier : Route::TierCount - 1);
 }
 
 static auto RouteMapPanel(int act) noexcept -> D2RL::Panels::RegistrationHandle {
+	if (act >= 3 && act <= 5 && g_routeLater[act - 3] != D2RL::Panels::InvalidHandle) {
+		return g_routeLater[act - 3];
+	}
 	return act == 2 ? g_routeMap2 : g_routeMap;
+}
+
+static auto RouteMapName(int act) noexcept -> const char* {
+	static constexpr const char* Names[] = { "darkestdiablo/RouteMap", "darkestdiablo/RouteMap2", "darkestdiablo/RouteMap3",
+		"darkestdiablo/RouteMap4", "darkestdiablo/RouteMap5" };
+	return Names[act >= 1 && act <= 5 ? act - 1 : 0];
 }
 
 // The game's waypoint panel ("WaypointsPanelExpansion") that the route map replaced. Even with its
@@ -1545,7 +1858,7 @@ static void __cdecl RefreshRouteMap(const D2RL::PluginContext* context, void*) n
 	}
 	const int act = g_routeAct.load();
 	D2RL::Widgets::WidgetHandle panel = D2RL::Widgets::InvalidHandle;
-	const auto foundPanel = g_widgets->findPanel(context, act == 2 ? "darkestdiablo/RouteMap2" : "darkestdiablo/RouteMap", &panel);
+	const auto foundPanel = g_widgets->findPanel(context, RouteMapName(act), &panel);
 	static std::atomic<int> s_retries { 0 };
 	if (foundPanel == D2RL::Widgets::Result::Success) {
 		s_retries = 0;
@@ -1618,6 +1931,80 @@ static void __cdecl RefreshRouteMap(const D2RL::PluginContext* context, void*) n
 	}
 }
 
+// UI thread. Anya's scroll: the choice of resistance (AnyaScrollhd.json); her reward stays owed
+// ("flag anyaowed") until a choice is made, and the panel opens again in town.
+static void OpenAnyaScroll(const D2RL::PluginContext* context) noexcept {
+	if (g_panels != nullptr && g_anyaPanel != D2RL::Panels::InvalidHandle) {
+		g_panels->openPanel(context, g_anyaPanel);
+	} else {
+		context->LogWarn("Anya's scroll: no panel; the reward stays owed.");
+	}
+}
+
+static void __cdecl OpenAnyaScrollUi(const D2RL::PluginContext* context, void*) noexcept {
+	OpenAnyaScroll(context);
+}
+
+// UI thread: the Golden Bird's tripled reward, +40 life on top of the potion's 20.
+static void __cdecl GoldenBirdLife(const D2RL::PluginContext* context, void*) noexcept {
+	const int life = Game::Stat(Game::Hero(), Game::StatId::MaxLife, 0, false).value_or(0);
+	if (life <= 0) {
+		return;
+	}
+	char command[64] {};
+	std::snprintf(command, sizeof(command), "cheat stat maxhp,%d", life + 40);
+	RunConsole(context, command);
+}
+
+static std::atomic<int> g_lifePotions { -1 };  // Potions of Life (xyz) the hero held at the last look
+
+// Game thread, on every level change: rewards that depend on what the hero holds.
+// - The Golden Bird: a Potion of Life the hero had and has no more was drunk (once per hero).
+// - Hratli's socket (Act III): once the hero holds Khalim's Eye, Brain and Heart, in Kurast Docks.
+// - Anya's scroll still owed: its panel opens again in town.
+static void __cdecl CheckHeldRewards(const D2RL::PluginContext* context, void*) noexcept {
+	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+	if (g_inventory == nullptr || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
+		return;
+	}
+	const D2RL::Inventory::ItemFilter filter {
+		.structSize    = D2RL::Inventory::ItemFilterSize,
+		.containerMask = D2RL::Items::AllItemContainers,
+	};
+	const auto count = [&](const char* code) {
+		ItemCount c { ItemCode(code), 0 };
+		g_inventory->forEachInventoryItem(context, player, &filter, CountItem, &c);
+		return c.count;
+	};
+	try {
+		const auto file = Campfire::RouteProgressFile();
+		if (file.empty()) {
+			return;
+		}
+		Route::Progress progress = Route::Load(file);
+		bool changed = false;
+		const int potions = count("xyz");
+		if (progress.Flag("goldenbird") == 0 && g_lifePotions.load() > 0 && potions == 0) {
+			progress.flags["goldenbird"] = 1;
+			changed = true;
+			g_threads->runOnUiThread(context, GoldenBirdLife, nullptr);
+		}
+		g_lifePotions = potions;
+		if (g_levelId.load() == 75 && progress.Flag("hratli") == 0 && count("qey") > 0 && count("qbr") > 0 && count("qhr") > 0) {
+			progress.flags["hratli"] = 1;
+			changed = true;
+			GiveItem(context, "zsk", "Hratli's Socket Chisel");
+		}
+		if (changed) {
+			Route::Save(file, progress);
+		}
+		if (InTown() && progress.Flag("anyaowed") > 0) {
+			g_threads->runOnUiThread(context, OpenAnyaScrollUi, nullptr);
+		}
+	} catch (...) {
+	}
+}
+
 static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEvents::UiMessageEvent* event, void*) noexcept -> D2RL::SharedEvents::UiMessageAction {
 	using Action = D2RL::SharedEvents::UiMessageAction;
 	if (context == nullptr || event == nullptr) {
@@ -1643,7 +2030,7 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	static constexpr char WaypointPanelPrefix[] = "WaypointsPanel";
 	if (g_panels != nullptr && std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
 		std::strncmp(text, WaypointPanelPrefix, sizeof(WaypointPanelPrefix) - 1) == 0) {
-		g_routeAct = ActOfLevel(g_levelId.load());
+		g_routeAct = CurrentAct();
 		const auto result = g_panels->openPanel(context, RouteMapPanel(g_routeAct.load()));
 		if (result == D2RL::Panels::Result::Success) {
 			// Close the game's half-open waypoint panel, queued so it runs after this message.
@@ -1661,6 +2048,35 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	// Node buttons send "PanelManager:OpenPanel:darkestdiablo/travel-<level id>". The game drops
 	// button messages with targets or commands it doesn't know, so the travel order rides on a
 	// real command with a made-up panel name. Caught here and consumed before the game sees it.
+	// Anya's scroll: "PanelManager:OpenPanel:darkestdiablo/anya-<fire|cold|lightning|poison>".
+	static constexpr char AnyaPrefix[] = "darkestdiablo/anya-";
+	if (std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
+		std::strncmp(text, AnyaPrefix, sizeof(AnyaPrefix) - 1) == 0) {
+		const std::string choice = text + sizeof(AnyaPrefix) - 1;
+		static constexpr struct { const char* key; const char* stat; uint16_t id; } Choices[] = {
+			{ "fire", "maxfireresist", Game::StatId::MaxFireResist }, { "cold", "maxcoldresist", Game::StatId::MaxColdResist },
+			{ "lightning", "maxlightresist", Game::StatId::MaxLightningResist }, { "poison", "maxpoisonresist", Game::StatId::MaxPoisonResist },
+		};
+		try {
+			const auto file = Campfire::RouteProgressFile();
+			Route::Progress progress = file.empty() ? Route::Progress {} : Route::Load(file);
+			for (const auto& c : Choices) {
+				if (choice == c.key && progress.Flag("anyaowed") > 0) {
+					const int now = Game::Stat(Game::Hero(), c.id, 0, false).value_or(0);
+					std::snprintf(message, sizeof(message), "cheat stat %s,%d", c.stat, now + 5);
+					RunConsole(context, message);
+					progress.flags.erase("anyaowed");
+					progress.flags["anyascroll"] = 1;
+					Route::Save(file, progress);
+				}
+			}
+		} catch (...) {
+		}
+		if (g_panels != nullptr && g_anyaPanel != D2RL::Panels::InvalidHandle) {
+			g_panels->closePanel(context, g_anyaPanel);
+		}
+		return Action::Consume;
+	}
 	static constexpr char TravelPrefix[] = "darkestdiablo/travel-";
 	if (std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
 		std::strncmp(text, TravelPrefix, sizeof(TravelPrefix) - 1) == 0) {
@@ -1679,6 +2095,11 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 				g_panels->closePanel(context, g_routeMap);
 				if (g_routeMap2 != D2RL::Panels::InvalidHandle) {
 					g_panels->closePanel(context, g_routeMap2);
+				}
+				for (const auto handle : g_routeLater) {
+					if (handle != D2RL::Panels::InvalidHandle) {
+						g_panels->closePanel(context, handle);
+					}
 				}
 			}
 			// If the earlier close didn't take, close the game's waypoint panel before leaving town.
@@ -1712,6 +2133,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		if (InTown()) {  // the camp's potion supply (DeliverPotions), in every town
 			g_threads->runOnGameThread(context, DeliverPotions, nullptr);
 		}
+		g_threads->runOnGameThread(context, CheckHeldRewards, nullptr);
 		if (g_levelId == TownLevelId) {  // no healer (Akara; Act II's Fara not yet)
 			WatchTownHealing(context, TownLevelId);
 		}
@@ -1754,7 +2176,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			if (Arenas[arena].arrival.tx >= 0) {
 				Later(context, ArrivalDelayMs / 2, PlaceAtArrival);
 			}
-			if (Arenas[arena].clearOnItem != nullptr) {
+			if (Arenas[arena].clearOnItem != nullptr || Arenas[arena].clearOnObject >= 0) {
 				g_questBaseline = -1;
 				g_questChestOpenedMs = 0;
 				Later(context, ArrivalDelayMs + 500, QuestItemTick);
@@ -1860,7 +2282,7 @@ static auto MapCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* co
 	if (command == nullptr || command->plugin == nullptr || g_panels == nullptr) {
 		return D2RL::ConsoleCommandResult::Failed;
 	}
-	g_routeAct = ActOfLevel(g_levelId.load());
+	g_routeAct = CurrentAct();
 	const auto result = g_panels->togglePanel(command->plugin, RouteMapPanel(g_routeAct.load()));
 	if (result != D2RL::Panels::Result::Success) {
 		char message[96] {};
@@ -1955,6 +2377,42 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 				g_panels->registerPanel(context, &registration2, &g_routeMap2) != D2RL::Panels::Result::Success) {
 				context->LogWarn("Route map: could not register Act II's page.");
 				g_routeMap2 = g_routeMap;
+			}
+			// Acts III-V: the same again (routepages.h, tools/route_pages.py).
+			static constexpr struct { const char* path; const char* local; const char* bytes; size_t size; } Later[] = {
+				{ "data/global/ui/layouts/darkestdiablo/RouteMap3hd.json", "RouteMap3", RouteMap3Layout, sizeof(RouteMap3Layout) - 1 },
+				{ "data/global/ui/layouts/darkestdiablo/RouteMap4hd.json", "RouteMap4", RouteMap4Layout, sizeof(RouteMap4Layout) - 1 },
+				{ "data/global/ui/layouts/darkestdiablo/RouteMap5hd.json", "RouteMap5", RouteMap5Layout, sizeof(RouteMap5Layout) - 1 },
+			};
+			for (int k = 0; k < 3; ++k) {
+				const D2RL::Resources::ResourceRegistration resourceK {
+					.structSize = D2RL::Resources::ResourceRegistrationSize,
+					.path       = Later[k].path,
+					.bytes      = Later[k].bytes,
+					.byteCount  = Later[k].size,
+				};
+				D2RL::Panels::PanelRegistration registrationK = registration;
+				registrationK.localId = Later[k].local;
+				D2RL::Resources::RegistrationHandle resourceHandleK = D2RL::Resources::InvalidHandle;
+				if (resources->registerResource(context, &resourceK, &resourceHandleK) != D2RL::Resources::Result::Success ||
+					g_panels->registerPanel(context, &registrationK, &g_routeLater[k]) != D2RL::Panels::Result::Success) {
+					context->LogWarn((std::string("Route map: could not register ") + Later[k].local + ".").c_str());
+					g_routeLater[k] = D2RL::Panels::InvalidHandle;
+				}
+			}
+			const D2RL::Resources::ResourceRegistration anyaResource {
+				.structSize = D2RL::Resources::ResourceRegistrationSize,
+				.path       = "data/global/ui/layouts/darkestdiablo/AnyaScrollhd.json",
+				.bytes      = AnyaScrollLayout,
+				.byteCount  = sizeof(AnyaScrollLayout) - 1,
+			};
+			D2RL::Panels::PanelRegistration anyaRegistration = registration;
+			anyaRegistration.localId = "AnyaScroll";
+			D2RL::Resources::RegistrationHandle anyaHandle = D2RL::Resources::InvalidHandle;
+			if (resources->registerResource(context, &anyaResource, &anyaHandle) != D2RL::Resources::Result::Success ||
+				g_panels->registerPanel(context, &anyaRegistration, &g_anyaPanel) != D2RL::Panels::Result::Success) {
+				context->LogWarn("Anya's scroll: could not register its panel.");
+				g_anyaPanel = D2RL::Panels::InvalidHandle;
 			}
 		}
 	} else {

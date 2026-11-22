@@ -1,0 +1,17 @@
+{
+  "name": "darkest_throne",
+  "folder": "expansion/baallair",
+  "room": 40,
+  "comment": "Throne of Destruction (114a_act5.py): a copy of the throne room with Baal and his portal.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "expansion/baallair/wthrone"
+    }
+  ],
+  "keep_monsters": [
+    "expansion/baallair/wthrone"
+  ],
+  "close_edges": true
+}

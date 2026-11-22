@@ -10,6 +10,12 @@ data/global/tiles/act1/
 data/hd/env/preset/act1/
 data/global/tiles/act2/
 data/hd/env/preset/act2/
+data/global/tiles/act3/
+data/hd/env/preset/act3/
+data/global/tiles/act4/
+data/hd/env/preset/act4/
+data/global/tiles/expansion/
+data/hd/env/preset/expansion/
 # The Campfire (docs/campfire.md): menu layouts and item and object models
 data/global/ui/layouts/
 data/hd/items/items.json

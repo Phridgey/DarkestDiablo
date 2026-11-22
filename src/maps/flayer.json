@@ -1,0 +1,35 @@
+{
+  "name": "darkest_flayer",
+  "folder": "act3/jungle",
+  "room": 14,
+  "comment": "Flayer Dungeon (113_act3.py): two dungeon rooms in a line; Khalim's Brain chest added in the north room.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/jungle/dungs"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act3/jungle/dungn"
+    }
+  ],
+  "extra_objects": [
+    {
+      "type": 2,
+      "id": 115,
+      "tile": [
+        7,
+        6
+      ],
+      "comment": "KhalimBrainChest (objpreset Act 3 Index 115)"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true,
+  "allow_holes": [
+    "act3/jungle/dungs",
+    "act3/jungle/dungn"
+  ]
+}

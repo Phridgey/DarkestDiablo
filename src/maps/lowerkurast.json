@@ -1,0 +1,63 @@
+{
+  "name": "darkest_lowerkurast",
+  "folder": "act3/kurast",
+  "room": 16,
+  "comment": "Lower Kurast (113_act3.py, on level 95): three blocks of the town's outskirts in a line, with super chests.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/kurast/burbs16x16_0"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act3/kurast/burbs16x16_1"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act3/kurast/burbs16x16_2"
+    }
+  ],
+  "extra_objects": [
+    {
+      "type": 2,
+      "id": 112,
+      "tile": [
+        5,
+        8
+      ],
+      "comment": "ConsolationChest (super chest, objpreset Act 3 Index 112)"
+    },
+    {
+      "type": 2,
+      "id": 112,
+      "tile": [
+        9,
+        20
+      ],
+      "comment": "ConsolationChest (super chest, objpreset Act 3 Index 112)"
+    },
+    {
+      "type": 2,
+      "id": 112,
+      "tile": [
+        7,
+        33
+      ],
+      "comment": "ConsolationChest (super chest, objpreset Act 3 Index 112)"
+    },
+    {
+      "type": 2,
+      "id": 112,
+      "tile": [
+        2,
+        42
+      ],
+      "comment": "ConsolationChest (super chest, objpreset Act 3 Index 112)"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

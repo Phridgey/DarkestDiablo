@@ -1,0 +1,15 @@
+{
+  "name": "darkest_shenk",
+  "folder": "expansion/siege",
+  "room": 16,
+  "comment": "Bloody Foothills (114a_act5.py, on level 116): one strip of the siege road.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "expansion/siege/strip03"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

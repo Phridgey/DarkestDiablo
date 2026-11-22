@@ -328,6 +328,29 @@ static void RouteUnlocksTierByTier() {
 	CHECK(!p.CanEnter(*Route::StopById("andariel")));  // the last tier: not yet
 }
 
+static void LaterActsFollowInOrder() {
+	Route::Progress p;
+	for (const auto& stop : Route::Stops) {
+		if (Route::ActOfTier(stop.tier) <= 2) {
+			p.clears[stop.id] = 1;
+		}
+	}
+	CHECK(p.CurrentTier() == 11);                  // Act III: Khalim's three parts, any order
+	CHECK(Route::ActOfTier(11) == 3 && Route::ActOfTier(15) == 4 && Route::ActOfTier(24) == 5);
+	CHECK(p.CanEnter(*Route::StopById("spider")) && p.CanEnter(*Route::StopById("ksewers")));
+	CHECK(p.RecordClear(*Route::StopById("spider")));
+	CHECK(!p.CanEnter(*Route::StopById("spider")));  // each part once
+	CHECK(p.RecordClear(*Route::StopById("flayer")));
+	CHECK(p.CurrentTier() == 11);
+	CHECK(p.RecordClear(*Route::StopById("ksewers")));
+	CHECK(p.CurrentTier() == 12 && p.CanEnter(*Route::StopById("lowerkurast")));
+	CHECK(Route::StopByTravelLevel(39) == Route::StopById("cows"));
+	CHECK(Route::StopByArenaLevel(132) == Route::StopById("baal"));
+	CHECK(Route::TownOfAct(5) == 109);
+	p.flags["hratli"] = 1;
+	CHECK(p.Flag("hratli") == 1 && p.Flag("goldenbird") == 0);
+}
+
 static void ActTwoFollowsAndariel() {
 	Route::Progress p;
 	for (const char* id : { "den", "burial", "inifuss", "crypt", "tristram", "pit", "malus", "andariel" }) {
@@ -430,6 +453,7 @@ int main() {
 	RouteUnlocksTierByTier();
 	ForkGivesTwoPicksSameOneAllowed();
 	ActTwoFollowsAndariel();
+	LaterActsFollowInOrder();
 	ARunMustBeFinishedAndResumes();
 	RouteProgressRoundTripAndBadLines();
 	EveryBuiltStopIsFoundByItsLevels();
