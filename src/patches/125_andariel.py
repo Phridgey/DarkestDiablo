@@ -59,8 +59,11 @@ def keepers(t):
     for n, (keeper, source, code, key_name, look) in enumerate(KEEPERS):
         if code in taken:
             raise RuntimeError(f"item code {code} is taken")
+        # Kept, not used: the vial's look comes from the Potion of Life, which a right click drinks
+        # (+20 life, 2026-11-22), so the copy can't be used.
         misc.add_copy("code", look, code=code, name=key_name, namestr=f"dd{code}", spawnable="0",
-                      quest="0", questdiffcheck="0", level="1", levelreq="0")
+                      quest="0", questdiffcheck="0", level="1", levelreq="0", useable="0", pSpell="-1", spelldesc="0", spelldescstr="", spelldescstr2="", spelldesccolor="0",
+                      usesound="item_gem")
         items.append({code: dict(assets[look])})
         names.append((f"dd{code}", key_name))
 

@@ -128,8 +128,15 @@ def chisel(t):
     misc = t.table("misc")
     if misc.find("code", code):
         raise RuntimeError(f"item code {code} is taken")
-    misc.add_copy("code", look, code=code, name=name, namestr=f"dd{code}", spawnable="0", quest="0", questdiffcheck="0",
-                  level="1", levelreq="0")
+    row = misc.add_copy("code", look, code=code, name=name, namestr=f"dd{code}", spawnable="0", quest="0", questdiffcheck="0",
+                        level="1", levelreq="0", type="ques", useable="0", stackable="0", minstack="0", maxstack="0",
+                        spawnstack="0", PermStoreItem="", multibuy="", UICatOverride="")
+    # The look is a key's: not a key (it would open chests and be used up), and no shop sells it.
+    for col in list(row):
+        if col.endswith(("Min", "Max", "MagicMin", "MagicMax")) and any(col.startswith(n) for n in (
+                "Charsi", "Gheed", "Akara", "Fara", "Lysander", "Drognan", "Hratli", "Alkor", "Ormus", "Elzix",
+                "Asheara", "Cain", "Halbu", "Malah", "Larzuk", "Anya", "Jamella")):
+            row[col] = ""
     items = t.data("hd/items/items.json")
     assets = {c: v for entry in items for c, v in entry.items()}
     items.append({code: dict(assets[look])})
