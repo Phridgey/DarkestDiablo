@@ -76,6 +76,31 @@ and a Horadric Cube recipe turns token + any item without sockets into the same 
 socket (the game's own recipe shape: `"any,nos"` input, `"useitem,sock=1"` output, as the Stone of
 Jordan rare-socket recipe). To test: that the recipe adds a socket to unique and set items too.
 
+## Catching up: the camp, retirement and camp charms (decided 2026-11-21)
+The camp is the central mechanic: no one hero is meant to walk Acts I-V alone. Heroes stall, die
+or retire, and new heroes push further using the loot the camp has banked. The monster levels
+(`src/patches/004_area_levels.py`) are the slope the camp climbs, not one hero's path.
+
+Two things bring a new hero up to the camp's frontier:
+- **Retirement** (the "blaze of glory" in `docs/design.md`): a hero who won't go further takes one
+  last fight and brings everything home to the camp.
+- **Camp charms**: charms that raise experience gained and magic find, and stop working above a
+  maximum hero level, so they help new heroes catch up and do nothing for veterans.
+
+How the cap works (the game has no "stops above level X" rule for items; a requirement only
+keeps a hero below it from using an item). First choice:
+1. The plugin switches a charm off for a hero above its cap: it cancels the charm's bonus
+   through `gamewrite.h` (stat changes, allowed by the project rules). The charm stays in the
+   inventory and works again on a lower hero.
+Other options, if that fails: 2. bonuses that shrink each level to zero at the cap (only if the
+game has per-level versions of the experience and magic find stats); 3. charms kept by the camp
+(the stash) whose bonus the plugin gives every hero under the cap.
+
+Open questions:
+- Caps: one per act (e.g. the act's highest stop level), or fixed levels?
+- How big the bonuses are (experience %, magic find %), and whether they stack.
+- Where charms come from (camp rewards, drops, challenges) and whether they are shared.
+
 ## Act plans
 - Act II: `docs/act2.md`.
 - Act III: `docs/act3.md`.
@@ -83,4 +108,5 @@ Jordan rare-socket recipe). To test: that the recipe adds a socket to unique and
 - Act V: `docs/act5.md`.
 
 ## Still to decide (ask Fabrizio)
+- Camp charms: caps, bonus sizes, where they come from (see "Catching up").
 - Item levels for 4, 5 and 6 sockets.
