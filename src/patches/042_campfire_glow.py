@@ -24,9 +24,9 @@ TEMPLATE = "hd/global/ui/panel/inventory/background{}.sprite"
 OUT = "hd/global/ui/panel/darkestdiablo/{}{}.sprite"
 
 # name: (box width, box height, corner radius, margin around the box) in layout units.
-# HeroGlow: the 380x128 name plate. EnterGlow: FrontEnd_ButtonLarge at scale 1.35.
+# HeroGlow: the 280x92 name plate (PlateW/PlateH in the plugin). EnterGlow: FrontEnd_ButtonLarge at scale 1.35.
 GLOWS = {
-    "heroglow": (380, 128, 10, 56),
+    "heroglow": (280, 92, 8, 56),
     "enterglow": (824, 162, 22, 72),
 }
 
