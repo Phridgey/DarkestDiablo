@@ -981,6 +981,16 @@ static auto MapCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* co
 	return D2RL::ConsoleCommandResult::Handled;
 }
 
+// The wave counter needs a "/ n" text for each arena wave total (waveoverlay.h).
+static auto LoadWaveCounter(const D2RL::PluginContext* context) noexcept -> bool {
+	constexpr int count = static_cast<int>(sizeof(Arenas) / sizeof(Arenas[0]));
+	int totals[count] {};
+	for (int i = 0; i < count; ++i) {
+		totals[i] = Arenas[i].waveCount;
+	}
+	return WaveOverlay::Load(context, totals, count);
+}
+
 D2RL_PLUGIN_EXPORT auto D2RLoaderGetPluginInfo() noexcept -> const D2RL::PluginInfo* {
 	return &DarkestDiabloInfo;
 }
@@ -1075,7 +1085,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	// The GM window's event list. A new event needs one line here (or a RegisterEvent call of its
 	// own before DevTools::Load); the window and "gm event <id>" pick it up by themselves.
 	DevTools::RegisterEvent({ .id = "traveler", .label = "A traveler joins the camp", .console = "dd-traveler" });
-	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && WaveOverlay::Load(context) &&
+	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && LoadWaveCounter(context) &&
 		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&
