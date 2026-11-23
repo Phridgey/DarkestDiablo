@@ -1927,6 +1927,10 @@ static void __cdecl CloseNativeWaypointPanel(const D2RL::PluginContext* context,
 }
 
 static constexpr int TownLevelId = 1;  // Rogue Encampment
+static constexpr int LutGholeinLevelId  = 40;
+static constexpr int KurastDocksLevelId = 75;
+static constexpr uint32_t MeshifClass = 210;  // monstats row of meshif1 (Lut Gholein's Meshif)
+static constexpr int MeshifReach = 12;        // sub-tiles: Meshif next to the hero
 
 // levels.txt Ids of the five towns: Rogue Encampment, Lut Gholein, Kurast Docks,
 // Pandemonium Fortress, Harrogath.
@@ -2274,6 +2278,27 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	}
 	if (DevTools::OnUiMessage(context, target, command, text) || Campfire::OnUiMessage(context, target, command, text)) {
 		return Action::Consume;
+	}
+	// Meshif sails east as soon as Duriel is dead (decided 2026-11-23): talking to him in Lut Gholein
+	// once Act III is open takes the hero to the Kurast Docks, without the game's own steps (Tyrael
+	// in the tomb, Jerhyn in the palace). The talk opens "NpcDialogPanel"; the plugin checks that
+	// Meshif is the one at hand and sends the hero on; the level change closes the dialog.
+	if (std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
+		std::strcmp(text, "NpcDialogPanel") == 0 && g_levelId.load() == LutGholeinLevelId && CurrentAct() >= 3) {
+		bool meshif = false;
+		try {
+			for (const Game::MonsterDetails& m : Game::Monsters(MeshifReach, true)) {
+				meshif = meshif || m.unit.row == MeshifClass;
+			}
+		} catch (...) {
+		}
+		if (meshif) {
+			Trace(context, "Meshif: sailing east to the Kurast Docks.");
+			context->WriteConsoleMessage("Meshif: \"To Kurast, then. Hold on to something.\"");
+			char line[32] {};
+			std::snprintf(line, sizeof(line), "goto %d", KurastDocksLevelId);
+			RunConsole(context, line);
+		}
 	}
 	// Every waypoint asks for Blizzard's list ("PanelManager:OpenPanel:WaypointsPanelExpansion").
 	// Consume that and open the route map instead, so the route's unlocks can't be skipped
