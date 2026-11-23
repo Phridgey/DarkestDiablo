@@ -108,6 +108,8 @@ every stop built, not yet tested). Patches `113_act3.py`, `114_act4.py`, `114a_a
   monsters give far too little for that, so each counted clear adds the stop's share of the
   curve as experience (ClearExperience in darkestdiablo_plugin.cpp): Den level 4, Burial Grounds
   6, fork 1 9, Tristram 13, fork 2 15; an XP grind pick is worth one level at the end.
+- Acts II-V follow the same curve, 18 levels an act: Duriel at 33, Mephisto 51, Diablo 69, Baal 87
+  with no XP grind, one level more per XP grind pick (four in Act II, two in each later act).
 - Act I's runes (El to Ral) need levels 3 to 16 instead of 11 to 19, so they work in Act I
   (008_act1_rune_levels.py); later runes keep the game's requirements.
 

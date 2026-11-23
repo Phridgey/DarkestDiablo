@@ -1161,12 +1161,32 @@ static void OpenAnyaScroll(const D2RL::PluginContext* context) noexcept;
 // each step: Den 3,750 (level 4), Burial Grounds 14,175 (6), fork 1 57,715 (9), Tristram 112,725
 // (13), fork 2 176,132 (15); an XP grind gives 63,470 more than the other picks of its fork
 // ((430,010 - 176,132) / 4, level 19 with four).
+// Acts II-V (decided 2026-11-22) follow the same rule, 18 levels an act: the hero arrives at Duriel
+// at 33, Mephisto 51, Diablo 69 and Baal 87 with no XP grind, one level higher per XP grind pick
+// (worth one level at the act's end). Each act's clears share the climb evenly (a fork pick is one
+// share; the boss's own kill is taken off the next act's first share), less the stop's estimated
+// monster experience, which is small next to it. Numbers from experience.txt; tune after play.
 struct StopExperience { const char* stop; int experience; };
 static constexpr StopExperience ClearExperience[] = {
 	{ "den",        1257 }, { "burial",     8038 },
 	{ "inifuss",   16668 }, { "mausoleum", 16919 }, { "crypt",  67303 },
 	{ "tristram",  36755 },
 	{ "pit",       24080 }, { "countess",  27341 }, { "malus",  83881 },
+	// Act II: Duriel at 33 (37 with four XP grinds); an XP grind is worth 1,074,627 more.
+	{ "halls", 1020000 }, { "sewers", 2090000 }, { "stony", 1030000 },
+	{ "maggot", 1015000 }, { "clawviper", 1020000 }, { "arcane", 1026000 },
+	{ "tunnels", 1015000 }, { "canyon", 2059000 },
+	// Act III: Mephisto at 51 (53 with two); XP grind +5,069,147.
+	{ "spider", 7331000 }, { "flayer", 7355000 }, { "ksewers", 7334000 },
+	{ "lamesen", 12374000 }, { "swampy", 7351000 }, { "lowerkurast", 7397000 },
+	{ "travincal", 7320000 },
+	// Act IV: Diablo at 69 (71 with two); XP grind +23,911,777.
+	{ "plains", 51972000 }, { "abaddon", 75798000 }, { "acheron", 52012000 },
+	{ "infernal", 52341000 }, { "hellforge", 52296000 },
+	// Act V: Baal at 87 (89 with two), plus the Ancients' level; XP grind +112,794,729.
+	{ "shenk", 140643000 }, { "highlands", 253373000 }, { "pindle", 140873000 },
+	{ "cellar", 141084000 }, { "anya", 140760000 }, { "vaught", 140621000 },
+	{ "cows", 141059000 }, { "ancients", 141084000 },
 };
 
 // UI thread. A stop's once-per-hero reward (quest rewards given once per difficulty are tripled,
