@@ -63,11 +63,35 @@ def tunnels_mf(t):
                 row[c] = loot.with_mf(row[c])
 
 
+def bosses_drop_staff_pieces(t):
+    """Coldworm drops the Staff of Kings and Fangskin the Amulet of the Viper, first, every time
+    (2026-11-22: the chest and the altar gave nothing, so neither stop could be cleared). Like
+    Radament's book: negative picks drop in order, so the piece can't be crowded out. Both pieces
+    are quest items of the Horadric Staff quest, which only drop while it is open; their quest
+    columns are cleared so they drop anywhere (CLAUDE.md, lessons). The Horadric Staff itself
+    keeps its own, for the orifice event."""
+    tcs = t.table("treasureclassex")
+    template = tcs.rows[0]
+    supers = t.table("superuniques")
+    for boss, code, short in (("Coldworm the Burrower", "msf", "Coldworm"), ("Fangskin", "vip", "Fangskin")):
+        row = supers.first("Superunique", boss)
+        for col, tag in (("TC", ""), ("TC(N)", " (N)"), ("TC(H)", " (H)")):
+            name = f"DD {short}{tag}"
+            tc = {k: "" for k in template if k != "__width__"}
+            tc.update({"Treasure Class": name, "Picks": "-2", "NoDrop": "0",
+                       "Item1": code, "Prob1": "1", "Item2": row[col], "Prob2": "1"})
+            tcs.rows.append(tc)
+            row[col] = name
+    t.table("weapons").first("code", "msf").update({"quest": "0", "questdiffcheck": "0"})
+    t.table("misc").first("code", "vip").update({"quest": "0", "questdiffcheck": "0"})
+
+
 def patch(t):
     for arena in (MAGGOT, CLAWVIPER, TUNNELS, TALRASHA):
         arenas.arena_level(t, arena)
         if arena["waves"]:
             arenas.copies(t, arena)
+    bosses_drop_staff_pieces(t)
     # The orifice room keeps its preset's warp scan, as Blizzard's has it (the event's way to Duriel).
     t.table("lvlprest").first("Name", TALRASHA["name"])["Scan"] = "1"
     tunnels_mf(t)
