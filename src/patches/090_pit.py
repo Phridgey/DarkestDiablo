@@ -5,7 +5,7 @@
   quality ratios of their loot tables, see 035_inifuss_loot.py), on all of them.
 - Five packs, each led by a unique (random name and affixes; the plugin spawns them). One of the
   five, picked at random, is the target: it spawns as its type's "_t" copy, and killing it wins.
-  The target drops one guaranteed unique or set item (a set where no unique fits), plus its own
+  The target drops two guaranteed unique or set items (a set where no unique fits), plus its own
   unique monster loot, like Treehead.
 - The plugin learns the target types' class numbers from "targetclass" lines in
   d2rloader/loot_data.txt, so it can tell when the target dies.
@@ -90,8 +90,8 @@ def patch(t):
                     tag = f" {suffix}" if suffix else ""
                     name = f"DD Pit Target {source}{tag}"
                     loot.tcs.rows.append({**{k: "" for k in loot.tcs.rows[0] if k != "__width__"},
-                                          "Treasure Class": name, "Picks": "-2", "NoDrop": "0",
-                                          "Item1": bonus[suffix], "Prob1": "1", "Item2": row[col], "Prob2": "1"})
+                                          "Treasure Class": name, "Picks": "-3", "NoDrop": "0",
+                                          "Item1": bonus[suffix], "Prob1": "2", "Item2": row[col], "Prob2": "1"})
                     loot.by_name[name] = loot.tcs.rows[-1]
                     row[col] = name
                 t.loot_lines.append(f"targetclass {ARENA_ID} {cls}")
