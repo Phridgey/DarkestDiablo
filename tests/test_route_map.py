@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = ROOT / "src" / "plugin" / "darkestdiablo_plugin.cpp"
-PAGES = ROOT / "src" / "plugin" / "routepages.h"  # Acts III-V, tools/route_pages.py
+PAGES = ROOT / "src" / "plugin" / "routepages.h"  # all five acts, tools/route_pages.py
 LAYOUTS = ROOT / "src" / "data" / "data" / "global" / "ui" / "layouts" / "darkestdiablo"
 LAYOUT = LAYOUTS / "RouteMaphd.json"
 LAYOUT2 = LAYOUTS / "RouteMap2hd.json"
