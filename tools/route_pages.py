@@ -27,7 +27,7 @@ HEADER = ROOT / "src" / "plugin" / "routepages.h"
 KINDS = {
     "xp": ("Experience grind", "$FontColorLightBlue", "items\\misc\\quest\\book_of_skill", 0.26),
     "mf": ("Magic find run", "$FontColorGoldYellow", "items\\misc\\gem\\perfect_topaz", 0.52),
-    "craft": ("Crafting hunt", "$FontColorLightPurple", "items\\weapon\\hammer\\horadric_malus", 0.17),
+    "craft": ("Crafting hunt", "$FontColorLightPurple", "items\\weapon\\hammer\\horadric_malus", 0.3),
     "story": ("Story", "$FontColorBeige", "items\\misc\\quest\\bark_scroll", 0.26),
     "boss": ("Act boss", "$FontColorLightRed", "items\\misc\\gem\\perfect_skull", 0.52),
 }
@@ -55,7 +55,7 @@ PAGES = {
         ("Both, any order", [("NodeMaggot", "Maggot Lair", 64, "story", "Staff of Kings"),
                              ("NodeClawViper", "Claw Viper Temple", 61, "story", "Amulet of the Viper")]),
         ("Fork - pick 2", [("Fork4Arcane", "Arcane Sanctuary", 74, "craft", "Runes up to Shael"),
-                           ("Fork4Tunnels", "Ancient Tunnels", 65, "mf", "Every pack led by a unique"),
+                           ("Fork4Tunnels", "Ancient Tunnels", 65, "mf", "Unique-led packs"),
                            ("Fork4Canyon", "Canyon of the Magi", 59, "xp", "+1 level")]),
         (None, [("NodeDuriel", "Duriel", 66, "boss", "")]),
     ]),
@@ -90,13 +90,22 @@ PAGES = {
     ]),
 }
 
-XS = {1: [406], 2: [218, 594], 3: [30, 406, 782]}
+# The page is the waypoint panel's frame scaled up by FRAME (2026-11-23: the first redesign was too
+# crowded in the game's own frame), anchored where the game's left panels are.
+FRAME = 1.3
+W, H = round(1162 * FRAME), round(1507 * FRAME)          # 1511 x 1959
+PANEL_RECT = {"x": 236, "y": -980, "width": W, "height": H}  # the game's left panel: x 236, y -651, 1162 x 1507
+HINGE_RECT = {"x": -236, "y": 959}                        # the hinge stays where the game's own sits
+TITLE_RECT = {"x": 118, "y": 83, "width": 1275, "height": 92}
+COLUMN_W = 437                                            # a stop's column: its button and the two lines under it
+LEFT = (W - 3 * COLUMN_W) // 2
+COLUMNS = {1: [LEFT + COLUMN_W], 2: [LEFT + COLUMN_W // 2, LEFT + COLUMN_W * 3 // 2], 3: [LEFT, LEFT + COLUMN_W, LEFT + 2 * COLUMN_W]}
 BUTTON_W, BUTTON_H = 350, 85
-LINE_H = 26       # each of the two lines under a button: the kind, then the reward
-ICON = 52         # the kind's picture, left of those two lines
-CARD_H = BUTTON_H + 2 + 2 * LINE_H
-GAP = 60          # between one row's card and the next row's button
-LEGEND_Y = 1440
+LINE_H = 28       # each of the two lines under a button: the kind, then the reward
+ICON = 58         # the kind's picture, left of those two lines
+CARD_H = BUTTON_H + 4 + 2 * LINE_H
+GAP = 96          # between one row's card and the next row's button
+LEGEND_Y = H - 130
 
 
 def panel_name(act):
@@ -134,11 +143,11 @@ def page(act):
     title, town, tiers = PAGES[act]
     panel = panel_name(act)
     kids = [
-        {"type": "ImageWidget", "name": "Background", "fields": {"rect": {"x": 0, "y": 0}, "filename": "PANEL\\Waypoints\\Waypoints_Base", "frame": 0}},
-        {"type": "ImageWidget", "name": "LeftHinge", "fields": {"rect": "$LeftHingeRect", "filename": "$LeftHingeSprite"}},
-        {"type": "TextBoxWidget", "name": "Title", "fields": {"rect": "$InGamePanelTitleRect", "text": title, "style": "$StyleTitleBlock"}},
-        button("NodeTown", 30, 110, "Return to town", town, False),
-        button("NodeTown", 30, 110, "Return to town", town, True),
+        {"type": "ImageWidget", "name": "Background", "fields": {"rect": {"x": 0, "y": 0, "scale": FRAME}, "filename": "PANEL\\Waypoints\\Waypoints_Base", "frame": 0}},
+        {"type": "ImageWidget", "name": "LeftHinge", "fields": {"rect": HINGE_RECT, "filename": "$LeftHingeSprite"}},
+        {"type": "TextBoxWidget", "name": "Title", "fields": {"rect": TITLE_RECT, "text": title, "style": "$StyleTitleBlock"}},
+        button("NodeTown", 70, 150, "Return to town", town, False),
+        button("NodeTown", 70, 150, "Return to town", town, True),
     ]
     lines = 0
 
@@ -147,44 +156,46 @@ def page(act):
         lines += 1
         kids.append(text(f"Line{lines}", x, y, w, 40, chars, "$FontColorGoldYellow", "$MediumFontSize"))
 
-    y = 190 if tiers[0][0] is None else 230
+    y = 260 if tiers[0][0] is None else 300
     previous = None  # (centres, bottom)
     for t, (note, stops) in enumerate(tiers):
-        xs = XS[len(stops)]
-        centres = [x + BUTTON_W // 2 for x in xs]
+        columns = COLUMNS[len(stops)]
+        centres = [c + COLUMN_W // 2 for c in columns]
         if previous is not None:
             above, bottom = previous
             joined = sorted(set(above) | set(centres))
             for c in above:
-                line(c - 20, bottom - 12, 40, "|")
+                line(c - 20, bottom + 2, 40, "|")
             if len(joined) > 1:
                 width = joined[-1] - joined[0]
-                line(joined[0], bottom - 4, width, "_" * round(width / 15.67))
+                line(joined[0], bottom + 10, width, "_" * round(width / 15.67))
             if not note:
                 for c in centres:
-                    line(c - 20, bottom + 24, 40, "|")
-            y = bottom + GAP + (16 if note else 0)  # room for the note
+                    line(c - 20, bottom + 46, 40, "|")
+            y = bottom + GAP + (20 if note else 0)  # room for the note
         if note:
-            kids.append(text(f"Note{t}", 0, y - 34, 1162, 30, note, "$FontColorDarkGrayGold"))
-        for x, (node, label, level, kind, perk) in zip(xs, stops):
+            kids.append(text(f"Note{t}", 0, y - 40, W, 30, note, "$FontColorDarkGrayGold"))
+        for c, (node, label, level, kind, perk) in zip(columns, stops):
+            x = c + (COLUMN_W - BUTTON_W) // 2
             kids.append(button(node, x, y, label, level, False))
             kids.append(button(node, x, y, label, level, True))
-            top = y + BUTTON_H + 2
-            kids.append(icon(f"Icon{t}_{node}", x + 4, top, kind))
-            kids.append(text(f"Kind{t}_{node}", x + ICON + 12, top, BUTTON_W - ICON - 12, LINE_H, KINDS[kind][0], KINDS[kind][1], align="left"))
+            top = y + BUTTON_H + 4
+            kids.append(icon(f"Icon{t}_{node}", c + 6, top + 2, kind))
+            kids.append(text(f"Kind{t}_{node}", c + ICON + 14, top, COLUMN_W - ICON - 18, LINE_H, KINDS[kind][0], KINDS[kind][1], align="left"))
             if perk:
-                kids.append(text(f"Perk{t}_{node}", x + ICON + 12, top + LINE_H, BUTTON_W - ICON - 12, LINE_H, perk, PERK, align="left"))
+                kids.append(text(f"Perk{t}_{node}", c + ICON + 14, top + LINE_H, COLUMN_W - ICON - 18, LINE_H, perk, PERK, align="left"))
         previous = (centres, y + CARD_H)
     # Legend: the five kinds, and what green means.
-    xs = [30, 250, 470, 690, 910]
+    step = (W - 2 * LEFT) // len(KINDS)
     for k, (kind, (label, color, _, _)) in enumerate(KINDS.items()):
-        kids.append(icon(f"LegendIcon{k}", xs[k], LEGEND_Y - 8, kind))
-        kids.append(text(f"Legend{k}", xs[k] + ICON + 6, LEGEND_Y, 170, LINE_H, label, color, align="left"))
-    kids.append(text("LegendPerk", 0, LEGEND_Y - 40, 1162, LINE_H, "Green: a one-time reward", PERK))
-    kids.append({"type": "ButtonWidget", "name": "CloseButton", "fields": {"rect": {"x": 1075, "y": 9}, "filename": "PANEL\\closebtn_4x",
+        x = LEFT + k * step
+        kids.append(icon(f"LegendIcon{k}", x, LEGEND_Y - 8, kind))
+        kids.append(text(f"Legend{k}", x + ICON + 6, LEGEND_Y, step - ICON - 10, LINE_H, label, color, align="left"))
+    kids.append(text("LegendPerk", 0, LEGEND_Y - 46, W, LINE_H, "Green: a one-time reward", PERK))
+    kids.append({"type": "ButtonWidget", "name": "CloseButton", "fields": {"rect": {"x": W - 115, "y": 12}, "filename": "PANEL\\closebtn_4x",
                  "hoveredFrame": 3, "tooltipString": "@d2r:strClose", "sound": "cursor_close_window_hd",
                  "onClickMessage": f"PanelManager:ClosePanel:{panel}", "pressedFrame": 1}})
-    return {"type": "Panel", "name": panel, "fields": {"rect": "$LeftPanelRect", "anchor": "$LeftPanelAnchor", "priority": 8500},
+    return {"type": "Panel", "name": panel, "fields": {"rect": PANEL_RECT, "anchor": "$LeftPanelAnchor", "priority": 8500},
             "children": kids}
 
 
