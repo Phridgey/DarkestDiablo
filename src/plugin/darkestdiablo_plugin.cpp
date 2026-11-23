@@ -2085,6 +2085,115 @@ static std::atomic<int> g_lifePotions { -1 };  // Potions of Life (xyz) the hero
 // - The Golden Bird: a Potion of Life the hero had and has no more was drunk (once per hero).
 // - Hratli's socket (Act III): once the hero holds Khalim's Eye, Brain and Heart, in Kurast Docks.
 // - Anya's scroll still owed: its panel opens again in town.
+// ---- Akara's ring ---------------------------------------------------------------------------
+// After Cain is freed, Akara rewards the hero with a magic ring (the game's quest code). Made rare
+// (decided 2026-11-22): while the hero is in the Rogue Encampment with Tristram cleared and the
+// swap not yet done, the plugin watches for a magic ring that wasn't there on arrival, and puts a
+// rare ring of the same item level in its place. Once per hero ("akararing" in the progress).
+struct RingScan { std::vector<std::pair<D2RL::ItemHandle, uint32_t>> magic; };  // handle, item level
+
+static auto __cdecl ScanRing(const D2RL::PluginContext*, const D2RL::Items::ItemInfo* item, void* out) noexcept -> D2RL::Inventory::IterationAction {
+	auto* scan = static_cast<RingScan*>(out);
+	if (item != nullptr && item->code == ItemCode("rin") && item->quality == D2RL::Items::Quality::Magic) {
+		scan->magic.emplace_back(item->handle, item->itemLevel);
+	}
+	return D2RL::Inventory::IterationAction::Continue;
+}
+
+static std::atomic<bool> g_ringWatch { false };
+static std::mutex        g_ringLock;
+static std::set<D2RL::ItemHandle> g_ringsOnArrival;
+static std::atomic<bool> g_ringsPrimed { false };
+
+// Game thread.
+static void __cdecl AkaraRingCheck(const D2RL::PluginContext* context, void*) noexcept {
+	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+	if (g_inventory == nullptr || g_items == nullptr || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
+		return;
+	}
+	const D2RL::Inventory::ItemFilter filter {
+		.structSize    = D2RL::Inventory::ItemFilterSize,
+		.containerMask = D2RL::Items::AllItemContainers,
+	};
+	RingScan scan;
+	g_inventory->forEachInventoryItem(context, player, &filter, ScanRing, &scan);
+	const std::lock_guard<std::mutex> guard(g_ringLock);
+	if (!g_ringsPrimed.exchange(true)) {
+		g_ringsOnArrival.clear();
+		for (const auto& [handle, level] : scan.magic) {
+			g_ringsOnArrival.insert(handle);
+		}
+		return;
+	}
+	for (const auto& [handle, level] : scan.magic) {
+		if (g_ringsOnArrival.count(handle) != 0) {
+			continue;
+		}
+		try {
+			const auto file = Campfire::RouteProgressFile();
+			Route::Progress progress = Route::Load(file);
+			if (progress.Flag("akararing") != 0) {
+				return;
+			}
+			progress.flags["akararing"] = 1;
+			Route::Save(file, progress);
+		} catch (...) {
+			return;
+		}
+		const auto destroyed = g_items->destroyItem(context, player, handle, D2RL::Items::SocketedItemPolicy::RejectIfNotEmpty);
+		D2RL::Items::ItemCreateSpec spec {
+			.structSize      = D2RL::Items::ItemCreateSpecSize,
+			.code            = ItemCode("rin"),
+			.quality         = D2RL::Items::Quality::Rare,
+			.qualityRecordId = D2RL::Items::RandomQualityRecord,
+			.itemLevel       = (std::max)(1U, level),
+			.seedMode        = D2RL::Items::SeedMode::Random,
+			.quantity        = D2RL::Items::DefaultValue,
+			.durability      = D2RL::Items::DefaultValue,
+			.destination     = {
+				.structSize = D2RL::Items::ItemDestinationSize,
+				.container  = D2RL::Items::ItemContainer::Inventory,
+				.placement  = D2RL::Items::Placement::Automatic,
+			},
+		};
+		D2RL::ItemHandle ring = D2RL::InvalidItemHandle;
+		const auto created = g_items->createItem(context, player, &spec, &ring);
+		char message[128] {};
+		std::snprintf(message, sizeof(message), "Akara's ring: magic ring removed (code %d), rare ring item level %u made (code %d).",
+			static_cast<int>(destroyed), level, static_cast<int>(created));
+		context->LogInfo(message);
+		Trace(context, message);
+		return;
+	}
+}
+
+// Ticks once a second while the hero stays in the Rogue Encampment.
+static void WatchAkaraRing(const D2RL::PluginContext* context, int townLevel) noexcept {
+	try {
+		const auto file = Campfire::RouteProgressFile();
+		if (file.empty()) {
+			return;
+		}
+		const Route::Progress progress = Route::Load(file);
+		if (progress.Flag("akararing") != 0 || progress.clears.count("tristram") == 0) {
+			return;
+		}
+	} catch (...) {
+		return;
+	}
+	if (g_ringWatch.exchange(true)) {
+		return;
+	}
+	g_ringsPrimed = false;
+	std::thread([context, townLevel] {
+		while (g_levelId == townLevel) {
+			g_threads->runOnGameThread(context, AkaraRingCheck, nullptr);
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+		}
+		g_ringWatch = false;
+	}).detach();
+}
+
 static void __cdecl CheckHeldRewards(const D2RL::PluginContext* context, void*) noexcept {
 	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 	if (g_inventory == nullptr || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
@@ -2260,6 +2369,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		g_threads->runOnGameThread(context, CheckHeldRewards, nullptr);
 		if (g_levelId == TownLevelId) {  // no healer (Akara; Act II's Fara not yet)
 			WatchTownHealing(context, TownLevelId);
+			WatchAkaraRing(context, TownLevelId);
 		}
 		const int arena = FindArena(g_levelId);
 		// Back in an arena the hero may not enter now (cleared, or a later tier), e.g. through the
