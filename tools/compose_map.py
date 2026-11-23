@@ -358,11 +358,11 @@ def rock_ring(spec, entities, deps, seen, next_id):
     cx, cz, r = (W - 1) / 2 * 10, (H - 1) / 2 * 10, spec["circle"]["radius"] * 10
     rows = spec["circle"].get("ring") or DEFAULT_RING
     wanted = {m for row in rows for m in row["models"]}
-    # Each model's settings (light, shadow, ground blend) as Blizzard's own rooms use them (Act I,
-    # then Act II).
+    # Each model's settings (light, shadow, ground blend) as Blizzard's own rooms use them (Act I
+    # first, then the later acts).
     templates = {}
-    rooms = sorted((VANILLA / "hd" / "env" / "preset" / "act1").glob("*/*.json")) + \
-        sorted((VANILLA / "hd" / "env" / "preset" / "act2").glob("*/*.json"))
+    rooms = [f for act in ("act1", "act2", "act3", "act4", "act5")
+             for f in sorted((VANILLA / "hd" / "env" / "preset" / act).glob("*/*.json"))]
     for f in rooms:
         for e in json.loads(f.read_text(encoding="utf-8-sig")).get("entities") or []:
             for k in e.get("components") or []:
@@ -372,7 +372,7 @@ def rock_ring(spec, entities, deps, seen, next_id):
             break
     missing = wanted - set(templates)
     if missing:
-        sys.exit(f"ring models not found in any Act I or II room: {sorted(missing)}")
+        sys.exit(f"ring models not found in any of the game's rooms: {sorted(missing)}")
     for path in sorted(wanted):
         if path not in seen["models"]:
             seen["models"].add(path)

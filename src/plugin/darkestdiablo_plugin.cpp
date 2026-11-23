@@ -615,12 +615,13 @@ static constexpr Wave CanyonWaves[] = {
 // ---- Acts III-V (docs/act3.md, act4.md, act5.md; src/patches/113_act3.py, 114_act4.py, 114a_act5.py) ----
 // Spots and arrivals sit on tiles where the game's own maps place things (so they are floor), not
 // tested in game yet.
-// Spider Cavern (level 85, src/maps/spider.json).
+// Spider Cavern (level 85, src/maps/spider.json): one round grotto (centre 15,15, radius 13); the
+// hero arrives at the west edge, Khalim's Eye chest is on the east side.
 static constexpr Wave SpiderWaves[] = {
-	{ { { "mspawn", "dd_xp_a3a_arach3", 3, { 5, 3 } }, { "mspawn", "dd_xp_a3a_arach4", 4, { 11, 5 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_xp_a3a_batdemon2", 4, { 11, 5 } }, { "mspawn", "dd_xp_a3a_arach3", 5, { 11, 5 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_xp_a3a_arach4", 5, { 17, 10 } }, { "mspawn", "dd_xp_a3a_batdemon2", 3, { 17, 10 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_xp_a3a_arach3", 3, { 23, 4 } }, { "mspawn", "dd_xp_a3a_arach4", 4, { 24, 5 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3a_arach3", 3, { 12, 7 } }, { "mspawn", "dd_xp_a3a_arach4", 4, { 12, 23 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3a_batdemon2", 4, { 16, 15 } }, { "mspawn", "dd_xp_a3a_arach3", 5, { 20, 8 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3a_arach4", 5, { 20, 22 } }, { "mspawn", "dd_xp_a3a_batdemon2", 3, { 9, 15 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_xp_a3a_arach3", 3, { 23, 11 } }, { "mspawn", "dd_xp_a3a_arach4", 4, { 23, 19 } } }, 2, AnyClass },
 };
 // Flayer Dungeon (level 91, src/maps/flayer.json).
 static constexpr Wave FlayerWaves[] = {
@@ -789,7 +790,7 @@ static constexpr Arena Arenas[] = {
 	// the way to his lair (level 73, Blizzard's), where his death clears the stop.
 	{ "Tal Rasha's Tomb", 66,             4500, 1000, nullptr,        0,                                                                     false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 9, 4 } },
 	{ "Duriel",         73,               4500, 3100, nullptr,        0,                                                                     false, { 0, 0 }, 0, DurielClass },
-	{ "Spider Cavern", 85, 1500, 1300, SpiderWaves, static_cast<int>(sizeof(SpiderWaves) / sizeof(SpiderWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qey", 407, { 5, 3 }, false, -1, 1 },
+	{ "Spider Cavern", 85, 1500, 1300, SpiderWaves, static_cast<int>(sizeof(SpiderWaves) / sizeof(SpiderWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qey", 407, { 4, 15 }, false, -1, 1 },
 	{ "Flayer Dungeon", 91, 2000, 2340, FlayerWaves, static_cast<int>(sizeof(FlayerWaves) / sizeof(FlayerWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qbr", 406, { 4, 20 }, true, -1, 1 },
 	{ "Kurast Sewers", 93, 2500, 1300, KSewersWaves, static_cast<int>(sizeof(KSewersWaves) / sizeof(KSewersWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qhr", 405, { 9, 19 }, true, -1, 1 },
 	{ "Ruined Temple", 94, 3000, 1000, LamEsenWaves, static_cast<int>(sizeof(LamEsenWaves) / sizeof(LamEsenWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "bbb", 193, { 13, 5 }, false, -1, 1 },
@@ -2218,7 +2219,7 @@ static void WatchAkaraRing(const D2RL::PluginContext* context, int townLevel) no
 	}).detach();
 }
 
-static void __cdecl CheckHeldRewards(const D2RL::PluginContext* context, void*) noexcept {
+static void __cdecl CheckHeldRewards(const D2RL::PluginContext* context, void* periodic) noexcept {
 	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 	if (g_inventory == nullptr || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
 		return;
@@ -2254,11 +2255,51 @@ static void __cdecl CheckHeldRewards(const D2RL::PluginContext* context, void*) 
 		if (changed) {
 			Route::Save(file, progress);
 		}
-		if (InTown() && progress.Flag("anyaowed") > 0) {
+		if (periodic == nullptr && InTown() && progress.Flag("anyaowed") > 0) {  // on arrival only, not every second
 			g_threads->runOnUiThread(context, OpenAnyaScrollUi, nullptr);
 		}
 	} catch (...) {
 	}
+}
+
+// Held rewards are checked once a second while the hero is in town, not only on level changes:
+// a Potion of Life from Alkor drunk on the spot was never seen (the count went from 0 to 1 and
+// back to 0 between two level changes), so the Golden Bird's extra life never came (2026-11-23).
+static std::atomic<bool> g_heldWatch { false };
+static void WatchHeldRewards(const D2RL::PluginContext* context, int townLevel) noexcept {
+	if (g_heldWatch.exchange(true)) {
+		return;
+	}
+	std::thread([context, townLevel] {
+		while (g_levelId == townLevel) {
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			g_threads->runOnGameThread(context, CheckHeldRewards, reinterpret_cast<void*>(1));
+		}
+		g_heldWatch = false;
+	}).detach();
+}
+
+// "dd-goldenbird": the Golden Bird's +40 life for a hero who drank the potion before 0.17.22 and
+// never got it. Once per hero (the same "goldenbird" mark as the automatic reward).
+static auto GoldenBirdCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+	if (command == nullptr || command->plugin == nullptr) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	try {
+		const auto file = Campfire::RouteProgressFile();
+		Route::Progress progress = Route::Load(file);
+		if (progress.Flag("goldenbird") != 0) {
+			command->plugin->WriteConsoleMessage("Golden Bird: this hero already has its extra life.");
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		progress.flags["goldenbird"] = 1;
+		Route::Save(file, progress);
+	} catch (...) {
+		return D2RL::ConsoleCommandResult::Failed;
+	}
+	g_threads->runOnUiThread(command->plugin, GoldenBirdLife, nullptr);
+	command->plugin->WriteConsoleMessage("Golden Bird: +40 maximum life.");
+	return D2RL::ConsoleCommandResult::Handled;
 }
 
 static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEvents::UiMessageEvent* event, void*) noexcept -> D2RL::SharedEvents::UiMessageAction {
@@ -2412,6 +2453,9 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			g_threads->runOnGameThread(context, DeliverPotions, nullptr);
 		}
 		g_threads->runOnGameThread(context, CheckHeldRewards, nullptr);
+		if (InTown()) {
+			WatchHeldRewards(context, g_levelId.load());
+		}
 		if (g_levelId == TownLevelId) {  // no healer (Akara; Act II's Fara not yet)
 			WatchTownHealing(context, TownLevelId);
 			WatchAkaraRing(context, TownLevelId);
@@ -2763,7 +2807,8 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&
 		context->RegisterConsoleCommand("dd-map", MapCommand, "Open or close the route map.") &&
-		context->RegisterConsoleCommand("dd-wavehud", WaveHudCommand, "Show a fake 5-wave run of the wave counter (test).");
+		context->RegisterConsoleCommand("dd-wavehud", WaveHudCommand, "Show a fake 5-wave run of the wave counter (test).") &&
+		context->RegisterConsoleCommand("dd-goldenbird", GoldenBirdCommand, "Give the Golden Bird's +40 life to a hero who missed it (once).");
 }
 
 D2RL_PLUGIN_EXPORT void D2RLoaderUnloadPlugin() noexcept {}

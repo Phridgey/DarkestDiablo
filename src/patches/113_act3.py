@@ -3,7 +3,7 @@
 waves (darkestdiablo_plugin.cpp: "Act III").
 
 Tier 11, all three forced, any order, XP grinds (+40% experience, triple gold):
-- Spider Cavern (level 85): two lair rooms; Khalim's Eye chest. Cleared on picking up the Eye.
+- Spider Cavern (level 85): one round grotto; Khalim's Eye chest. Cleared on picking up the Eye.
 - Flayer Dungeon (level 91): two dungeon rooms; Khalim's Brain chest.
 - Kurast Sewers (level 93): the sewers' treasure room; Khalim's Heart chest.
   Every pack is led by a unique, and any of them may drop the Jade Figurine (the Golden Bird).
@@ -112,9 +112,9 @@ def first_drop(t, row, columns, item, name):
         row[col] = new
 
 
-SPIDER = {"id": "85", "map": "Act3/Spider/darkest_spider.ds1", "size": ("32", "16"), "template": "Act 3 - Spider Chest NE",
+SPIDER = {"id": "85", "map": "Act3/Spider/darkest_spider.ds1", "size": ("32", "32"), "template": "Act 3 - Spider Chest NE",
           "name": "Act 3 - Darkest Diablo Spider Cavern", "waves": ["arach3", "arach4", "batdemon2"], "prefix": "dd_xp_a3a_",
-          "pieces": ["lairnw", "lairnecon"], "kind": "xp"}
+          "pieces": ["lairnw", "lairnecon", "lairsw", "lairse"], "kind": "xp"}
 FLAYER = {"id": "91", "map": "Act3/Jungle/darkest_flayer.ds1", "size": ("14", "28"), "template": "Act 3 - Dungeon S",
           "name": "Act 3 - Darkest Diablo Flayer Dungeon", "waves": ["fetish3", "fetishshaman3", "fetishblow3"], "prefix": "dd_xp_a3b_",
           "pieces": ["dungs", "dungn"], "kind": "xp"}
