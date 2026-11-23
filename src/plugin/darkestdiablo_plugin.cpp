@@ -1281,6 +1281,7 @@ static void QuestDone(const D2RL::PluginContext* context, void* run) noexcept {
 	} else {
 		Trace(context, "Quest item taken; the stop clears once every wave is out and dead.");
 		context->WriteConsoleMessage("The way back opens once the dead are put to rest.");
+		Later(context, 500, QuestItemTick);  // keeps checking for an empty arena (QuestItemCheck)
 	}
 }
 
@@ -1316,6 +1317,30 @@ static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run
 		if (used >= arena.clearObjectCount) {
 			char message[128] {};
 			std::snprintf(message, sizeof(message), "%s: %d of the objects used; cleared.", arena.name, used);
+			Trace(context, message);
+			g_threads->runOnUiThread(context, ClearArena, run);
+			return;
+		}
+		Later(context, 500, QuestItemTick);
+		return;
+	}
+	if (g_questDone.load()) {
+		// The quest item is the hero's and the waves are all out, but the kill count never reached
+		// the end (2026-11-22: 10 of the Halls' monsters never died where the hero could find them,
+		// likely failed spawns). Clear once no living enemy is left anywhere loaded for 3 s.
+		static int s_quietTicks = 0;
+		bool anyAlive = true;
+		try {
+			anyAlive = !Game::Enemies(-1).empty();
+		} catch (...) {
+		}
+		s_quietTicks = (g_wave.load() >= arena.waveCount && !anyAlive) ? s_quietTicks + 1 : 0;
+		if (s_quietTicks >= 6) {
+			s_quietTicks = 0;
+			g_wavesDone = true;
+			char message[128] {};
+			std::snprintf(message, sizeof(message), "%s: quest item taken and no enemy left nearby; cleared (%d unaccounted for).",
+				arena.name, g_remaining.load());
 			Trace(context, message);
 			g_threads->runOnUiThread(context, ClearArena, run);
 			return;
