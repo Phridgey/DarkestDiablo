@@ -216,35 +216,38 @@ def patch(t):
             if c.startswith("TC"):
                 row[c] = loot.with_mf(row[c])
 
-    # Treehead's extra set or unique, from his own loot table (the game's normal drop path; making
-    # it in the plugin crashed the game). For each difficulty his table is a copy of the shared
-    # Rakanishu/Treehead table plus one forced pick from a bonus table: every base item with a
-    # spawnable unique or set at or below his item level, unique and set chance at the maximum.
-    # Those uniques may drop again in the same game (nolimit), so the pick is a unique, or a set
-    # for a base with only a set item (bonus_bases); never the game's rare fallback.
+    # Treehead's and Rakanishu's extra set or unique (both, decided 2026-11-22), each from his own
+    # loot table (the game's normal drop path; making it in the plugin crashed the game). For each
+    # difficulty his table is a copy of the shared Rakanishu/Treehead table plus one forced pick
+    # from a bonus table: every base item with a spawnable unique or set at or below the arena's
+    # item level, unique and set chance at the maximum. Those uniques may drop again in the same
+    # game (nolimit), so the pick is a unique, or a set for a base with only a set item
+    # (bonus_bases); never the game's rare fallback.
     arena = t.table("levels").first("Id", ARENA_ID)
-    treehead = supers.first("Superunique", TREEHEAD)
     for tc_col, lvl_col, tag in (("TC", "MonLvlEx", ""), ("TC(N)", "MonLvlEx(N)", " (N)"), ("TC(H)", "MonLvlEx(H)", " (H)")):
         item_level = int(arena[lvl_col]) + SUPERUNIQUE_LEVEL_BONUS
         bonus = loot.code_tree(f"DD Treehead Bonus{tag}", bonus_bases(t, item_level),
                                {q: "1024" for q in QUALITIES})
-        own = dict(loot.by_name[treehead[tc_col]])
-        own["Treasure Class"] = f"{treehead[tc_col]} Treehead"
-        picks = int(own["Picks"])
-        if picks >= 0:
-            raise RuntimeError(f"{treehead[tc_col]} has Picks {picks}; the forced extra pick needs a negative value.")
-        own["Picks"] = str(picks - 1)  # negative Picks: every listed item drops Prob times
-        put_first(own, bonus, "1")  # first, so the 6-item drop cap can't cut it
-        loot.tcs.rows.append(own)
-        loot.by_name[own["Treasure Class"]] = own
-        treehead[tc_col] = own["Treasure Class"]
-        # A superunique spawned by the plugin ("cheat monster super:4") may drop from its monster
-        # type's columns rather than this row, so his type (his alone) drops the same table.
-        suffix = tag.strip()
-        for c in tc_columns:
-            if c.endswith(suffix) if suffix else not c.endswith(")"):
-                stats.first("Id", TREEHEAD_TYPE)[c] = own["Treasure Class"]
-
+        for name, own_type, short in ((TREEHEAD, TREEHEAD_TYPE, "Treehead"), (RAKANISHU, RAKANISHU_TYPE, "Rak")):
+            boss = supers.first("Superunique", name)
+            own = dict(loot.by_name[boss[tc_col]])
+            own["Treasure Class"] = f"{boss[tc_col]} {short}"
+            if len(own["Treasure Class"]) > MAX_NAME:
+                raise RuntimeError(f"{own['Treasure Class']}: loot table name over {MAX_NAME} characters")
+            picks = int(own["Picks"])
+            if picks >= 0:
+                raise RuntimeError(f"{boss[tc_col]} has Picks {picks}; the forced extra pick needs a negative value.")
+            own["Picks"] = str(picks - 1)  # negative Picks: every listed item drops Prob times
+            put_first(own, bonus, "1")  # first, so the 6-item drop cap can't cut it
+            loot.tcs.rows.append(own)
+            loot.by_name[own["Treasure Class"]] = own
+            boss[tc_col] = own["Treasure Class"]
+            # A superunique spawned by the plugin ("cheat monster super:4") may drop from its monster
+            # type's columns rather than this row, so his type (his alone) drops the same table.
+            suffix = tag.strip()
+            for c in tc_columns:
+                if c.endswith(suffix) if suffix else not c.endswith(")"):
+                    stats.first("Id", own_type)[c] = own["Treasure Class"]
 
 def bonus_bases(t, item_level):
     """Item codes of base items that have a unique or a set item at or below his item level.
