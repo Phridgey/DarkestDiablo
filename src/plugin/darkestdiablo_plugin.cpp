@@ -713,7 +713,7 @@ static constexpr Wave ShenkWaves[] = {
 	{ { { "mspawn", "dd_shenk_imp1", 4, { 11, 33 } }, { "mspawn", "dd_shenk_minion1", 5, { 10, 24 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_shenk_deathmauler1", 5, { 10, 24 } }, { "mspawn", "dd_shenk_imp1", 3, { 9, 18 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_shenk_minion1", 3, { 8, 16 } }, { "mspawn", "dd_shenk_deathmauler1", 4, { 11, 12 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_shenk_imp1", 4, { 6, 10 } }, { "monster", "super:43", 1, { 4, 6 } }, { "monster", "super:50", 1, { 4, 6 } } }, 3, AnyClass, ShenkClass },
+	{ { { "mspawn", "dd_shenk_imp1", 4, { 6, 10 } }, { "monster", "super:42", 1, { 4, 6 } }, { "monster", "super:49", 1, { 4, 6 } } }, 3, AnyClass, ShenkClass },
 };
 // Frigid Highlands (level 113, src/maps/highlands.json).
 static constexpr Wave HighlandsWaves[] = {
@@ -728,7 +728,7 @@ static constexpr Wave PindleWaves[] = {
 	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 3, { 15, 20 } }, { "mspawn", "dd_mf_a5_succubus1", 4, { 14, 19 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 4, { 14, 16 } }, { "mspawn", "dd_mf_a5_succubus1", 5, { 13, 16 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 5, { 12, 15 } }, { "mspawn", "dd_mf_a5_succubus1", 3, { 12, 11 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 3, { 12, 9 } }, { "mspawn", "dd_mf_a5_succubus1", 4, { 12, 8 } }, { "monster", "super:53", 1, { 11, 7 } } }, 3, AnyClass, PindleskinClass },
+	{ { { "mspawn", "dd_mf_a5_reanimatedhorde1", 3, { 12, 9 } }, { "mspawn", "dd_mf_a5_succubus1", 4, { 12, 8 } }, { "monster", "super:52", 1, { 11, 7 } } }, 3, AnyClass, PindleskinClass },
 };
 // Icy Cellar (level 119, src/maps/cellar.json).
 static constexpr Wave CellarWaves[] = {
@@ -743,7 +743,7 @@ static constexpr Wave AnyaWaves[] = {
 	{ { { "mspawn", "dd_mf_a5b_snowyeti2", 3, { 39, 9 } }, { "mspawn", "dd_mf_a5b_succubus5", 4, { 36, 19 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_mf_a5b_reanimatedhorde1", 4, { 31, 21 } }, { "mspawn", "dd_mf_a5b_snowyeti2", 5, { 31, 29 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_mf_a5b_succubus5", 5, { 25, 36 } }, { "mspawn", "dd_mf_a5b_reanimatedhorde1", 3, { 21, 37 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a5b_snowyeti2", 3, { 16, 46 } }, { "mspawn", "dd_mf_a5b_succubus5", 4, { 12, 50 } }, { "monster", "super:60", 1, { 12, 52 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_mf_a5b_snowyeti2", 3, { 16, 46 } }, { "mspawn", "dd_mf_a5b_succubus5", 4, { 12, 50 } }, { "monster", "super:59", 1, { 12, 52 } } }, 3, AnyClass },
 };
 // Halls of Vaught (level 124, src/maps/vaught.json).
 static constexpr Wave VaughtWaves[] = {
@@ -751,7 +751,7 @@ static constexpr Wave VaughtWaves[] = {
 	{ { { "mspawn", "dd_mf_a5c_putriddefiler2", 4, { 41, 65 } }, { "mspawn", "dd_mf_a5c_minion6", 5, { 41, 65 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_mf_a5c_succubus4", 5, { 40, 60 } }, { "mspawn", "dd_mf_a5c_putriddefiler2", 3, { 41, 54 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_mf_a5c_minion6", 3, { 39, 48 } }, { "mspawn", "dd_mf_a5c_succubus4", 4, { 40, 45 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a5c_putriddefiler2", 4, { 40, 45 } }, { "mspawn", "dd_mf_a5c_minion6", 5, { 42, 38 } }, { "monster", "super:61", 1, { 41, 36 } } }, 3, AnyClass, NihlathakClass },
+	{ { { "mspawn", "dd_mf_a5c_putriddefiler2", 4, { 40, 45 } }, { "mspawn", "dd_mf_a5c_minion6", 5, { 42, 38 } }, { "monster", "super:60", 1, { 41, 36 } } }, 3, AnyClass, NihlathakClass },
 };
 // Cow Level (level 39, src/maps/cows.json).
 static constexpr Wave CowWaves[] = {
@@ -763,7 +763,7 @@ static constexpr Wave CowWaves[] = {
 };
 // Arreat Summit (level 120, src/maps/ancients.json): the three Ancients at once (their altar is gone).
 static constexpr Wave AncientsWaves[] = {
-	{ { { "monster", "super:44", 1, { 9, 13 } }, { "monster", "super:45", 1, { 7, 15 } }, { "monster", "super:46", 1, { 11, 15 } } }, 3, AnyClass },
+	{ { { "monster", "super:43", 1, { 9, 13 } }, { "monster", "super:44", 1, { 7, 15 } }, { "monster", "super:45", 1, { 11, 15 } } }, 3, AnyClass },
 };
 
 static constexpr Arena Arenas[] = {

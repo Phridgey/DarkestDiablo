@@ -21,7 +21,10 @@ def patch(t):
     supers = t.table("superuniques")
     for name in SPAWNED:
         original = supers.first("Superunique", name)
-        row_number = supers.rows.index(original)
-        copy_number = len(supers.rows)
+        # The game numbers superuniques by hcIdx, skipping the "Expansion" divider row, so a row's
+        # number ("cheat monster super:<n>") is not its place in the file past that divider.
+        # (Counting places sent "Rakanishu 2" to Treehead's copy and Treehead's to Griswold's.)
+        row_number = int(original["hcIdx"])
+        copy_number = max(int(r["hcIdx"]) for r in supers.rows if r.get("hcIdx", "").strip().isdigit()) + 1
         supers.add_copy("Superunique", name, Superunique=f"{name} 2", hcIdx=str(copy_number))
         t.loot_lines.append(f"superalt {row_number} {copy_number}")
