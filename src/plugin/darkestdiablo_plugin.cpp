@@ -1201,6 +1201,18 @@ static void FirstClearReward(const D2RL::PluginContext* context, const Route::St
 }
 
 // UI thread. All waves spawned and every spawned monster (and the boss) dead: give the scroll.
+// UI thread. The run's boss is dead: noted in the hero's progress, so a run left before its last
+// monsters die (town, save and exit) clears on return instead of bringing the boss back for a
+// second kill and a second drop (Blood Raven, 2026-11-22).
+static void __cdecl MarkBossDown(const D2RL::PluginContext* context, void*) noexcept {
+	Route::Progress progress = LoadProgress();
+	if (progress.running.empty() || progress.Flag("bossdown:" + progress.running) != 0) {
+		return;
+	}
+	progress.flags["bossdown:" + progress.running] = 1;
+	SaveProgress(context, progress);
+}
+
 static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) noexcept {
 	const int index = g_arena.load();
 	if (index < 0 || reinterpret_cast<uintptr_t>(run) != g_run.load() || g_portalDropped.exchange(true)) {
@@ -1221,6 +1233,7 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 		if (stop != nullptr && !file.empty()) {
 			Route::Progress progress = Route::Load(file);
 			const bool counted = progress.RecordClear(*stop);
+			progress.flags.erase(std::string("bossdown:") + stop->id);  // saved with the clear
 			g_runStop.clear();
 			if (counted) {
 				progress.potionsOwed += PotionsPerClear;  // handed out in town (DeliverPotions)
@@ -1794,6 +1807,9 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 			g_bossesDead |= 1U << i;
 		}
 	}
+	if (g_bossCount.load() > 0 && g_wave.load() >= arena.waveCount && AllBossesDead()) {
+		g_threads->runOnUiThread(context, MarkBossDown, nullptr);
+	}
 	for (const auto& rule : g_dropRules) {  // a guaranteed set or unique (Treehead)
 		if (rule.levelId == event->levelId && rule.monsterClass == event->monster.classId) {
 			g_pendingDropLevel = rule.itemLevel[std::min<uint32_t>(event->difficulty, 2)];
@@ -2272,6 +2288,23 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			Route::Progress progress = LoadProgress();
 			const bool sameGame = stop != nullptr && g_runStop == stop->id;
 			const int spawned = stop != nullptr ? progress.StartRun(*stop) : 0;
+			const bool bossDown = stop != nullptr && progress.Flag(std::string("bossdown:") + stop->id) != 0;
+			if (stop != nullptr && (spawned == 0 || !bossDown)) {
+				progress.flags.erase(std::string("bossdown:") + stop->id);  // a new run, or a stale mark
+			}
+			if (stop != nullptr && !sameGame && bossDown && spawned > 0) {
+				// A new game, back to a run whose boss already died (left before the rest of its wave
+				// did): it clears now, nothing spawns again.
+				g_pickedTravel = -1;
+				g_runStop = stop->id;
+				ResetArena();
+				g_arena = arena;
+				std::snprintf(message, sizeof(message), "%s: the boss already died in this run; cleared.", Arenas[arena].name);
+				context->LogInfo(message);
+				Trace(context, message);
+				Later(context, ArrivalDelayMs, ClearArena);
+				return;
+			}
 			if (stop != nullptr && !sameGame && spawned >= ToSpawn(Arenas[arena]) && Route::IsFork(stop->tier)) {
 				GiveUpLeftRun(context);  // left by quitting with nothing more to come: no farming it
 				ResetArena();
