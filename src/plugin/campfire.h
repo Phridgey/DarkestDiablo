@@ -9,7 +9,7 @@
 namespace Campfire {
 
 // The mod version, shown in the log, the console and the corner of the menus. One place only.
-inline constexpr char Version[] = "0.17.15";
+inline constexpr char Version[] = "0.17.16";
 
 // Call once from D2RLoaderLoadPlugin. Returns false only if a console command could not be added;
 // missing optional services just switch parts of the Campfire off (see the log).
