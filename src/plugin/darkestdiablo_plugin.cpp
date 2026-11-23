@@ -908,6 +908,11 @@ static auto SaveProgress(const D2RL::PluginContext* context, const Route::Progre
 
 // A quest stop clears when both are true (2026-11-22: a hero ran to the Cube with one wave out,
 // and the stop ended almost empty): the quest item taken, and every wave out and dead.
+// The stop the hero last picked on the route map (its travel level; -1 none). A new run starts only
+// from a pick: walking back in through a Town Portal left open used to start the stop again and
+// spend the fork's second pick without the hero knowing (2026-11-22, Ancient Tunnels).
+static std::atomic<int32_t> g_pickedTravel { -1 };
+
 static std::atomic<bool> g_questDone { false };
 static std::atomic<bool> g_wavesDone { false };
 
@@ -2206,6 +2211,7 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 			}
 			// If the earlier close didn't take, close the game's waypoint panel before leaving town.
 			g_threads->runOnUiThread(context, CloseNativeWaypointPanel, nullptr);
+			g_pickedTravel = level;
 			std::snprintf(message, sizeof(message), "goto %d", level);
 			RunConsole(context, message);
 		}
@@ -2250,6 +2256,17 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		Trace(context, message);
 			return;
 		}
+		if (arena >= 0 && arena != g_arena.load() && stop != nullptr && LoadProgress().running != stop->id &&
+		    g_pickedTravel.load() != stop->travelLevel) {
+			// No run of this stop in progress and the hero didn't pick it on the route map (back in
+			// through a portal after clearing it): nothing starts.
+			ResetArena();
+			std::snprintf(message, sizeof(message), "%s: not picked on the route map; no waves.", Arenas[arena].name);
+			context->LogInfo(message);
+			Trace(context, message);
+			context->WriteConsoleMessage("This stop is done. Pick your next stop on the route map, at a town waypoint.");
+			return;
+		}
 		if (arena >= 0 && arena != g_arena.load()) {
 			// The hero's run of this stop (route.h): a new one, or the one in progress.
 			Route::Progress progress = LoadProgress();
@@ -2264,6 +2281,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 				return;
 			}
 			if (stop != nullptr) {
+				g_pickedTravel = -1;  // used: coming back in later needs a new pick (or this run)
 				if (Arenas[arena].waveCount == 0) {
 					progress.NoteWaves(*stop, 1);  // entered: quitting now gives it up
 				}
