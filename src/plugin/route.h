@@ -61,7 +61,7 @@ inline constexpr Stop Stops[] = {
 	{ "clawviper", "NodeClawViper",  8, 61, 61 },  // the Amulet of the Viper
 	{ "arcane",    "Fork4Arcane",    9, 74, 74 },  // crafting hunt; the Summoner ends it
 	{ "tunnels",   "Fork4Tunnels",   9, 65, 65 },  // MF run
-	{ "canyon",    "Fork4Canyon",    9, 46, 46 },  // XP grind
+	{ "canyon",    "Fork4Canyon",    9, 59, 59 },  // XP grind (on level 59; the real 46 is outdoors)
 	{ "duriel",    "NodeDuriel",    10, 66, 73 },  // arrive at the orifice (66); Duriel dies in his lair (73)
 	// Act III (docs/act3.md)
 	{ "spider",    "NodeSpider",    11, 85, 85 },  // tier 11: all three, any order; Khalim's Eye

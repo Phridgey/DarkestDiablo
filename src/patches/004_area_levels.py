@@ -40,7 +40,7 @@ AREA_LEVELS = {
     60: 20,                      # Halls of the Dead
     49: 23, 55: 23,              # fork: Sewers, Stony Tomb
     64: 27, 61: 27,              # Maggot Lair, Claw Viper Temple
-    74: 31, 65: 31, 46: 31,      # fork: Arcane Sanctuary, Ancient Tunnels, Canyon of the Magi
+    74: 31, 65: 31, 59: 31,      # fork: Arcane Sanctuary, Ancient Tunnels, Canyon of the Magi
     66: 35, 73: 35,              # Tal Rasha's Tomb, Duriel's lair
     # Act III: 36-54
     85: 40, 91: 40, 93: 40,      # Khalim's three parts

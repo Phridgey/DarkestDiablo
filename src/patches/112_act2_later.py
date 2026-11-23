@@ -14,7 +14,7 @@ Tier 4, the fork:
 - Ancient Tunnels (level 65, MF run): four sewer rooms in a line (the tunnels use the sewers'
   tiles). Every monster drops as if magic find were 1.4 times as strong (035_inifuss_loot.py's
   with_mf); each pack is led by a unique, and a random one of them is the target.
-- Canyon of the Magi (level 46, XP grind): a round sandy hollow; +40% experience and triple gold.
+- Canyon of the Magi (on spare level 59 with level 46's look, XP grind): a round sandy hollow; +40% experience and triple gold.
 Tier 5:
 - Duriel: the hero arrives in the true Tal Rasha's Tomb's last room (level 66, the orifice
   room alone). Inserting the Horadric Staff plays the game's own event, which opens the way to
@@ -44,7 +44,7 @@ ARCANE = {"id": "74", "map": "Act2/Arcane/darkest_arcane.ds1", "size": ("12", "4
 TUNNELS = {"id": "65", "map": "Act2/Sewer/darkest_tunnels.ds1", "size": ("12", "48"), "template": "Act 2 - Sewer NS",
            "name": "Act 2 - Darkest Diablo Ancient Tunnels", "waves": ["zombie5", "sandraider3", "mummy3", "skmage_ltng4"],
            "prefix": "dd_mf_a2_"}
-CANYON = {"id": "46", "map": "Act2/Outdoors/darkest_canyon.ds1", "size": ("24", "24"), "template": "Act 2 - Desert Valley Ruin 1",
+CANYON = {"id": "59", "look": "46", "map": "Act2/Outdoors/darkest_canyon.ds1", "size": ("24", "24"), "template": "Act 2 - Desert Valley Ruin 1",
           "name": "Act 2 - Darkest Diablo Canyon", "waves": ["brute4", "sandmaggot3", "pantherwoman4", "scarab4", "slinger4"],
           "prefix": "dd_xp_a2b_"}
 TALRASHA = {"id": "66", "map": "Act2/Tomb/darkest_talrasha.ds1", "size": ("16", "16"), "template": "Act 2 - Tomb Talrasha N",
@@ -61,6 +61,11 @@ def tunnels_mf(t):
         for c in columns:
             if row.get(c) and row[c] in loot.by_name:
                 row[c] = loot.with_mf(row[c])
+
+
+# Level columns that make a level look and sound like another (as in 113_act3.py).
+LOOK = ("Pal", "LevelType", "Intensity", "Red", "Green", "Blue", "SoundEnv", "LevelName", "LevelEntry", "Rain", "Mud",
+        "*IsInside", "LOSDraw", "FloorFilter", "DrawEdges")
 
 
 def bosses_drop_staff_pieces(t):
@@ -95,6 +100,14 @@ def patch(t):
     # The orifice room keeps its preset's warp scan, as Blizzard's has it (the event's way to Duriel).
     t.table("lvlprest").first("Name", TALRASHA["name"])["Scan"] = "1"
     tunnels_mf(t)
+    # The Canyon is built on a spare tomb level (59) with the real Canyon's look: the real one (46)
+    # is an outdoor level, and turned into a fixed map it crashed the game on arrival (2026-11-23;
+    # CLAUDE.md: build arenas on unused cave levels).
+    levels = t.table("levels")
+    real, spare = levels.first("Id", CANYON["look"]), levels.first("Id", CANYON["id"])
+    for col in LOOK:
+        if col in spare and col in real:
+            spare[col] = real[col]
     canyon = arenas.arena_level(t, CANYON)
     arenas.copies(t, CANYON, arenas.XP_BONUS)
     arcane = arenas.arena_level(t, ARCANE)
