@@ -135,3 +135,20 @@ Type `dd-where` in the console: it prints the hero and fire positions, the hero'
 position with `location player`. `dd-where scan` searches again. `dd-state stats` lists every
 hero stat.
 The plugin log has a "memory scan" line after each search.
+
+## Mercenary full gear: the one code change (2026-11-23)
+
+Agreed by both of us as the only exception to "never change game code". `src/plugin/mercgear.cpp`.
+
+- What: the game's two copies of "may a mercenary wear this" (the server's, also used when a save
+  loads, and the panel's) test whether an item is body armor (`mov edx,3`, item type 3). Each `3`
+  becomes the number of our "merc" item type (`997_merc_gear_type.py`, "merctype" in
+  `loot_data.txt`), a parent type of body armor, rings, amulets, gloves, boots and belts.
+- Where: found at load by byte pattern in the game's code section (the patterns and the method
+  are PD2 Resurrected's, MIT, `merc_rules.cpp`); exactly one match each, or nothing changes. The
+  plugin log line "Merc gear: on (server check at 0x..., panel check at 0x..., item type N)" gives
+  the addresses on our build.
+- How: D2RLoader's MutationService, both bytes in one transaction, the original `ba 03 00 00 00`
+  checked first.
+- If it fails: a message box offers to close the game, because a save loaded without the change
+  loses whatever jewelry, gloves, belt and boots its mercenary wears.

@@ -31,6 +31,7 @@
 #include "zone.h"
 #include "andariel.h"
 #include "waveoverlay.h"
+#include "mercgear.h"
 #include "routepages.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -167,6 +168,8 @@ static std::mutex         g_supersLock;
 static std::vector<CraftStep> g_craftSteps;             // in the order of loot_data.txt (rising magic find)
 static std::atomic<int>       g_pendingDropLevel { 0 };  // item level of a queued drop, 0 = none
 
+static std::atomic<int> g_mercType { -1 };  // "merctype" in loot_data.txt (997_merc_gear_type.py)
+
 static void ReadLootData(const D2RL::PluginContext* context) noexcept {
 	namespace fs = std::filesystem;
 	try {
@@ -200,6 +203,11 @@ static void ReadLootData(const D2RL::PluginContext* context) noexcept {
 					uint32_t cls = 0;
 					if (words >> id >> cls) {
 						g_monsterClasses[id] = cls;
+					}
+				} else if (kind == "merctype") {
+					int number = -1;
+					if (words >> number) {
+						g_mercType = number;
 					}
 				} else if (kind == "superalt") {
 					int row = 0, copy = 0;
@@ -2698,6 +2706,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	}
 
 	ReadLootData(context);
+	MercGear::Install(context, g_mercType.load());  // the one change to game code (mercgear.cpp)
 
 	// Route map panel and UI-message listener. Optional: without them the arenas still work.
 	const D2RL::ResourceService* resources = nullptr;

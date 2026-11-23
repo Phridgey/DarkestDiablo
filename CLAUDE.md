@@ -28,7 +28,10 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
   Writes (agreed by both of us, 2026-11-19):
   the plugin may change existing values in game memory (stats, buff/debuff values and end times)
   through `src/plugin/gamewrite.h` only, the one file that writes, on the frozen build only, into
-  plain data memory (never code). Never change game code, and never write anywhere else. Each value read and its address go in
+  plain data memory (never code). Never change game code, and never write anywhere else.
+  One code exception, agreed by both of us (2026-11-23): `src/plugin/mercgear.cpp` changes one
+  number in the game's two "may a mercenary wear this" checks (body armor -> our "merc" item type),
+  through D2RLoader's MutationService, found by byte pattern; nothing else in game code. Each value read and its address go in
   `docs/game-memory.md`, and the plugin turns the feature off if the game build differs.
 - Game information (hero, monsters, objects, items, stats, buffs/debuffs, events) comes from the
   game-state API, `src/plugin/gameapi.h`; its guide is `docs/game-state-api.md`. Use it instead of
