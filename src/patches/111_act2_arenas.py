@@ -5,7 +5,7 @@
   the Horadric Cube's chest. Cleared when the hero picks up the Cube (the plugin).
 - Sewers 3 (level 49, tier 7, XP grind): a heavily shortened sewer ending in Radament's lair.
   +40% experience and triple gold (as every XP grind: 115_xp_gold.py picks up "dd_xp_" copies).
-  Radament always drops his Book of Skill first; picking it up clears the stop.
+  Cleared when Radament and his waves are dead (his Book of Skill is the game's own quest drop).
 - Stony Tomb (level 55, tier 7, crafting hunt): four tomb rooms opened into one hall, with the
   Mausoleum's crafting loot for Act II (runes up to Shael, 060_mausoleum.py's crafting_loot).
 
@@ -116,7 +116,8 @@ def patch(t):
     copies(t, HALLS)
     arena_level(t, SEWERS)
     copies(t, SEWERS, XP_BONUS)
-    radament_drops_his_book(t)
+    # radament_drops_his_book(t): shelved 2026-11-23. The book can't be read outside the real quest and
+    # the game's own quest drop already gives one, so the stop clears when Radament dies instead.
     stony = arena_level(t, STONY)
     mausoleum.crafting_loot(t, stony, arena_id=STONY["id"], wave_types=STONY["waves"], craft=STONY_CRAFT,
                             name="DD Craft A2", id_prefix=STONY["prefix"])

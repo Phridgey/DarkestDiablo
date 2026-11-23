@@ -561,7 +561,8 @@ static constexpr Wave HallsWaves[] = {
 };
 // Sewers 3 (level 49): three sewer rooms in a line (src/maps/sewers.json), XP grind; the hero
 // arrives in the south room, Radament (superunique 10) waits in his lair at the north end.
-// Cleared on picking up his Book of Skill (he always drops it first).
+// Cleared when every wave is dead, Radament included (2026-11-23: no longer on his Book of Skill,
+// which can't be read outside the real quest; the 3 skill points come with the clear).
 static constexpr Wave SewersWaves[] = {
 	{ { { "mspawn", "dd_xp_a2_skeleton4", 5, { 7, 19 } }, { "mspawn", "dd_xp_a2_mummy1", 3, { 4, 25 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_xp_a2_pantherwoman1", 4, { 3, 14 } }, { "mspawn", "dd_xp_a2_skmage_fire3", 3, { 7, 19 } } }, 2, AnyClass },
@@ -787,7 +788,7 @@ static constexpr Arena Arenas[] = {
 	// Andariel: no waves; her lair's packs, uniques and Andariel herself come from andariel.cpp. Her death clears it.
 	{ "Andariel",       37,               4500, 1900, nullptr,        0,                                                                     false, { 0, 0 }, 0, AndarielClass },
 	{ "Halls of the Dead", 60,            3000, 2500, HallsWaves,  static_cast<int>(sizeof(HallsWaves) / sizeof(HallsWaves[0])),  false, { 0, 0 }, 0, AnyClass, false, false, 1, "box", CubeChestRow, { 10, 42 }, true },
-	{ "Sewers",         49,               1500, 1600, SewersWaves, static_cast<int>(sizeof(SewersWaves) / sizeof(SewersWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "ass", -1, { 5, 30 }, true },
+	{ "Sewers",         49,               1500, 1600, SewersWaves, static_cast<int>(sizeof(SewersWaves) / sizeof(SewersWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 5, 30 }, true },
 	{ "Stony Tomb",     55,               3000, 1000, StonyWaves,  static_cast<int>(sizeof(StonyWaves) / sizeof(StonyWaves[0])),   true, { 16, 16 }, 11, AnyClass, false, false, 1, nullptr, -1, { 4, 16 } },
 	{ "Maggot Lair",    64,               3500, 1600, MaggotWaves,    static_cast<int>(sizeof(MaggotWaves) / sizeof(MaggotWaves[0])),       false, { 0, 0 }, 0, AnyClass, false, false, 1, "msf", StaffChestRow, { 4, 27 }, true },
 	{ "Claw Viper Temple", 61,            3000, 2800, ClawViperWaves, static_cast<int>(sizeof(ClawViperWaves) / sizeof(ClawViperWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "vip", SunAltarRow, { 8, 4 } },
