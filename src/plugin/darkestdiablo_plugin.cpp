@@ -1229,9 +1229,10 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 			if (counted && Arenas[index].levelId == DenOfEvilLevelId) {
 				RunConsole(context, "cheat skillpoints 3");
 			}
-			// Radament's Book of Skill gives its 1 point when read; the other 2 come here.
+			// Radament's quest reward, 3 points, once per hero. His Book of Skill only clears the stop:
+			// outside the real quest the game won't let the hero read it (2026-11-22).
 			if (counted && Arenas[index].levelId == SewersLevelId && progress.Clears(*stop) == 1) {
-				RunConsole(context, "cheat skillpoints 2");
+				RunConsole(context, "cheat skillpoints 3");
 			}
 			if (counted && progress.Clears(*stop) == 1) {
 				FirstClearReward(context, *stop, progress, file);
