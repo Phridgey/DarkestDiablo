@@ -51,6 +51,9 @@ def arena_level(t, arena):
     # Not a quest level: with Quest set, the game counts the level's monsters for a quest (the
     # Den's gave a skill point after a few kills, since arenas start empty).
     row["Quest"] = "0"
+    # No waypoint slot: the game looks for the level's waypoint when the hero arrives, and these
+    # maps have none (2026-11-22: entering the Canyon of the Magi, slot 17, crashed the game).
+    row["Waypoint"] = "255"
     for other in levels.rows:
         for k in range(8):
             if other is row or other.get(f"Vis{k}") == arena["id"]:
