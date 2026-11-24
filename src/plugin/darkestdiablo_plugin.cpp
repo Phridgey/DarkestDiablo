@@ -430,11 +430,11 @@ static constexpr uint32_t RakanishuClass  = 759;  // monstats row of dd_rakanish
 // closest (11,11) so they can be killed before they raise many Fallen. Corpsefire comes last from
 // the far south-east (19,17). Test the spots in game with "cheat mspawn". 43 monsters before Corpsefire.
 static constexpr Wave DenWaves[] = {
-	{ { { "mspawn", "fallen1", 6, { 12, 18 } }, { "mspawn", "zombie1", 3, { 17, 15 } } }, 2, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 17, 10 } }, { "mspawn", "zombie1", 3, { 17, 15 } }, { "mspawn", "fallenshaman1", 1, { 11, 11 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 12, 18 } }, { "mspawn", "zombie1", 3, { 17, 15 } }, { "mspawn", "fallenshaman1", 2, { 11, 11 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 4, { 17, 10 } }, { "mspawn", "zombie1", 3, { 17, 15 } }, { "mspawn", "fallenshaman1", 2, { 11, 11 } } }, 3, AnyClass },
-	{ { { "mspawn", "fallen1", 3, { 12, 18 } }, { "mspawn", "zombie1", 4, { 17, 15 } }, { "mspawn", "fallenshaman1", 1, { 11, 11 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_den_fallen1", 6, { 12, 18 } }, { "mspawn", "dd_den_zombie1", 3, { 17, 15 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_den_fallen1", 4, { 17, 10 } }, { "mspawn", "dd_den_zombie1", 3, { 17, 15 } }, { "mspawn", "dd_den_fallenshaman1", 1, { 11, 11 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_den_fallen1", 4, { 12, 18 } }, { "mspawn", "dd_den_zombie1", 3, { 17, 15 } }, { "mspawn", "dd_den_fallenshaman1", 2, { 11, 11 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_den_fallen1", 4, { 17, 10 } }, { "mspawn", "dd_den_zombie1", 3, { 17, 15 } }, { "mspawn", "dd_den_fallenshaman1", 2, { 11, 11 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_den_fallen1", 3, { 12, 18 } }, { "mspawn", "dd_den_zombie1", 4, { 17, 15 } }, { "mspawn", "dd_den_fallenshaman1", 1, { 11, 11 } } }, 3, AnyClass },
 	// Corpsefire + 5 minions, at the hall's east side. The stop is cleared when everything is dead,
 	// Corpsefire included: leftover Fallen used to count the Den clear while he lived.
 	{ { { "monster", "super:40", 6, { 19, 17 } } }, 1, AnyClass, CorpsefireClass },
