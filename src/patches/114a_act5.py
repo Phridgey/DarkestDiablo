@@ -18,7 +18,7 @@ The plugin spawns the waves (darkestdiablo_plugin.cpp: "Act V").
 Also the socket rewards (docs/flattening.md, "Socket rewards"): a "Socket Chisel" item (zsk) the
 plugin hands out (Charsi after the Malus, Hratli once Khalim's three parts are held, Larzuk's
 second socket after Shenk), and the Horadric Cube recipe chisel + any item without sockets ->
-the item with one socket.
+the item with as many sockets as it can hold, at most 1 (unique, set), 2 (rare, crafted) or 3 (magic).
 """
 import importlib.util
 from pathlib import Path
@@ -68,6 +68,9 @@ THRONE = {"id": "131", "map": "Expansion/BaalLair/darkest_throne.ds1", "size": (
 
 BAAL_LEVEL = "90"     # his normal monster level, so his item level reaches every elite unique and set
 CHISEL = ("zsk", "Socket Chisel", "key")  # code, name, the item whose look it borrows
+# What the Chisel gives, by quality: as many sockets as the item can hold, up to this many.
+CHISEL_SOCKETS = (("uni", 1, "a unique"), ("set", 1, "a set"), ("rar", 2, "a rare"), ("crf", 2, "a crafted"),
+                  ("mag", 3, "a magic"), ("", 6, "any other"))
 STRING_ID = 91300
 
 
@@ -142,11 +145,15 @@ def chisel(t):
     items.append({code: dict(assets[look])})
     cube = t.table("cubemain")
     soj = next(r for r in cube.rows if r.get("output", "").strip('"').startswith("useitem,sock=1"))
-    recipe = dict(soj)
-    recipe.update({"description": "Socket Chisel + any item without sockets -> the item with one socket",
-                   "numinputs": "2", "input 1": '"any,nos"', "input 2": code, "input 3": "", "input 4": "", "input 5": "",
-                   "input 6": "", "input 7": "", "output": '"useitem,sock=1"'})
-    cube.rows.append(recipe)
+    # The game caps sock= at what the item can hold (its type and item level), and the cube uses the
+    # first row that matches, so the qualities come first and "anything else" (white items) last.
+    for quality, sockets, label in CHISEL_SOCKETS:
+        recipe = dict(soj)
+        wanted = f"any,{quality},nos" if quality else "any,nos"
+        recipe.update({"description": f"Socket Chisel + {label} item without sockets -> up to {sockets} sockets",
+                       "numinputs": "2", "input 1": f'"{wanted}"', "input 2": code, "input 3": "", "input 4": "",
+                       "input 5": "", "input 6": "", "input 7": "", "output": f'"useitem,sock={sockets}"'})
+        cube.rows.append(recipe)
     if t.excel.name != "excel":  # the base copy only keeps tables; strings are shipped once
         return
     strings = t.data("local/lng/strings/item-names.json")
