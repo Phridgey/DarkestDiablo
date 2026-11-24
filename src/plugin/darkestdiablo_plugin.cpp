@@ -666,7 +666,7 @@ static constexpr Wave LowerKurastWaves[] = {
 	{ { { "mspawn", "dd_craft_a3_zealot1", 4, { 10, 33 } }, { "mspawn", "dd_craft_a3_baboon4", 5, { 11, 27 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_craft_a3_sandleaper4", 5, { 11, 27 } }, { "mspawn", "dd_craft_a3_zealot1", 3, { 9, 20 } } }, 2, AnyClass },
 	{ { { "mspawn", "dd_craft_a3_baboon4", 3, { 10, 16 } }, { "mspawn", "dd_craft_a3_sandleaper4", 4, { 10, 14 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_craft_a3_zealot1", 4, { 10, 9 } }, { "mspawn", "dd_craft_a3_baboon4", 5, { 8, 5 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a3_zealot1", 4, { 10, 14 } }, { "mspawn", "dd_craft_a3_baboon4", 5, { 10, 16 } } }, 2, AnyClass },  // (8,5) and (10,9) sit on the temple platform's wall and a brazier
 };
 // Travincal (level 96, src/maps/travincal.json).
 static constexpr Wave TravincalWaves[] = {
@@ -1444,6 +1444,52 @@ static void __cdecl QuestItemTick(const D2RL::PluginContext* context, void* run)
 	g_threads->runOnGameThread(context, QuestItemCheck, run);
 }
 
+// Game thread. Every wave is out, but the kill count may never reach the end: a spawn the game
+// refused ("Monster not created") still counts as alive (2026-11-23: Lower Kurast stuck at wave 5
+// with 11 of 40 never there). Clear once every boss is dead and no living enemy is left anywhere
+// loaded for 5 s. Quest and object stops have their own check (QuestItemCheck).
+static void __cdecl EmptyArenaTick(const D2RL::PluginContext* context, void* run) noexcept;
+static void __cdecl EmptyArenaCheck(const D2RL::PluginContext* context, void* run) noexcept {
+	static int s_quietTicks = 0;
+	static uintptr_t s_run = 0;
+	const int index = g_arena.load();
+	if (index < 0 || reinterpret_cast<uintptr_t>(run) != g_run.load() || g_portalDropped.load()) {
+		return;
+	}
+	if (s_run != reinterpret_cast<uintptr_t>(run)) {
+		s_run = reinterpret_cast<uintptr_t>(run);
+		s_quietTicks = 0;
+	}
+	const Arena& arena = Arenas[index];
+	bool anyAlive = true;
+	try {
+		anyAlive = !Game::Enemies(-1).empty();
+	} catch (...) {
+	}
+	s_quietTicks = (g_wave.load() >= arena.waveCount && AllBossesDead() && !anyAlive) ? s_quietTicks + 1 : 0;
+	if (s_quietTicks >= 10) {
+		s_quietTicks = 0;
+		g_wavesDone = true;
+		char message[128] {};
+		std::snprintf(message, sizeof(message), "%s: every wave out and no enemy left nearby; cleared (%d unaccounted for).",
+			arena.name, g_remaining.load());
+		Trace(context, message);
+		g_threads->runOnUiThread(context, ClearArena, run);
+		return;
+	}
+	Later(context, 500, EmptyArenaTick);
+}
+static void __cdecl EmptyArenaTick(const D2RL::PluginContext* context, void* run) noexcept {
+	g_threads->runOnGameThread(context, EmptyArenaCheck, run);
+}
+// Starts the check for arenas that clear on kills alone.
+static void WatchEmptyArena(const D2RL::PluginContext* context, int index, int delayMs) noexcept {
+	const Arena& arena = Arenas[index];
+	if (arena.waveCount > 0 && arena.clearOnItem == nullptr && arena.clearOnObject < 0) {
+		Later(context, delayMs, EmptyArenaTick);
+	}
+}
+
 // UI thread. Puts the hero at the arena's arrival tile (maps without a waypoint or stairs).
 static void __cdecl PlaceAtArrival(const D2RL::PluginContext* context, void* run) noexcept {
 	const int index = g_arena.load();
@@ -1797,6 +1843,9 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run)
 		Trace(context, message);
 	if (wave < arena.waveCount) {
 		Later(context, WaveIntervalMs, StartNextWave);
+	}
+	if (wave == arena.waveCount) {
+		WatchEmptyArena(context, index, 3000);
 	}
 }
 
@@ -2588,6 +2637,8 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			if (g_wave.load() < Arenas[arena].waveCount) {
 				WaveOverlay::SetWaves(g_wave.load(), Arenas[arena].waveCount, ArrivalDelayMs);
 				Later(context, ArrivalDelayMs, StartNextWave);
+			} else {
+				WatchEmptyArena(context, arena, ArrivalDelayMs + 3000);  // back in after the last wave
 			}
 			std::snprintf(message, sizeof(message), "%s: run %s at wave %d of %d.", Arenas[arena].name, spawned > 0 ? "resumed" : "started",
 				g_wave.load(), Arenas[arena].waveCount);

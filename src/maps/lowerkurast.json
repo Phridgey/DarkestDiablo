@@ -25,10 +25,10 @@
       "type": 2,
       "id": 112,
       "tile": [
-        5,
-        8
+        6,
+        5
       ],
-      "comment": "ConsolationChest (super chest, objpreset Act 3 Index 112)"
+      "comment": "ConsolationChest (super chest, objpreset Act 3 Index 112) - on top of the temple platform; (5,8) was on its wall"
     },
     {
       "type": 2,
