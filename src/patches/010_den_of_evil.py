@@ -18,9 +18,6 @@ SIZE_X, SIZE_Y = "24", "24"  # map width - 1, height - 1 (one 24x24 cave room)
 KEEP = {"Id", "Name", "Layer", "OffsetX", "OffsetY"}
 CORPSEFIRE_TYPE = "dd_corpsefire"  # his own monstats row (see the end of patch())
 CORPSEFIRE_CLASS = 751             # its row number: the first one after the game's 751 monsters
-DEN_TYPES = ("fallen1", "zombie1", "fallenshaman1")  # the wave monsters (DenWaves in the plugin)
-DEN_PREFIX = "dd_den_"
-DEN_DEFENSE = 0.45                 # 55% less defense than the game's own
 
 
 def patch(t):
@@ -110,15 +107,3 @@ def patch(t):
     models = t.data("hd/character/monsters.json")
     models[CORPSEFIRE_TYPE] = models["zombie1"]
 
-    # The Den's monsters have 55% less defense (2026-11-23): the plugin spawns copies of their own
-    # ("dd_den_<type>"), so the same types elsewhere (Tristram, the Tree of Inifuss) keep theirs.
-    for source in DEN_TYPES:
-        copy = stats.add_copy("Id", source, Id=DEN_PREFIX + source, NextInClass="")
-        models[DEN_PREFIX + source] = models[source]
-    for row in [stats.first("Id", DEN_PREFIX + s) for s in DEN_TYPES] + [own]:
-        for col in ("minion1", "minion2"):
-            if row.get(col) in DEN_TYPES:
-                row[col] = DEN_PREFIX + row[col]
-        for col in ("AC", "AC(N)", "AC(H)"):
-            if row.get(col, "").strip().isdigit():
-                row[col] = str(round(int(row[col]) * DEN_DEFENSE))
