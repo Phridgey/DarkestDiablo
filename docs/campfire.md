@@ -49,7 +49,7 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    read, the stash opens.
 6. **Death is final.** A fallen hero's files move to the graveyard, with everything it wore and
    carried. Its class locks again. Only the stash carries on.
-7. **The stash.** The game's shared stash, with 7 more pages. Each save has its own.
+7. **The stash.** The game's shared stash, 10 pages, unlocked one by one (`docs/stash.md`). Each save has its own.
 8. **Heroes by the fire.** In the Rogue Encampment the save's other heroes rest around the fire,
    each in its class's own body and the armor weight (light, medium, heavy) of the body armor it
    last wore. They can't be clicked and don't talk. Exact item looks and weapons can't be shown:
@@ -115,6 +115,7 @@ In the save folder (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`):
 
     camp\active.txt              the loaded slot
     camp\slot<N>\camp.txt        that slot's camp: heroes, recruits, fallen classes, the traveler's offer
+    camp\slot<N>\stash.txt        that slot's stash upgrades and what lies in its Upgrades tab (docs/stash.md)
     camp\slot<N>\files\          that slot's saves and stash while another slot is loaded
     camp\next.txt                 a save change waiting for the next start (see above)
     camp\graveyard\slot<N>\      fallen heroes

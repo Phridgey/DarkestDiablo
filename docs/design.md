@@ -166,8 +166,8 @@ game: the numbers are for one player.
   `docs/campfire.md`.
 - The next character to play is picked from the campfire circle, with the stash in view to plan.
 - Stashed items keep their level and attribute requirements. That is the balance.
-- The stash starts small. Optional challenges (e.g. "bonus for spears", "can't use shields")
-  unlock more tabs and stash features.
+- The stash starts small: one shared page, no personal page. Gold buys pages; finishing acts with
+  different classes earns points for an Upgrades tab (gems, runes, potions). See `docs/stash.md`.
 - **Atlas:** kiss and curse bonuses that keep less-progressed characters relevant. Points come
   from reaching a new furthest point; they can be re-allocated freely; profiles can be saved
   (pushing vs farming). No out-of-run skill tree.

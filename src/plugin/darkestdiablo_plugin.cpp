@@ -30,6 +30,7 @@
 #include "route.h"
 #include "zone.h"
 #include "andariel.h"
+#include "stashgame.h"
 #include "waveoverlay.h"
 #include "mercgear.h"
 #include "routepages.h"
@@ -1004,8 +1005,8 @@ static void __cdecl FindTargetUnique(const D2RL::PluginContext* context, void* r
 
 // ---- The camp's potion supply -------------------------------------------------------------
 // Shops sell no health potions and nothing drops them (src/patches/006_no_health_potions.py).
-// Instead every cleared stop earns PotionsPerClear, handed out in town into the hero's stash (the
-// bag if the stash is full). What doesn't fit stays owed (in the route progress file) and comes
+// Instead every cleared stop earns PotionsPerClear, handed out in town onto the first shared stash page
+// (the bag if it is full). What doesn't fit stays owed (in the route progress file) and comes
 // at the next visit, so unclaimed potions pile up.
 static constexpr int PotionsPerClear = 3;
 static std::atomic<uint32_t> g_difficulty { 0 };  // as last seen from a monster's death
@@ -1035,7 +1036,8 @@ static void __cdecl DeliverPotions(const D2RL::PluginContext* context, void*) no
 			.durability      = D2RL::Items::DefaultValue,
 			.destination     = {
 				.structSize = D2RL::Items::ItemDestinationSize,
-				.container  = D2RL::Items::ItemContainer::PersonalStash,
+				// the first shared page: heroes have no personal page (docs/stash.md)
+				.container  = StashGame::CanPutOnSharedPages() ? D2RL::Items::ItemContainer::SharedStash : D2RL::Items::ItemContainer::Inventory,
 				.placement  = D2RL::Items::Placement::Automatic,
 			},
 		};
@@ -1271,6 +1273,7 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 			if (counted && !Route::Save(file, progress)) {
 				context->LogWarn("Route: could not save the hero's progress.");
 			}
+			StashGame::OnStopCleared(context);  // the act may be done: a caravan point
 			// The Den quest's skill point, once per hero: the Den arena is not the quest level (that
 			// would offer Akara's free respec), and a dropped Book of Skill can't be used in Act I.
 			// Quest rewards given once per difficulty are tripled (docs/flattening.md): 3 points.
@@ -2417,7 +2420,8 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		context->LogInfo(message);
 		Trace(context, message);
 	}
-	if (DevTools::OnUiMessage(context, target, command, text) || Campfire::OnUiMessage(context, target, command, text)) {
+	if (DevTools::OnUiMessage(context, target, command, text) || Campfire::OnUiMessage(context, target, command, text) ||
+		StashGame::OnUiMessage(context, target, command, text)) {
 		return Action::Consume;
 	}
 	// Meshif sails east as soon as Duriel is dead (decided 2026-11-23): talking to him in Lut Gholein
@@ -2538,6 +2542,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	}
 	Campfire::OnGameplayEvent(context, event);
 	DevTools::OnGameplayEvent(context, event);
+	StashGame::OnGameplayEvent(context, event);
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
 	if (event->kind == Kind::LevelChanged) {
 		g_levelId = event->currentValue;
@@ -2907,7 +2912,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	// The GM window's event list. A new event needs one line here (or a RegisterEvent call of its
 	// own before DevTools::Load); the window and "gm event <id>" pick it up by themselves.
 	DevTools::RegisterEvent({ .id = "traveler", .label = "A traveler joins the camp", .console = "dd-traveler" });
-	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) && LoadWaveCounter(context) &&
+	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) && StashGame::Load(context) && LoadWaveCounter(context) &&
 		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&

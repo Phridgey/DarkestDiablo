@@ -3,6 +3,7 @@
 // tools\build-plugin.cmd builds and runs them too.
 #include "camp.h"
 #include "route.h"
+#include "stash.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -449,7 +450,143 @@ static void ReadsThisGameBuildsSaves() {
 	fs::remove_all(dir);
 }
 
-int main() {
+static auto ActDone(int lastAct) -> Route::Progress {
+	Route::Progress p;
+	for (const auto& stop : Route::Stops) {
+		if (Route::ActOfTier(stop.tier) <= lastAct) {
+			p.clears[stop.id] = Route::IsFork(stop.tier) ? Route::PicksPerFork : 1;
+		}
+	}
+	return p;
+}
+
+static void StashPagesArePaidInParts() {
+	Stash::State s;
+	CHECK(s.Pages() == 1 && s.Owing() == 50000);
+	CHECK(!s.Pay(30000) && s.fund == 30000 && s.Owing() == 20000);
+	CHECK(s.Pay(999999) && s.tier == 1 && s.fund == 0);  // never more than is owed, nothing carried over
+	long long last = 0;
+	for (const long long price : Stash::TierPrice) {
+		CHECK(price > last);
+		last = price;
+	}
+	while (s.tier < Stash::TierCount) {
+		CHECK(s.Pay(s.Owing()));
+	}
+	CHECK(s.Pages() == Stash::PageCount && s.Owing() == 0 && !s.Pay(1));
+	CHECK(Stash::Commas(50000) == "50,000" && Stash::Commas(2500000) == "2,500,000" && Stash::Commas(7) == "7" && Stash::Commas(100) == "100");
+}
+
+static void StashPointsComeOncePerClassAndAct() {
+	for (int act = 1; act <= 5; ++act) {  // LastTierOfAct agrees with the route
+		const int tier = Stash::LastTierOfAct[act - 1];
+		CHECK(Route::ActOfTier(tier) == act && (tier + 1 == Route::TierCount || Route::ActOfTier(tier + 1) == act + 1));
+	}
+	Stash::State s;
+	CHECK(Stash::CountActs(s, Paladin, Route::Progress {}) == 0);
+	CHECK(Stash::CountActs(s, Paladin, ActDone(1)) == 1);
+	CHECK(Stash::CountActs(s, Paladin, ActDone(1)) == 0);   // the same act again, even by a later Paladin
+	CHECK(Stash::CountActs(s, Paladin, ActDone(3)) == 2);
+	CHECK(Stash::CountActs(s, Druid, ActDone(1)) == 1);
+	CHECK(Stash::CountActs(s, -1, ActDone(5)) == 0);
+	CHECK(s.Earned() == 4 && s.Points() == 4);
+}
+
+static void StashTreeNeedsParentsAndPoints() {
+	std::set<std::string> ids;
+	int total = 0;
+	for (const auto& node : Stash::Nodes) {
+		CHECK(ids.insert(node.id).second);
+		CHECK(node.parent[0] == '\0' || ids.count(node.parent) == 1);  // listed after its parent
+		total += node.cost;
+	}
+	CHECK(total > 5 && total <= ClassCount * 5);  // one class is never enough, all classes always are
+	Stash::State s;
+	CHECK(s.BuyNode("tab") == Stash::Buy::NotEnoughPoints);
+	Stash::CountActs(s, Paladin, ActDone(5));
+	CHECK(s.BuyNode("gem1") == Stash::Buy::Locked);
+	CHECK(s.BuyNode("tab") == Stash::Buy::Bought && s.BuyNode("tab") == Stash::Buy::AlreadyOwned);
+	CHECK(s.BuyNode("gem1") == Stash::Buy::Bought && s.BuyNode("gem2") == Stash::Buy::Bought && s.BuyNode("gem3") == Stash::Buy::Bought);
+	CHECK(s.Points() == 0 && s.BuyNode("rune1") == Stash::Buy::NotEnoughPoints && s.BuyNode("nonsense") == Stash::Buy::Unknown);
+}
+
+static void StashSlotsTakeWhatIsUnlocked() {
+	std::set<std::string> codes;
+	for (const auto& kind : Stash::Kinds()) {
+		CHECK(codes.insert(kind.code).second);
+		for (const char* need : kind.needs) {
+			CHECK(Stash::FindNode(need) != nullptr);
+		}
+	}
+	CHECK(codes.size() == 35 + 33 + 12);
+	Stash::State s;
+	const auto& chipped = *Stash::KindOf("gcw");
+	const auto& skull = *Stash::KindOf("skc");
+	CHECK(s.Room(chipped) == 0);
+	s.nodes = { "tab", "gem1" };
+	CHECK(s.Room(chipped) == Stash::SmallCap && s.Room(skull) == 0);
+	s.nodes.insert("gemskull");
+	CHECK(s.Room(skull) == Stash::SmallCap);
+	s.Add("gcw", 20);
+	CHECK(s.Room(chipped) == 0);
+	s.nodes.insert("gemcap");
+	CHECK(s.Room(chipped) == 79);
+	CHECK(s.CutGems(0) == 0);  // no cutter yet
+	s.nodes.insert("gemcut");
+	CHECK(s.CutGems(0) == 6 && s.Count("gcw") == 2 && s.Count("gfw") == 6);
+	CHECK(s.CutGems(1) == 0 && s.Count("gfw") == 6);  // the normal gems' slot is not unlocked: nothing is lost
+	s.Add("gcw", -2);
+	CHECK(s.mats.count("gcw") == 0);
+}
+
+static void StashFileRoundTripAndBadLines() {
+	Stash::State s;
+	s.tier = 2; s.fund = 1234; s.legacyDone = true; s.legacy = { 4 };
+	s.acts = { { Druid, 1 }, { Paladin, 5 } }; s.nodes = { "tab", "rune1" }; s.mats = { { "r01", 7 } };
+	const auto back = Stash::Parse(Stash::Serialize(s));
+	CHECK(back.tier == 2 && back.fund == 1234 && back.legacyDone && back.legacy == s.legacy && back.acts == s.acts && back.nodes == s.nodes && back.mats == s.mats);
+	CHECK(back.PageOpen(2) && !back.PageOpen(3) && back.PageOpen(4) && back.LastPage() == 5);
+	const auto bad = Stash::Parse("tier 99\nfund -5\nact Nobody 1\nact Druid 9\nnode what\nmat zzz 4\nmat r01 -3\nlegacy 40\nnonsense\n");
+	CHECK(bad.tier == Stash::TierCount && bad.fund == 0 && bad.acts.empty() && bad.nodes.empty() && bad.mats.empty() && bad.legacy.empty());
+}
+
+// "camp_tests layouts <folder>" writes the caravan's panels there, for tests/test_stash_layouts.py.
+static void WriteStashLayouts(const fs::path& dir) {
+	Stash::State fresh, full;
+	full.tier = 3; full.fund = 120000;
+	for (int c = 0; c < ClassCount; ++c) {
+		Stash::CountActs(full, c, ActDone(5));
+	}
+	for (const auto& node : Stash::Nodes) {
+		full.nodes.insert(node.id);
+	}
+	int n = 0;
+	for (const auto& kind : Stash::Kinds()) {
+		full.mats[kind.code] = n++ % 5 == 0 ? 0 : n;
+	}
+	WriteFile(dir / "tree_fresh.json", Stash::TreeLayout(fresh));
+	WriteFile(dir / "tree_full.json", Stash::TreeLayout(full));
+	full.nodes = { "tab", "gem1", "rune1", "pot1" };
+	WriteFile(dir / "tree_part.json", Stash::TreeLayout(full));
+	full.nodes.clear();
+	for (const auto& node : Stash::Nodes) {
+		full.nodes.insert(node.id);
+	}
+	WriteFile(dir / "tab_fresh.json", Stash::UpgradesLayout(fresh));
+	WriteFile(dir / "tab_full.json", Stash::UpgradesLayout(full));
+	WriteFile(dir / "side.json", Stash::SideLayout());
+}
+
+int main(int argc, char** argv) {
+	if (argc == 3 && std::string(argv[1]) == "layouts") {
+		WriteStashLayouts(argv[2]);
+		return 0;
+	}
+	StashPagesArePaidInParts();
+	StashPointsComeOncePerClassAndAct();
+	StashTreeNeedsParentsAndPoints();
+	StashSlotsTakeWhatIsUnlocked();
+	StashFileRoundTripAndBadLines();
 	RouteUnlocksTierByTier();
 	ForkGivesTwoPicksSameOneAllowed();
 	ActTwoFollowsAndariel();
