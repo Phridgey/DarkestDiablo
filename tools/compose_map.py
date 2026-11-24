@@ -306,6 +306,35 @@ def compose(spec):
         # The rooms' own objects (torches and such) only where the floor still is.
         m["objects"] = [o for o in m["objects"]
                         if (o["x"] / 5 - cx) ** 2 + (o["y"] / 5 - cy) ** 2 <= (r - 1) ** 2]
+    # "edge_walls": {"wall_from": [rooms]} draws walls along the edge of the room's own open floor,
+    # for the automap (cave rooms have no straight walls, so the map showed nothing), keeping the
+    # room's floor and HD look as they are. Unlike "circle", the floor stays the game's own, so the
+    # HD ground matches it (a circle cut from a corridor room showed rock as missing floor).
+    ew = spec.get("edge_walls")
+    if ew and m["walls"]:
+        base = m["floors"][0]
+        open_cell = lambda x, y: (0 <= x < W and 0 <= y < H and bool(base[y * W + x])
+                                  and not base[y * W + x] & 0x20000 and ((base[y * W + x] >> 20) & 0x3F) != 30)
+        wall_tiles = {}
+        for piece in ew.get("wall_from", []):
+            d = ds1_parse((VANILLA / "global" / "tiles" / (piece + ".ds1")).read_bytes())
+            for o in (1, 2):
+                seen_walls = [w[i] for w, ow in zip(d["walls"], d["orients"]) for i in range(len(w)) if ow[i] == o and w[i]]
+                if seen_walls and o not in wall_tiles:
+                    wall_tiles[o] = max(set(seen_walls), key=seen_walls.count)
+        if 1 not in wall_tiles or 2 not in wall_tiles:
+            sys.exit("edge_walls: no straight wall tiles in " + ", ".join(ew.get("wall_from", [])))
+        # Its own layer, so the room's own walls (stairs and such) stay.
+        m["walls"].append([0] * cells)
+        m["orients"].append([0] * cells)
+        for y in range(H):
+            for x in range(W):
+                left = open_cell(x, y) != open_cell(x - 1, y)
+                top = open_cell(x, y) != open_cell(x, y - 1)
+                if left or top:
+                    i = y * W + x
+                    m["walls"][-1][i] = wall_tiles[1 if left else 2]
+                    m["orients"][-1][i] = 3 if left and top else 1 if left else 2
     # Close the map's outer edges: maze rooms are open where the next room would join. Mark open
     # floor on the border as unwalkable (floor bit 0x20000), so players can't walk off the map.
     if spec.get("close_edges", True):

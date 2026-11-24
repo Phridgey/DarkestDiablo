@@ -1,8 +1,8 @@
 """Den of Evil: a fixed hand-made map instead of the random maze.
 
 The map is composed from the game's own cave rooms by tools/compose_map.py from
-src/maps/den_of_evil.json: a round grotto made from one of the game's cave rooms (24x24 tiles),
-like the Mausoleum's round hall.
+src/maps/den_of_evil.json: the Pit level 2 room (a round cave, 24x24 tiles) with walls along
+the edge of its floor, so the automap shows it.
 
 The arena is NOT the real Den (levels.txt Id 8): killing everything there completes the Den
 quest, and Akara then offers a free respec, which the design doesn't allow. So the arena is a
@@ -106,3 +106,4 @@ def patch(t):
     # D2R finds a monster's 3D model by its Id in this file; without an entry he is invisible.
     models = t.data("hd/character/monsters.json")
     models[CORPSEFIRE_TYPE] = models["zombie1"]
+
