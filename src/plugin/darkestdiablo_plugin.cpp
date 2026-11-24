@@ -2509,7 +2509,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 			WatchHeldRewards(context, g_levelId.load());
 		}
 		if (g_levelId == TownLevelId) {  // no healer (Akara; Act II's Fara not yet)
-			WatchTownHealing(context, TownLevelId);
+			// WatchTownHealing(context, TownLevelId);  // off: healers heal as normal again (2026-11-23)
 			WatchAkaraRing(context, TownLevelId);
 		}
 		const int arena = FindArena(g_levelId);
@@ -2605,7 +2605,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		RunConsole(context, "cheat waypoints");
 		GiveUpLeftRun(context);  // a run the hero quit with nothing more to spawn
 		g_threads->runOnGameThread(context, DeliverPotions, nullptr);  // games start in town
-		WatchTownHealing(context, TownLevelId);
+		// WatchTownHealing(context, TownLevelId);  // off: healers heal as normal again (2026-11-23)
 		return;
 	}
 	if (event->kind == Kind::GameLeft) {

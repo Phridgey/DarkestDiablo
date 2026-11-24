@@ -1,28 +1,29 @@
-"""No health potions drop anywhere (decided 2026-11-19). Healing comes from elsewhere; this also
-shows what drop rates are really like without the potion filler.
+"""No potions and no scrolls drop anywhere (decided 2026-11-23; health potions since 2026-11-19).
 
-Every loot table entry for a healing potion (hp1 .. hp5) is taken out, and in tables that pick
-by chance its weight moves to "NoDrop", so everything else in that table (mana and rejuvenation
-potions, gold, items) drops exactly as often as before. Tables that drop every entry (negative
-Picks) just lose it.
+Every loot table entry for a potion (healing, mana, rejuvenation, antidote, stamina, thawing) or a
+scroll (Town Portal, Identify) is taken out, and in tables that pick by chance its weight moves to
+"NoDrop", so everything else in that table (gold, items, gems, runes) drops exactly as often as
+before. Tables that drop every entry (negative Picks) just lose it.
 
-Shops don't sell them either: every vendor's stock columns for them in misc.txt are emptied. The
-plugin hands out a few per cleared stop instead (the camp's potion supply).
+Shops don't sell health potions: every vendor's stock columns for them in misc.txt are emptied.
+The plugin hands out a few per cleared stop instead (the camp's potion supply), and the Town
+Portal scroll that ends each stop still comes from the plugin.
 """
 
 HEALTH = {"hp1", "hp2", "hp3", "hp4", "hp5"}
+NO_DROP = HEALTH | {"mp1", "mp2", "mp3", "mp4", "mp5", "rvs", "rvl", "yps", "vps", "wms", "tsc", "isc"}
 
 
 def patch(t):
     for row in t.table("treasureclassex").rows:
         entries = [(row.get(f"Item{k}", ""), row.get(f"Prob{k}", "")) for k in range(1, 11)]
-        if not any(item.split(",")[0] in HEALTH for item, _ in entries):
+        if not any(item.split(",")[0] in NO_DROP for item, _ in entries):
             continue
         kept, dropped = [], 0
         for item, prob in entries:
             if not item:
                 continue
-            if item.split(",")[0] in HEALTH:
+            if item.split(",")[0] in NO_DROP:
                 dropped += int(prob) if prob.strip().isdigit() else 0
             else:
                 kept.append((item, prob))

@@ -1,5 +1,6 @@
 """Mana potions drop half as often (decided 2026-11-19: with no health potions, mana potions
-crowded every drop).
+crowded every drop). Since 2026-11-23 no mana potion drops at all (006_no_health_potions.py runs
+first), so this finds nothing to change; kept for the record.
 
 In every loot table that picks by chance and lists mana potions (mp1 .. mp5), the other entries
 and "NoDrop" are doubled and the mana potions keep their weight, plus that weight again on
