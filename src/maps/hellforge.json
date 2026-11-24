@@ -1,0 +1,26 @@
+{
+  "name": "darkest_hellforge",
+  "folder": "act4/lava",
+  "room": 24,
+  "comment": "Hellforge (114_act4.py, on level 107): a lava room leading east to the forge, with Hephasto.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act4/lava/lavae"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "piece": "act4/lava/forgew"
+    }
+  ],
+  "keep_monsters": [
+    "act4/lava/forgew"
+  ],
+  "close_edges": true,
+  "allow_holes": [
+    "act4/lava/lavae",
+    "act4/lava/forgew"
+  ]
+}

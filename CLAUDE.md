@@ -28,7 +28,10 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
   Writes (agreed by both of us, 2026-11-19):
   the plugin may change existing values in game memory (stats, buff/debuff values and end times)
   through `src/plugin/gamewrite.h` only, the one file that writes, on the frozen build only, into
-  plain data memory (never code). Never change game code, and never write anywhere else. Each value read and its address go in
+  plain data memory (never code). Never change game code, and never write anywhere else.
+  One code exception, agreed by both of us (2026-11-23): `src/plugin/mercgear.cpp` changes one
+  number in the game's two "may a mercenary wear this" checks (body armor -> our "merc" item type),
+  through D2RLoader's MutationService, found by byte pattern; nothing else in game code. Each value read and its address go in
   `docs/game-memory.md`, and the plugin turns the feature off if the game build differs.
 - Game information (hero, monsters, objects, items, stats, buffs/debuffs, events) comes from the
   game-state API, `src/plugin/gameapi.h`; its guide is `docs/game-state-api.md`. Use it instead of
@@ -79,6 +82,13 @@ Plain, jargon-free language in docs and commit messages.
 
 ## Lessons learned (map and plugin work)
 - Close the game before `tools\build-plugin.cmd`: the running game locks the plugin DLL.
+- Close the game before `tools/build.py` too: it deletes and rewrites `build/darkestdiablo`, which
+  the game reads through the `Mods` link, so a map loading meanwhile is gone (crash
+  `hnd->IsValid()`, Preset.cpp, loading Andariel's level, 2026-11-21). The plugin's trace file
+  lives there too and is wiped.
+- In Normal (the only difficulty the mod plays) a monster's level is its monstats.txt `Level`,
+  not the area level (levels.txt MonLvlEx counts only in Nightmare and Hell); uniques and
+  superuniques add 3. Item levels of drops follow the monster's level (`996_monster_levels.py`).
 - When a patch stops changing a table (or is shelved), the build stops making that file, but a
   file copied in earlier stays in `Mods/darkestdiablo` and the game keeps loading it. The
   launcher deletes files its last install placed that the new build no longer makes; a manual

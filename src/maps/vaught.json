@@ -1,0 +1,15 @@
+{
+  "name": "darkest_vaught",
+  "folder": "expansion/wildtemple",
+  "room": 84,
+  "comment": "Halls of Vaught (114a_act5.py): a copy of Nihlathak's hall.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "expansion/wildtemple/nihle"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

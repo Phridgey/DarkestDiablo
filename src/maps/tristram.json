@@ -1,0 +1,14 @@
+{
+  "name": "darkest_tristram",
+  "folder": "act1/tristram",
+  "room": 8,
+  "comment": "Tristram (forced stop): the game's own Tristram map (tri_town4) with its monster spots left out (Griswold, the Fallen camp, the unique pack and the champion pack), so the plugin's waves are the only monsters. Objects stay: Cain's gibbet, Wirt, the houses' props.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/tristram/tri_town4"
+    }
+  ]
+}

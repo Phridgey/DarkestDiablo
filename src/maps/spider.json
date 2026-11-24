@@ -1,0 +1,38 @@
+{
+  "name": "darkest_spider",
+  "folder": "act3/spider",
+  "room": 16,
+  "comment": "Spider Cavern (113_act3.py): one round grotto, 27 tiles across: 2x2 of the lair's own rooms give the floor and look, 'circle' makes them one round open floor ringed with webs, eggs, bones and the jungle's rocks. Khalim's Eye chest on the east side; the hero arrives at the west edge (tile 4,15). Was two side-by-side rooms whose waves were hard to reach (2026-11-23).",
+  "keep_monsters": [],
+  "pieces": [
+    {"x": 0, "y": 0, "piece": "act3/spider/lairnw"},
+    {"x": 1, "y": 0, "piece": "act3/spider/lairnecon"},
+    {"x": 0, "y": 1, "piece": "act3/spider/lairsw"},
+    {"x": 1, "y": 1, "piece": "act3/spider/lairse"}
+  ],
+  "extra_objects": [
+    {"type": 2, "id": 114, "tile": [25, 15], "comment": "KhalimEyeChest (objpreset Act 3 Index 114)"}
+  ],
+  "close_edges": true,
+  "circle": {
+    "radius": 13,
+    "ring": [
+      {"dist": 0.4, "step": 1.3, "scale": [0.9, 1.3], "models": [
+        "data/hd/env/model/global/prop/act3/spider/act3_spider_eggs/eggs02.model",
+        "data/hd/env/model/global/prop/act3/spider/act3_spider_eggs/eggs04.model",
+        "data/hd/env/model/global/prop/act3/spider/act3_spider_eggs/eggs06.model",
+        "data/hd/env/model/global/prop/act3/spider/act3_spider_debris/bone_pile01.model",
+        "data/hd/env/model/global/prop/act3/spider/act3_spider_webs/web02.model"]},
+      {"dist": 1.2, "step": 1.2, "scale": [1.2, 1.8], "models": [
+        "data/hd/env/model/global/prop/act3/jungle/act3_jungle_rocks/boulder01.model",
+        "data/hd/env/model/global/prop/act3/jungle/act3_jungle_rocks/boulder02.model",
+        "data/hd/env/model/global/prop/act3/jungle/act3_jungle_rocks/rock_pile01.model",
+        "data/hd/env/model/global/prop/act3/jungle/act3_jungle_rocks/rock_pile02.model"]},
+      {"dist": 2.4, "step": 1.5, "scale": [1.6, 2.4], "models": [
+        "data/hd/env/model/global/prop/act3/jungle/act3_jungle_rocks/boulder03.model",
+        "data/hd/env/model/global/prop/act3/jungle/act3_jungle_rocks/rock_pile03.model",
+        "data/hd/env/model/global/prop/act3/jungle/act3_jungle_rocks/rock_pile_wall01.model",
+        "data/hd/env/model/global/prop/act3/spider/act3_spider_webs/web12.model"]}
+    ]
+  }
+}

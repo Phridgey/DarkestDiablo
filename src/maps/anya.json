@@ -1,0 +1,15 @@
+{
+  "name": "darkest_anya",
+  "folder": "expansion/icecave",
+  "room": 64,
+  "comment": "Frozen River (114a_act5.py): a copy of the river cave where Anya is frozen.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "expansion/icecave/riverice01"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

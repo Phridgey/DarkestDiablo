@@ -1,7 +1,8 @@
 """Den of Evil: a fixed hand-made map instead of the random maze.
 
 The map is composed from the game's own cave rooms by tools/compose_map.py from
-src/maps/den_of_evil.json: our own copy of the Pit level 2 room, a round cave (24x24 tiles).
+src/maps/den_of_evil.json: a round grotto made from one of the game's cave rooms (24x24 tiles),
+like the Mausoleum's round hall.
 
 The arena is NOT the real Den (levels.txt Id 8): killing everything there completes the Den
 quest, and Akara then offers a free respec, which the design doesn't allow. So the arena is a
@@ -13,7 +14,7 @@ can't be reached any more.
 ARENA_ID = "13"               # "Act 1 - Cave 2 Treasure", reused
 REAL_DEN_ID = "8"
 MAP_FILE = "Act1/Caves/darkest_den.ds1"
-SIZE_X, SIZE_Y = "24", "24"  # map width - 1, height - 1 (the Pit level 2 room)
+SIZE_X, SIZE_Y = "24", "24"  # map width - 1, height - 1 (one 24x24 cave room)
 KEEP = {"Id", "Name", "Layer", "OffsetX", "OffsetY"}
 CORPSEFIRE_TYPE = "dd_corpsefire"  # his own monstats row (see the end of patch())
 CORPSEFIRE_CLASS = 751             # its row number: the first one after the game's 751 monsters

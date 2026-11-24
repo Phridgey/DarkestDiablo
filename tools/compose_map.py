@@ -118,12 +118,19 @@ def ds1_write(m):
 
 
 # ---------------------------------------------------------------- compose
+def room_size(spec):
+    """A room's size in tiles, (width, height): "room" is one number (square rooms) or [w, h]
+    (e.g. the Barracks' 10x14 rooms)."""
+    r = spec["room"]
+    return (r[0], r[1]) if isinstance(r, list) else (r, r)
+
+
 def norm_tile(f):
     return f.lower().replace("\\", "/").rsplit(".", 1)[0]
 
 
 def compose(spec):
-    room = spec["room"]
+    rw, rh = room_size(spec)
     keep = {k.lower() for k in spec.get("keep_monsters", [])}
     placed = []
     for p in spec["pieces"]:
@@ -131,10 +138,11 @@ def compose(spec):
         if not f.exists():
             sys.exit(f"{f} is missing. Extract data/global/tiles and data/hd/env/preset for '{spec['folder']}' into vanilla/.")
         d = ds1_parse(f.read_bytes())
-        if len(spec["pieces"]) > 1 and (d["width"] != room + 1 or d["height"] != room + 1):
-            sys.exit(f"{p['piece']} is {d['width']}x{d['height']}, expected {room + 1}x{room + 1}")
+        if len(spec["pieces"]) > 1 and (d["width"] != rw + 1 or d["height"] != rh + 1):
+            sys.exit(f"{p['piece']} is {d['width']}x{d['height']}, expected {rw + 1}x{rh + 1}")
         holes = sum(1 for v in d["floors"][0] if v == 0) if d["floors"] else 0
-        if len(spec["pieces"]) > 1 and holes > (d["width"] * d["height"]) // 10 and not spec.get("circle"):  # a circle fills every cell
+        if (len(spec["pieces"]) > 1 and holes > (d["width"] * d["height"]) // 10 and not spec.get("circle")  # a circle fills every cell
+                and p["piece"] not in spec.get("allow_holes", [])):  # rooms that are walled-in with void around
             # In a stitched map every room must be complete. "Theme" rooms are partial overlays;
             # stitched in as a room they leave cells with no tile inside the map, and the game
             # crashed loading the level (BC_VERIFY: hTile). A single room with empty edges is fine.
@@ -143,7 +151,7 @@ def compose(spec):
         placed.append((p, d))
     gw = max(p["x"] for p, _ in placed) + 1
     gh = max(p["y"] for p, _ in placed) + 1
-    W, H = gw * room + 1, gh * room + 1
+    W, H = gw * rw + 1, gh * rh + 1
     if len(placed) == 1:  # one whole map (e.g. an outdoor preset), any size
         W, H = placed[0][1]["width"], placed[0][1]["height"]
     cells = W * H
@@ -158,7 +166,7 @@ def compose(spec):
          "walls": [[0] * cells for _ in range(nw)], "orients": [[0] * cells for _ in range(nw)],
          "floors": [[0] * cells for _ in range(nf)], "shadow": [0] * cells, "objects": []}
     for p, d in placed:
-        ox, oy = p["x"] * room, p["y"] * room
+        ox, oy = p["x"] * rw, p["y"] * rh
         for y in range(d["height"]):
             for x in range(d["width"]):
                 s, t = y * d["width"] + x, (oy + y) * W + (ox + x)
@@ -172,19 +180,74 @@ def compose(spec):
                 if d["shadow"][s]:
                     m["shadow"][t] = d["shadow"][s]
         monsters = p["piece"].lower() in keep
+        drop_monsters = set(spec.get("drop_monsters", []))  # e.g. one monster spot of a kept room
         drop = set(spec.get("drop_objects", []))  # e.g. a room's treasure chests
         for o in d["objects"]:
             if o["type"] == 2 and o["id"] in drop:
                 continue
-            if o["type"] == 2 or (monsters and o["type"] == 1):
+            if o["type"] == 2 or (monsters and o["type"] == 1 and o["id"] not in drop_monsters):
                 m["objects"].append({**o, "x": o["x"] + ox * 5, "y": o["y"] + oy * 5})
     # Extra objects from the layout, e.g. a waypoint: {"type": 2, "id": <objpreset Index>, "tile": [x, y]}
     # Placed at sub-tile tile*5+4, as the game's own maps place their waypoints.
     for o in spec.get("extra_objects", []):
         tx, ty = o["tile"]
         m["objects"].append({"type": o["type"], "id": o["id"], "x": tx * 5 + 4, "y": ty * 5 + 4, "flags": 0})
+    # "remove_walls": [[x, y], ...] takes the walls off those tiles, e.g. a door (orientation 8 or
+    # 9, which the game turns into a door object) to leave an open doorway.
+    for tx, ty in spec.get("remove_walls", []):
+        i = ty * W + tx
+        for l in range(len(m["walls"])):
+            m["walls"][l][i] = m["orients"][l][i] = 0
+    # "copy_walls": [[from_x, from_y, to_x, to_y], ...] puts a neighbour's wall on a tile, e.g. a
+    # plain wall where stairs were (stairs are wall tiles too; a map whose stairs lead nowhere
+    # crashes the game, so a copy of a map without exits must lose them).
+    for fx, fy, tx, ty in spec.get("copy_walls", []):
+        src, dst = fy * W + fx, ty * W + tx
+        for l in range(len(m["walls"])):
+            m["walls"][l][dst] = m["walls"][l][src]
+            m["orients"][l][dst] = m["orients"][l][src]
+    # "open": [x0, y0, x1, y1] (tiles, inclusive) makes one big room of the rooms in that box: no
+    # walls inside it, floor everywhere inside, the rooms' own walls kept on its edge. build_hd
+    # leaves out the models inside it too. Objects stay.
+    box = spec.get("open")
+    if box:
+        x0, y0, x1, y1 = box
+        base = m["floors"][0]
+        inner = [base[y * W + x] for y in range(y0 + 1, y1) for x in range(x0 + 1, x1)]
+        counts = {}
+        for v in inner:
+            if v and not v & 0x20000:
+                counts[v] = counts.get(v, 0) + 1
+        floor = max(counts, key=counts.get)
+        for y in range(y0 + 1, y1):
+            for x in range(x0 + 1, x1):
+                i = y * W + x
+                for l in range(len(m["walls"])):
+                    m["walls"][l][i] = m["orients"][l][i] = 0
+                m["shadow"][i] = 0
+                for a in m["floors"][1:]:
+                    a[i] = 0
+                if not base[i] or base[i] & 0x20000:
+                    base[i] = floor
+        # The box's edge is its wall. Where the rooms left a gap in it (between two rooms' walls),
+        # the gap is made unwalkable, so nobody walks out of the hall.
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if x in (x0, x1) or y in (y0, y1):
+                    i = y * W + x
+                    if not any(m["walls"][l][i] for l in range(len(m["walls"]))) and base[i]:
+                        base[i] |= 0x20000
+    # Cells with no floor at all (rooms walled in with void around them, "allow_holes") get the
+    # first floor tile marked unwalkable, so the map has no empty cells.
+    if spec.get("allow_holes") and m["floors"]:
+        base = m["floors"][0]
+        fill = next((v for v in base if v and not v & 0x20000), 0)
+        for i, v in enumerate(base):
+            if not v and fill:
+                base[i] = fill | 0x20000
     # "circle": {"radius": R} makes one round open cavern from the stitched rooms: floor inside a
-    # circle of R tiles around the map's centre, solid rock (unwalkable) outside, no walls at all.
+    # circle of R tiles around the map's centre, solid rock (unwalkable) outside, and walls only
+    # along the edge (for the automap; "walls": false leaves them out).
     # build_hd drops every wall and rock model and rings the circle with cave rocks instead.
     cr = spec.get("circle")
     if cr:
@@ -198,6 +261,21 @@ def compose(spec):
             elif not v & 0x20000:
                 counts[v] = counts.get(v, 0) + 1
         floor = max(counts, key=counts.get)
+        # The rooms' own wall tiles, for the boundary walls below: the most used left (1) and
+        # top (2) wall tile.
+        wall_tiles = {}
+        for o in (1, 2):
+            seen_walls = [m["walls"][0][i] for i in range(cells) if m["walls"] and m["orients"][0][i] == o and m["walls"][0][i]]
+            if seen_walls:
+                wall_tiles[o] = max(set(seen_walls), key=seen_walls.count)
+        # Rooms without straight walls (the open cave rooms) borrow them: "wall_from" names rooms
+        # of the same tile set that have them (e.g. a cave theme room).
+        for piece in cr.get("wall_from", []):
+            d = ds1_parse((VANILLA / "global" / "tiles" / (piece + ".ds1")).read_bytes())
+            for o in (1, 2):
+                seen_walls = [w[i] for w, ow in zip(d["walls"], d["orients"]) for i in range(len(w)) if ow[i] == o and w[i]]
+                if seen_walls and o not in wall_tiles:
+                    wall_tiles[o] = max(set(seen_walls), key=seen_walls.count)
         cx, cy, r = (W - 1) / 2, (H - 1) / 2, cr["radius"]
         for y in range(H):
             for x in range(W):
@@ -211,6 +289,20 @@ def compose(spec):
                     base[i] = floor
                 else:
                     base[i] = (rock or floor) | 0x20000
+        # Walls along the circle's edge, in the gameplay map only (the HD look keeps its ring of
+        # models). They are what the automap draws, so the map shows the hall's boundary; the
+        # floor tiles alone draw nothing there. A wall sits on a cell's left (1) or top (2) edge;
+        # a cell with both gets the corner (3), as the crypt rooms do.
+        if cr.get("walls", True) and m["walls"] and 1 in wall_tiles and 2 in wall_tiles:
+            inside = lambda x, y: 0 <= x < W and 0 <= y < H and (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+            for y in range(H):
+                for x in range(W):
+                    left = inside(x, y) != inside(x - 1, y)
+                    top = inside(x, y) != inside(x, y - 1)
+                    if left or top:
+                        i = y * W + x
+                        m["walls"][0][i] = wall_tiles[1 if left else 2]
+                        m["orients"][0][i] = 3 if left and top else 1 if left else 2
         # The rooms' own objects (torches and such) only where the floor still is.
         m["objects"] = [o for o in m["objects"]
                         if (o["x"] / 5 - cx) ** 2 + (o["y"] / 5 - cy) ** 2 <= (r - 1) ** 2]
@@ -261,13 +353,17 @@ def rock_ring(spec, entities, deps, seen, next_id):
     rnd = random.Random(1)
     gw = max(p["x"] for p in spec["pieces"]) + 1
     gh = max(p["y"] for p in spec["pieces"]) + 1
-    W, H = gw * spec["room"] + 1, gh * spec["room"] + 1
+    rw, rh = room_size(spec)
+    W, H = gw * rw + 1, gh * rh + 1
     cx, cz, r = (W - 1) / 2 * 10, (H - 1) / 2 * 10, spec["circle"]["radius"] * 10
     rows = spec["circle"].get("ring") or DEFAULT_RING
     wanted = {m for row in rows for m in row["models"]}
-    # Each model's settings (light, shadow, ground blend) as Blizzard's own Act I rooms use them.
+    # Each model's settings (light, shadow, ground blend) as Blizzard's own rooms use them (Act I
+    # first, then the later acts).
     templates = {}
-    for f in sorted((VANILLA / "hd" / "env" / "preset" / "act1").glob("*/*.json")):
+    rooms = [f for act in ("act1", "act2", "act3", "act4", "act5")
+             for f in sorted((VANILLA / "hd" / "env" / "preset" / act).glob("*/*.json"))]
+    for f in rooms:
         for e in json.loads(f.read_text(encoding="utf-8-sig")).get("entities") or []:
             for k in e.get("components") or []:
                 if k.get("type") == "ModelDefinitionComponent" and k.get("filename") in wanted:
@@ -276,7 +372,7 @@ def rock_ring(spec, entities, deps, seen, next_id):
             break
     missing = wanted - set(templates)
     if missing:
-        sys.exit(f"ring models not found in any Act I room: {sorted(missing)}")
+        sys.exit(f"ring models not found in any of the game's rooms: {sorted(missing)}")
     for path in sorted(wanted):
         if path not in seen["models"]:
             seen["models"].add(path)
@@ -303,8 +399,18 @@ def rock_ring(spec, entities, deps, seen, next_id):
     return next_id
 
 
+def inside_open(box, e):
+    """Is this entity inside the "open" box (not on its edge)? HD units: 10 per tile."""
+    x0, y0, x1, y1 = box
+    for k in e.get("components") or []:
+        if k.get("type") == "TransformDefinitionComponent" and k.get("position"):
+            x, z = k["position"]["x"] / 10, k["position"]["z"] / 10
+            return x0 + 0.6 < x < x1 - 0.6 and y0 + 0.6 < z < y1 - 0.6
+    return False
+
+
 def build_hd(spec):
-    room = spec["room"]
+    rw, rh = room_size(spec)
     deps = {k: [] for k in KINDS}
     seen = {k: set() for k in KINDS}
     entities, terrain, biome, next_id = [], None, "", 1000000000
@@ -326,7 +432,7 @@ def build_hd(spec):
         if not f.exists():
             sys.exit(f"{f} is missing (the room's HD file).")
         hd = json.loads(f.read_text(encoding="utf-8-sig"))
-        dx, dz, suffix = p["x"] * room * 10, p["y"] * room * 10, f"p{p['x']}_{p['y']}"
+        dx, dz, suffix = p["x"] * rw * 10, p["y"] * rh * 10, f"p{p['x']}_{p['y']}"
         for k in KINDS:
             for d in (hd.get("dependencies") or {}).get(k) or []:
                 if d.get("path") not in seen[k]:
@@ -336,6 +442,10 @@ def build_hd(spec):
             c = move(e, dx, dz, suffix)
             if spec.get("circle") and is_solid_model(c):
                 continue  # the circle gets its own rock ring below
+            if spec.get("open") and is_solid_model(c) and inside_open(spec["open"], c):
+                continue  # the open box's inner walls and pillars
+            if any(name in (e.get("name") or "") for name in spec.get("drop_entities", [])):
+                continue  # e.g. a door's model, with the door taken off ("remove_walls")
             entities.append(c)
         ground = move(hd["terrain"], dx, dz, suffix)
         if terrain is None:
@@ -346,6 +456,20 @@ def build_hd(spec):
         biome = biome or hd.get("biomeFilename", "")
     if spec.get("circle"):
         next_id = rock_ring(spec, entities, deps, seen, next_id)
+    # "add_entities": [{"copy": <entity name>, "x": .., "z": ..}, ...] places another copy of one of
+    # the map's own models (HD units: a tile is 10), e.g. a plain wall where the stairs' model was.
+    for add in spec.get("add_entities", []):
+        source = next((e for e in entities if (e.get("name") or "").startswith(add["copy"] + "_")), None)
+        if source is None:
+            sys.exit(f"add_entities: no entity named {add['copy']}")
+        c = copy.deepcopy(source)
+        c["id"] = next_id
+        next_id += 1
+        c["name"] = f"{add['copy']}_added{next_id}"
+        for k in c.get("components") or []:
+            if k.get("type") == "TransformDefinitionComponent" and k.get("position"):
+                k["position"]["x"], k["position"]["z"] = float(add["x"]), float(add["z"])
+        entities.append(c)
     # HD look for extra objects: the game draws some objects (waypoints) from a prefab in the map's
     # HD file, not from the object itself. Sub-tile -> HD units: x2, plus the prefab's offset.
     for o in spec.get("extra_objects", []):

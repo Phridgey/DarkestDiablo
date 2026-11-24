@@ -1,0 +1,15 @@
+{
+  "name": "darkest_ksewers",
+  "folder": "act3/sewer",
+  "room": 18,
+  "comment": "Kurast Sewers (113_act3.py): a copy of the sewers' treasure room (Khalim's Heart chest).",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/sewer/sewertreasure1"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

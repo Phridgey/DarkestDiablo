@@ -1,0 +1,20 @@
+{
+  "name": "darkest_ancients",
+  "folder": "expansion/mountaintop",
+  "room": 20,
+  "comment": "Arreat Summit (114a_act5.py): the summit without its doors and altar (the plugin brings the Ancients).",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "expansion/mountaintop/mtntop"
+    }
+  ],
+  "drop_objects": [
+    127,
+    128,
+    142
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

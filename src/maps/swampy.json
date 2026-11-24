@@ -1,0 +1,15 @@
+{
+  "name": "darkest_swampy",
+  "folder": "act3/jungle",
+  "room": 40,
+  "comment": "Swampy Pit (113_act3.py): a copy of the pit's treasure room.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/jungle/dungrm1a"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

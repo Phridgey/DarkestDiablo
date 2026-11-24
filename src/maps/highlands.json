@@ -1,0 +1,30 @@
+{
+  "name": "darkest_highlands",
+  "folder": "expansion/siege",
+  "room": 16,
+  "comment": "Frigid Highlands (114a_act5.py, on level 113): the three prison pens of the barbarians in a line.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "expansion/siege/sharptoothaa"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "expansion/siege/sharptoothbb"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "expansion/siege/sharptoothcc"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true,
+  "allow_holes": [
+    "expansion/siege/sharptoothaa",
+    "expansion/siege/sharptoothbb",
+    "expansion/siege/sharptoothcc"
+  ]
+}

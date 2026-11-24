@@ -1,0 +1,36 @@
+{
+  "name": "darkest_abaddon",
+  "folder": "act4/expansion",
+  "room": 24,
+  "comment": "Abaddon (114_act4.py): four lava rooms in a line, twice the usual length.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act4/expansion/lavas"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act4/expansion/lavans"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act4/expansion/lavans2"
+    },
+    {
+      "x": 0,
+      "y": 3,
+      "piece": "act4/expansion/lavan"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true,
+  "allow_holes": [
+    "act4/expansion/lavas",
+    "act4/expansion/lavans",
+    "act4/expansion/lavans2",
+    "act4/expansion/lavan"
+  ]
+}

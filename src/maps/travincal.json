@@ -1,0 +1,20 @@
+{
+  "name": "darkest_travincal",
+  "folder": "act3/travincal",
+  "room": 32,
+  "comment": "Travincal (113_act3.py, on level 96): the temple square with the High Council and the Compelling Orb; the Durance door taken out.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/travincal/travn"
+    }
+  ],
+  "keep_monsters": [
+    "act3/travincal/travn"
+  ],
+  "drop_objects": [
+    111
+  ],
+  "close_edges": true
+}

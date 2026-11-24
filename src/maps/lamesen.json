@@ -1,0 +1,15 @@
+{
+  "name": "darkest_lamesen",
+  "folder": "act3/temple",
+  "room": 24,
+  "comment": "Ruined Temple (113_act3.py): a copy of the temple with Lam Esen's Tome.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/temple/temple0"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

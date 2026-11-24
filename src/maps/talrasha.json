@@ -1,0 +1,15 @@
+{
+  "name": "darkest_talrasha",
+  "folder": "act2/tomb",
+  "room": 16,
+  "comment": "Duriel (src/patches/116_act2_tier3.py): a copy of the true Tal Rasha's Tomb's last room (tombntalrasha) alone: the hero arrives right by the orifice (the Seven Tombs receptacle), without running through the tomb. Inserting the Horadric Staff plays the game's own event, which opens the way to Duriel's lair.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/tomb/tombntalrasha"
+    }
+  ],
+  "close_edges": true
+}

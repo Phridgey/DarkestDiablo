@@ -16,16 +16,22 @@ unique (see the end of patch()). Every new monster Id is mapped to its model in 
 """
 
 CHANCE_FACTOR = 1.4                 # magic/rare/set/unique chance multiplier for the whole run
+CHARM_FACTOR = 3                    # charms 3 times as likely (+200%) in MF runs (more_charms)
+CHARM_SHARE = 6 / 20                # charms' share of the game's Jewelry tables
 ARENA_ID = "11"                     # Tree of Inifuss arena (030_inifuss.py)
 TREEHEAD_TYPE = "dd_treehead"
 TREEHEAD_CLASS = 752                # TreeheadClass in src/plugin/darkestdiablo_plugin.cpp
 RAKANISHU_TYPE = "dd_rakanishu"
 RAKANISHU_CLASS = 759               # RakanishuClass in the plugin (after the 6 dd_mf_ copies)
-SUPERUNIQUE_LEVEL_BONUS = 3         # superuniques are 3 levels above the area
+SUPERUNIQUE_LEVEL_BONUS = 0         # a superunique spawned by the plugin is at the area's level (as the
+                                    # Pit's uniques, 090_pit.py): with +3 a picked base's unique could be
+                                    # above his item level and fall back to a rare (2026-11-21)
 # Normal monster types in the arena's waves, and Rakanishu's (fallen2). Treehead is a brute2.
 WAVE_TYPES = ["fallen1", "fallenshaman1", "cr_lancer1", "brute2", "quillrat1", "fallen2"]
 RAKANISHU, TREEHEAD = "Rakanishu", "Treehead WoodFist"
 QUALITIES = ("Unique", "Set", "Rare", "Magic")
+MAX_NAME = 44  # longest loot table name we make; "DD Gold3 DD Charm Act 2 Worldstone Shard Parent
+               # Citem A" (55) failed to load: "Couldn't parse treasure class item" (2026-11-21)
 
 
 def ratio_times(ratio, factor=CHANCE_FACTOR):
@@ -76,7 +82,12 @@ class Loot:
             return self.copies[key]
         row = dict(self.by_name[name])
         row["Treasure Class"] = f"{prefix} {name}"
+        if len(row["Treasure Class"]) > MAX_NAME:  # the game can't read longer names (a copy of a copy)
+            row["Treasure Class"] = f"{prefix} #{len(self.copies)}"
         self.copies[key] = row["Treasure Class"]
+        # Out of the game's level groups: a copy left in its original's group could be picked for
+        # other monsters when the game moves a table up by monster level.
+        row["group"], row["level"] = "", ""
         kept = []
         for k, item in self.items(row):
             base = item.split(",")[0]
@@ -115,6 +126,46 @@ class Loot:
     def without_keys(self, name):
         return self.copy(name, "DD NoKey", lambda row: None)
 
+    def charms_table(self):
+        """One charm (small, large or grand, equally likely): the extra charm pick of MF runs."""
+        if "DD Charms" not in self.by_name:
+            self.code_tree("DD Charms", ["cm1", "cm2", "cm3"], {})
+        return "DD Charms"
+
+    def more_charms(self, row):
+        """MF runs: charms CHARM_FACTOR times as likely. Charms only come from the "Jewelry"
+        tables (6 of their 20 weight: rings, amulets and jewels are the rest). Next to each Jewelry
+        entry goes an extra charms entry worth (CHARM_FACTOR - 1) times the Jewelry entry's charm
+        share, so charms drop CHARM_FACTOR times as often while rings, amulets, jewels and the
+        table's other drops stay close to their old odds. Tables on the way to Jewelry are copied
+        ("DD Charm ...") so the change stays in the run."""
+        entries = self.items(row)
+        jewelry = [(k, item) for k, item in entries if item.split(",")[0].startswith("Jewelry")]
+        for k, item in entries:
+            base = item.split(",")[0]
+            if not base.startswith("Jewelry") and self.is_tc(base) and self.reaches(base, "cm1"):
+                row[f"Item{k}"] = self.with_charms(base) + item[len(base):]
+        if not jewelry:
+            return
+        if len(entries) + len(jewelry) > 10:
+            raise RuntimeError(f"{row['Treasure Class']}: no room for the extra charm entry")
+        scale = 5  # weights x5 so the extra entry is a whole number
+        for k, _ in entries:
+            if row.get(f"Prob{k}", "").isdigit():
+                row[f"Prob{k}"] = str(int(row[f"Prob{k}"]) * scale)
+        if row.get("NoDrop", "").isdigit():
+            row["NoDrop"] = str(int(row["NoDrop"]) * scale)
+        slot = len(entries) + 1
+        for k, _ in jewelry:
+            extra = round(int(row[f"Prob{k}"]) * CHARM_SHARE * (CHARM_FACTOR - 1))
+            row[f"Item{slot}"], row[f"Prob{slot}"] = self.charms_table(), str(extra)
+            slot += 1
+
+    def with_charms(self, name):
+        if not name or name not in self.by_name or not self.reaches(name, "cm1"):
+            return name
+        return self.copy(name, "DD Charm", self.more_charms)
+
     def with_mf(self, name):
         if not name or name not in self.by_name:
             return name
@@ -123,6 +174,7 @@ class Loot:
         def boost(row):
             for q, value in ratios.items():
                 row[q] = str(value)
+            self.more_charms(row)
         return self.copy(name, "DD MF", boost)
 
 
@@ -164,35 +216,38 @@ def patch(t):
             if c.startswith("TC"):
                 row[c] = loot.with_mf(row[c])
 
-    # Treehead's extra set or unique, from his own loot table (the game's normal drop path; making
-    # it in the plugin crashed the game). For each difficulty his table is a copy of the shared
-    # Rakanishu/Treehead table plus one forced pick from a bonus table: every base item with a
-    # spawnable unique or set at or below his item level, unique and set chance at the maximum.
-    # Those uniques may drop again in the same game (nolimit), so the pick is a unique, or a set
-    # for a base with only a set item (bonus_bases); never the game's rare fallback.
+    # Treehead's and Rakanishu's extra set or unique (both, decided 2026-11-22), each from his own
+    # loot table (the game's normal drop path; making it in the plugin crashed the game). For each
+    # difficulty his table is a copy of the shared Rakanishu/Treehead table plus one forced pick
+    # from a bonus table: every base item with a spawnable unique or set at or below the arena's
+    # item level, unique and set chance at the maximum. Those uniques may drop again in the same
+    # game (nolimit), so the pick is a unique, or a set for a base with only a set item
+    # (bonus_bases); never the game's rare fallback.
     arena = t.table("levels").first("Id", ARENA_ID)
-    treehead = supers.first("Superunique", TREEHEAD)
     for tc_col, lvl_col, tag in (("TC", "MonLvlEx", ""), ("TC(N)", "MonLvlEx(N)", " (N)"), ("TC(H)", "MonLvlEx(H)", " (H)")):
         item_level = int(arena[lvl_col]) + SUPERUNIQUE_LEVEL_BONUS
         bonus = loot.code_tree(f"DD Treehead Bonus{tag}", bonus_bases(t, item_level),
                                {q: "1024" for q in QUALITIES})
-        own = dict(loot.by_name[treehead[tc_col]])
-        own["Treasure Class"] = f"{treehead[tc_col]} Treehead"
-        picks = int(own["Picks"])
-        if picks >= 0:
-            raise RuntimeError(f"{treehead[tc_col]} has Picks {picks}; the forced extra pick needs a negative value.")
-        own["Picks"] = str(picks - 1)  # negative Picks: every listed item drops Prob times
-        put_first(own, bonus, "1")  # first, so the 6-item drop cap can't cut it
-        loot.tcs.rows.append(own)
-        loot.by_name[own["Treasure Class"]] = own
-        treehead[tc_col] = own["Treasure Class"]
-        # A superunique spawned by the plugin ("cheat monster super:4") may drop from its monster
-        # type's columns rather than this row, so his type (his alone) drops the same table.
-        suffix = tag.strip()
-        for c in tc_columns:
-            if c.endswith(suffix) if suffix else not c.endswith(")"):
-                stats.first("Id", TREEHEAD_TYPE)[c] = own["Treasure Class"]
-
+        for name, own_type, short in ((TREEHEAD, TREEHEAD_TYPE, "Treehead"), (RAKANISHU, RAKANISHU_TYPE, "Rak")):
+            boss = supers.first("Superunique", name)
+            own = dict(loot.by_name[boss[tc_col]])
+            own["Treasure Class"] = f"{boss[tc_col]} {short}"
+            if len(own["Treasure Class"]) > MAX_NAME:
+                raise RuntimeError(f"{own['Treasure Class']}: loot table name over {MAX_NAME} characters")
+            picks = int(own["Picks"])
+            if picks >= 0:
+                raise RuntimeError(f"{boss[tc_col]} has Picks {picks}; the forced extra pick needs a negative value.")
+            own["Picks"] = str(picks - 1)  # negative Picks: every listed item drops Prob times
+            put_first(own, bonus, "1")  # first, so the 6-item drop cap can't cut it
+            loot.tcs.rows.append(own)
+            loot.by_name[own["Treasure Class"]] = own
+            boss[tc_col] = own["Treasure Class"]
+            # A superunique spawned by the plugin ("cheat monster super:4") may drop from its monster
+            # type's columns rather than this row, so his type (his alone) drops the same table.
+            suffix = tag.strip()
+            for c in tc_columns:
+                if c.endswith(suffix) if suffix else not c.endswith(")"):
+                    stats.first("Id", own_type)[c] = own["Treasure Class"]
 
 def bonus_bases(t, item_level):
     """Item codes of base items that have a unique or a set item at or below his item level.

@@ -1,0 +1,15 @@
+{
+  "name": "darkest_malus",
+  "folder": "act1/barracks",
+  "room": [10, 14],
+  "comment": "Horadric Malus (fork 2 XP grind): a cut-down Barracks. Two of the game's Barracks rooms (bare, barew) opened into one large hall ('open': no walls or pillars inside, the rooms' outer walls kept), whose east door leads into the Smith's forge (barwforge) with the Malus on its stand and the Smith in his spot. The forge's other monster spot (a Fallen shaman group) is left out.",
+  "pieces": [
+    {"x": 0, "y": 0, "piece": "act1/barracks/bare"},
+    {"x": 1, "y": 0, "piece": "act1/barracks/barew"},
+    {"x": 2, "y": 0, "piece": "act1/barracks/barwforge"}
+  ],
+  "allow_holes": ["act1/barracks/barwforge"],
+  "open": [1, 1, 20, 13],
+  "keep_monsters": ["act1/barracks/barwforge"],
+  "drop_monsters": [11]
+}

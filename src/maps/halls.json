@@ -1,0 +1,43 @@
+{
+  "name": "darkest_halls",
+  "folder": "act2/tomb",
+  "room": 16,
+  "comment": "Halls of the Dead 3 (src/patches/111_act2_arenas.py): a copy of three of the level's own tomb rooms in a line, no stairs: the hero arrives in the south room (tombn), walks north through a trapped hall (tombns) to the room of the Horadric Cube's chest (tombcubes). Their doors are gone (no door can be shut on the monsters) and so are the rooms' monsters (the plugin's waves are the only ones).",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/tomb/tombcubes"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act2/tomb/tombns"
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "piece": "act2/tomb/tombn"
+    }
+  ],
+  "close_edges": true,
+  "remove_walls": [
+    [
+      8,
+      13
+    ],
+    [
+      8,
+      20
+    ],
+    [
+      8,
+      29
+    ],
+    [
+      8,
+      36
+    ]
+  ]
+}

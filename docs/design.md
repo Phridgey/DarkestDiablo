@@ -14,6 +14,18 @@ The shared whiteboard has the same plan as a picture; this file is the reference
 - The last kill on a map opens a town portal. The player returns to town to manage loot
   and comes back through the portal.
 - At a fork, the player does 2 runs before moving on. The same option can be picked twice.
+- Every stop is fought as waves the plugin spawns, even on the game's own maps (decided
+  2026-11-19): native monsters come back fresh every game, so quitting would farm them.
+- No farming by leaving (decided 2026-11-19): entering a stop starts a run, and it must be
+  finished before any other stop can be entered (a fork pick is spent on entry). Leaving and
+  coming back, even after quitting the game, resumes at the next wave; it never starts over.
+  On a fork, quitting with nothing more to come (the last wave out) gives the pick up: it counts
+  as done, with no reward. Main-line stops (Den, Blood Raven, Tristram) are never locked out:
+  they resume with their last wave.
+- Waves spawn just past the edge of the screen and walk in (decided 2026-11-19): no monster
+  appears in view, and the hero is never buried under a fresh pack. Exception: on maps without a
+  known open floor (Tristram, the Countess), bosses still appear near the hero, so they never
+  fail to spawn.
 - Every stop gives +25% magic find the first time it is picked.
 
 ## Stop types
@@ -22,19 +34,89 @@ The shared whiteboard has the same plan as a picture; this file is the reference
 | Quest | Quest rewards | — | Uses the act's own quests |
 | MF run | One guaranteed set or unique of the area's level, plus kill drops | D2R rules; bosses and unique monsters feel it more | |
 | Crafting hunt | No magic items; runes, gems, crafting materials, white items (socketed and ethereal ones too) | Raises the rune chance instead | |
-| XP grind | Normal drops | Normal | +33% experience |
+| XP grind | Normal drops | Normal | More experience (Crypt +40%) |
 
 Magic find also raises socket count, superior ("high quality") chance and ethereal chance
 (MF runs and XP grinds).
 
 ## Act I
-1. **Den of Evil** — forced quest. Akara gives a skill point back in town.
+Status (2026-11-20): every stop below is built (Andariel not yet tested). Each is a
+waves arena (see "The run"); the numbers are under "Drop and experience numbers".
+
+1. **Den of Evil** — forced quest. A skill point on the first clear (no Akara respec).
 2. **Blood Raven** — forced quest. Unlocks the mercenary.
-3. Fork (2 picks): **Rakanishu & Treehead** (MF, at the Tree of Inifuss) · **Mausoleum** (crafting hunt) · **Crypt** (XP grind)
-4. **Tristram** — forced. Quest + MF: rescue Cain, unlock identify.
-5. Fork (2 picks): **Pit** (MF) · **Countess** (crafting hunt, +2 bonus runes) ·
-   **Horadric Malus** (XP grind; finishing earns an imbue)
-6. **Andariel** — act boss. Open question: forced final stop?
+3. Fork (2 picks): **Rakanishu & Treehead** (MF, at the Tree of Inifuss) · **Mausoleum** (crafting
+   hunt: a round crypt hall; runes, gems and white items only) · **Crypt** (XP grind: the same
+   hall; +40% experience; every pack led by a unique; killing a random one of them wins)
+4. **Tristram** — forced. The game's own Tristram map and quest (rescue Cain, unlock identify), but
+   its monsters are waves around the player (each pack three times at once), ending with Griswold. Cleared by freeing Cain from his gibbet (2026-11-21); a hero who freed him in an earlier game clears it by killing Griswold.
+   The whole zone has +40% magic find.
+5. Fork (2 picks): **Pit** (MF: the real Pit level 2; 5 packs led by uniques, a random one is the
+   target and drops a guaranteed unique or set) · **Countess** (crafting hunt: Tower Cellar 5; she
+   drops 5 runes, Ith to Ral) · **Horadric Malus** (XP grind: a cut-down Barracks, a large hall
+   leading into the Smith's forge; +40% experience; cleared when the Smith dies; the Malus is
+   Charsi's quest, her imbue)
+6. **Andariel** — act boss, built like Sam's Tower zone (decided 2026-11-20). Her lair is
+   a copy of Blizzard's Catacombs level 4 map, without its monsters, its stairs (it leads
+   nowhere) and its two doors (no door can be shut on her). Packs come out as the hero nears them. Two unique monsters, far apart (the
+   south room, and the west end of the hall below her throne), each drop one of her keys: the
+   Vial of Maiden's Venom and the Shard of Anguish. Walking into her hall with both takes them and
+   brings her out; her death clears the stop. Keys follow the Tower seals' rules: kept in the
+   inventory, one of each, gone at the end of the game. Built in `src/patches/125_andariel.py`, `src/maps/andariel.json`, `src/plugin/andariel.cpp`.
+
+Act II (plan: `docs/act2.md`; status 2026-11-21: every stop built, not yet tested). Its route map
+page opens from the waypoint in Lut Gholein.
+1. **Halls of the Dead** (forced) — a copy of three Halls 3 rooms in a line, no stairs and no doors:
+   waves on the way to the Horadric Cube's chest, Bloodwitch the Wild by it. Cleared on picking up
+   the Cube (a hero who already has one: on opening the chest) once every wave has come and died.
+   Every quest stop works this way (2026-11-22): rushing to the item doesn't skip the fight.
+2. Fork: **Sewers & Radament** (XP grind: +40% XP, triple gold; three sewer rooms ending in his lair;
+   he always drops his Book of Skill first, and picking it up clears it; the book's 1 skill point
+   plus 2 from the plugin on the first clear) · **Stony Tomb** (crafting hunt like the Mausoleum,
+   runes up to Shael, a round tomb hall).
+3. **Maggot Lair 3** and **Claw Viper Temple 2** (both forced, any order): three lair rooms ending in
+   the Staff of Kings' chest (Coldworm the Burrower by it); the temple's altar room (Fangskin; the
+   Tainted Sun altar gives the Amulet of the Viper). Each clears on picking up its item (a replay:
+   when the chest or altar is opened).
+4. Fork: **Arcane Sanctuary** (crafting hunt; one arm, monsters only ahead, the Summoner's death
+   clears it) · **Ancient Tunnels** (MF run; four rooms, unique-led packs, a random unique ends it)
+   · **Canyon of the Magi** (XP grind; a round sandy hollow).
+5. **Duriel**: arrive at the orifice in Tal Rasha's last room; the staff opens the way (the game's
+   own event); his death in his lair clears the stop.
+Linear maps (Halls, Sewers, Maggot Lair, Arcane, Tunnels) only spawn monsters ahead of the hero.
+
+Acts III-V (plans: `docs/act3.md`, `act4.md`, `act5.md` on the plan branch; status 2026-11-21:
+every stop built, not yet tested). Patches `113_act3.py`, `114_act4.py`, `114a_act5.py`; maps in
+`src/maps/`; route map pages from `tools/route_pages.py`. Where the build differs from the plan:
+- Khalim's three stops are one or two rooms each, without a swamp strip in front (a swamp is an
+  outdoor level, which the game places anew every game).
+- Outdoor stops borrow a spare level of the same act and copy the real one's look and name:
+  Lower Kurast (level 95), Travincal (96), the Hellforge (107), Shenk's foothills (116), the
+  Frigid Highlands (113). The Plains of Despair (105) get a fixed spot of their own.
+- The Hellforge clears when Hephasto dies (Mephisto's Soulstone comes from a quest the hero may
+  not have); the plugin then gives the three runes.
+- Rewards the plugin gives on a hero's first clear: Lam Esen +10 stat points, Izual +4 skill
+  points, the Hellforge's and the barbarians' runes, a Socket Chisel after the Malus (Charsi),
+  after Shenk (Larzuk's second) and once Khalim's three parts are held in Kurast Docks (Hratli),
+  the Golden Bird's +40 life when its potion is drunk, Anya's scroll (a choice panel), and a
+  level for the Ancients.
+- The route map opens on the act of the hero's next open stop, wherever the hero stands (Town
+  Portals from Act IV's red portals or the Cow Level land in another act's town).
+- Monster levels and loot follow the level progression (004_area_levels.py, 996_monster_levels.py).
+- Act I's level curve (decided 2026-11-22): a hero reaches Andariel at level 15 with no XP grind
+  among the four fork picks, and one level higher per XP grind pick (16, 17, 18, 19). The
+  monsters give far too little for that, so each counted clear adds the stop's share of the
+  curve as experience (ClearExperience in darkestdiablo_plugin.cpp): Den level 4, Burial Grounds
+  6, fork 1 9, Tristram 13, fork 2 15; an XP grind pick is worth one level at the end.
+- Acts II-V follow the same curve, 18 levels an act: Duriel at 33, Mephisto 51, Diablo 69, Baal 87
+  with no XP grind, one level more per XP grind pick (four in Act II, two in each later act).
+- Act I's runes (El to Ral) need levels 3 to 16 instead of 11 to 19, so they work in Act I
+  (008_act1_rune_levels.py); later runes keep the game's requirements.
+
+## Healing (decided 2026-11-19)
+- No health potions drop or are sold. Each cleared stop earns 3 (by difficulty: light, greater,
+  super), put in the hero's stash in town; what doesn't fit stays owed and piles up.
+- Akara doesn't heal (the plugin undoes it).
 
 ## Drop and experience numbers (decided so far)
 Every multiplier and drop rate we have agreed on, in one place. "Built" means it is in the game;
@@ -43,20 +125,30 @@ Every multiplier and drop rate we have agreed on, in one place. "Built" means it
 | What | Number | Status |
 |---|---|---|
 | Magic find, first pick of each stop | +25% magic find | planned |
-| XP grind stops (Crypt, Horadric Malus) | +33% experience | planned |
-| Countess (crafting hunt) | +2 bonus runes | planned |
+| Crypt (XP grind) | +40% experience from kills; drops as in the base game; every pack led by a random unique of its type (no minions); killing one of those uniques, picked at random and not marked, clears the stop | built |
+| Tristram, the whole zone | +40% magic find (on top of the hero's; done through the zone's loot tables) | built |
+| Griswold | 6 white weapon or armor drops (never magic; sockets and ethereal possible, superior not); a monster drops 6 items at most, so none of his own loot | built |
+| Horadric Malus (XP grind) | +40% experience from the waves' kills; drops as in the base game; cleared when the Smith dies | built |
+| XP grinds: gold (Crypt, Malus) | Every gold pile is worth 3 times as much (+200%); how often gold drops is unchanged (`src/patches/115_xp_gold.py`) | built |
+| Countess (crafting hunt) | She drops 5 runes, Ith to Ral, at the game's own odds between them (Ith 22%, Tal 47%, Ral 31%), then 1 of her usual item picks; the game's own Tower Cellar 5 map, with waves of its monster types, then her; cleared when she dies | built |
+| Pit (MF run) | Like Rakanishu & Treehead: every monster's drops 1.4 times as likely to be magic or better; 5 packs of the Pit's monsters, each led by a unique; one unique, picked at random, drops a guaranteed unique or set, and killing it clears the stop | built |
+| MF runs (Rakanishu & Treehead, Pit) | Every drop 1.4 times as likely to be magic or better; charms 3 times as likely (+200%) | built |
 | Den of Evil, first clear | 1 skill point (no respec) | built |
+| Health potions | None drop and shops sell none; every cleared stop earns 3 (light in Normal, greater in Nightmare, super in Hell), put in the hero's stash in town (the bag if full); what doesn't fit stays owed and piles up | built |
+| Mana potions | Drop half as often as in the base game (`src/patches/007_fewer_mana_potions.py`); everything else in the same loot tables is unchanged | built |
+| Akara | No longer heals: the plugin writes life and mana back when talking to her fills them (a full rejuvenation drunk next to her is undone too) | built |
 | Rakanishu & Treehead (MF run) | Treehead: one guaranteed unique or set (a set if no unique fits), plus his normal table drops | built |
 | Mausoleum: rune chance per kill | 5% at 0 magic find, 10% at 250, then on up in a straight line (+1% per 50 MF), 100% at most | built |
 | Mausoleum: white item chance per kill | 12% (weapon or armor near the area's level, never magic; can roll sockets and ethereal like any normal drop) | built |
 | Mausoleum: gems, potions, gold | 1 pick per kill (2 for champions) from chipped/flawed gems, a healing potion and gold; 40 in 74 picks drop nothing (10 in 44 for champions) | built |
 
 Rune rules:
-- Act I tops out at Tal. Tal and Ral drop only from the Countess (the next crafting hunt). The
-  Mausoleum tops out at Eth (Normal); Nightmare and Hell still use the game's Runes 8 and 13.
+- Highest rune per act (decided 2026-11-20, replacing every earlier Act I limit): Act I Ral,
+  Act II Shael, Act III Lem, Act IV Ohm. The Mausoleum drops El to Ral (the game's "Runes 4"),
+  the Countess Ith to Ral.
 - Keep the game's own odds between runes (its rune tables), even where they look odd: the
-  newest runes of a table drop most often (in the Mausoleum, Eth 37.5%, Tir 26.8%, Nef 17.9%,
-  El 10.7%, Eld 7.1%). Only the top rune and the overall rune chance are ours to set.
+  newest runes of a table drop most often (in the Mausoleum, Tal 25%, Eth 17.5%, Ral 16.7%,
+  Tir 12.5%, Ith 11.7%, Nef 8.3%, El 5%, Eld 3.3%). Only the top rune and the overall rune chance are ours to set.
 
 The game's player count (`/players`) raises every drop chance above, as it does in the base
 game: the numbers are for one player.

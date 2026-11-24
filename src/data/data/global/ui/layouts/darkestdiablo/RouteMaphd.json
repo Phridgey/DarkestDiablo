@@ -1,957 +1,1539 @@
 {
- "type": "Panel",
- "name": "darkestdiablo/RouteMap",
- "fields": {
-  "rect": "$LeftPanelRect",
-  "anchor": "$LeftPanelAnchor",
-  "priority": 8500
- },
- "children": [
-  {
-   "type": "ImageWidget",
-   "name": "Background",
-   "fields": {
+  "type": "Panel",
+  "name": "darkestdiablo/RouteMap",
+  "fields": {
     "rect": {
-     "x": 0,
-     "y": 0
+      "x": 236,
+      "y": -980,
+      "width": 1511,
+      "height": 1959
     },
-    "filename": "PANEL\\Waypoints\\Waypoints_Base",
-    "frame": 0
-   }
+    "anchor": "$LeftPanelAnchor",
+    "priority": 8500
   },
-  {
-   "type": "ImageWidget",
-   "name": "LeftHinge",
-   "fields": {
-    "rect": "$LeftHingeRect",
-    "filename": "$LeftHingeSprite"
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Title",
-   "fields": {
-    "rect": "$InGamePanelTitleRect",
-    "text": "Act I - Choose your path",
-    "style": "$StyleTitleBlock"
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeTownLocked",
-   "fields": {
-    "rect": {
-     "x": 30,
-     "y": 110
+  "children": [
+    {
+      "type": "ImageWidget",
+      "name": "Background",
+      "fields": {
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "scale": 1.3
+        },
+        "filename": "PANEL\\Waypoints\\Waypoints_Base",
+        "frame": 0
+      }
     },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Return to town",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeTown",
-   "fields": {
-    "rect": {
-     "x": 30,
-     "y": 110
+    {
+      "type": "ImageWidget",
+      "name": "LeftHinge",
+      "fields": {
+        "rect": {
+          "x": -236,
+          "y": 959
+        },
+        "filename": "$LeftHingeSprite"
+      }
     },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Return to town",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorWhite",
-    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-1"
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeDenLocked",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 190
+    {
+      "type": "TextBoxWidget",
+      "name": "Title",
+      "fields": {
+        "rect": {
+          "x": 118,
+          "y": 83,
+          "width": 1275,
+          "height": 92
+        },
+        "text": "Act I - Choose your path",
+        "style": "$StyleTitleBlock"
+      }
     },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Den of Evil",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeDen",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 190
+    {
+      "type": "ButtonWidget",
+      "name": "NodeTownLocked",
+      "fields": {
+        "rect": {
+          "x": 70,
+          "y": 150
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Return to town",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
     },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Den of Evil",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorWhite",
-    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-13",
-    "disabled": true
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line1",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 275,
-     "width": 40,
-     "height": 40
+    {
+      "type": "ButtonWidget",
+      "name": "NodeTown",
+      "fields": {
+        "rect": {
+          "x": 70,
+          "y": 150
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Return to town",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-1"
+      }
     },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
+    {
+      "type": "ButtonWidget",
+      "name": "NodeDenLocked",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 260
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Den of Evil",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeDen",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 260
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Den of Evil",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-13"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon0_NodeDen",
+      "fields": {
+        "rect": {
+          "x": 543,
+          "y": 351,
+          "scale": 0.26
+        },
+        "filename": "items\\misc\\quest\\bark_scroll"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind0_NodeDen",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 349,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Story",
+        "style": {
+          "fontColor": "$FontColorBeige",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Perk0_NodeDen",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 377,
+          "width": 361,
+          "height": 28
+        },
+        "text": "+3 skill points",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line1",
+      "fields": {
+        "rect": {
+          "x": 735,
+          "y": 407,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line2",
+      "fields": {
+        "rect": {
+          "x": 735,
+          "y": 451,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeBurialLocked",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 501
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Blood Raven",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeBurial",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 501
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Blood Raven",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-10"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon1_NodeBurial",
+      "fields": {
+        "rect": {
+          "x": 543,
+          "y": 592,
+          "scale": 0.26
+        },
+        "filename": "items\\misc\\quest\\bark_scroll"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind1_NodeBurial",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 590,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Story",
+        "style": {
+          "fontColor": "$FontColorBeige",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line3",
+      "fields": {
+        "rect": {
+          "x": 735,
+          "y": 648,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line4",
+      "fields": {
+        "rect": {
+          "x": 318,
+          "y": 656,
+          "width": 874,
+          "height": 40
+        },
+        "text": "________________________________________________________",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Note2",
+      "fields": {
+        "rect": {
+          "x": 0,
+          "y": 722,
+          "width": 1511,
+          "height": 30
+        },
+        "text": "Fork - pick 2",
+        "style": {
+          "fontColor": "$FontColorDarkGrayGold",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeInifussLocked",
+      "fields": {
+        "rect": {
+          "x": 143,
+          "y": 762
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Rakanishu & Treehead",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeInifuss",
+      "fields": {
+        "rect": {
+          "x": 143,
+          "y": 762
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Rakanishu & Treehead",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-12"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon2_NodeInifuss",
+      "fields": {
+        "rect": {
+          "x": 106,
+          "y": 853,
+          "scale": 0.52
+        },
+        "filename": "items\\misc\\gem\\perfect_topaz"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind2_NodeInifuss",
+      "fields": {
+        "rect": {
+          "x": 172,
+          "y": 851,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Magic find run",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Perk2_NodeInifuss",
+      "fields": {
+        "rect": {
+          "x": 172,
+          "y": 879,
+          "width": 361,
+          "height": 28
+        },
+        "text": "2 guaranteed sets or uniques",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork1MausoleumLocked",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 762
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Mausoleum",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork1Mausoleum",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 762
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Mausoleum",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-14"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon2_Fork1Mausoleum",
+      "fields": {
+        "rect": {
+          "x": 543,
+          "y": 853,
+          "scale": 0.3
+        },
+        "filename": "items\\weapon\\hammer\\horadric_malus"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind2_Fork1Mausoleum",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 851,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Crafting hunt",
+        "style": {
+          "fontColor": "$FontColorLightPurple",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Perk2_Fork1Mausoleum",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 879,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Runes up to Ral",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork1CryptLocked",
+      "fields": {
+        "rect": {
+          "x": 1017,
+          "y": 762
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Crypt",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork1Crypt",
+      "fields": {
+        "rect": {
+          "x": 1017,
+          "y": 762
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Crypt",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-15"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon2_Fork1Crypt",
+      "fields": {
+        "rect": {
+          "x": 980,
+          "y": 853,
+          "scale": 0.26
+        },
+        "filename": "items\\misc\\quest\\book_of_skill"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind2_Fork1Crypt",
+      "fields": {
+        "rect": {
+          "x": 1046,
+          "y": 851,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Experience grind",
+        "style": {
+          "fontColor": "$FontColorLightBlue",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Perk2_Fork1Crypt",
+      "fields": {
+        "rect": {
+          "x": 1046,
+          "y": 879,
+          "width": 361,
+          "height": 28
+        },
+        "text": "+1 level",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line5",
+      "fields": {
+        "rect": {
+          "x": 298,
+          "y": 909,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line6",
+      "fields": {
+        "rect": {
+          "x": 735,
+          "y": 909,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line7",
+      "fields": {
+        "rect": {
+          "x": 1172,
+          "y": 909,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line8",
+      "fields": {
+        "rect": {
+          "x": 318,
+          "y": 917,
+          "width": 874,
+          "height": 40
+        },
+        "text": "________________________________________________________",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line9",
+      "fields": {
+        "rect": {
+          "x": 735,
+          "y": 953,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeTristramLocked",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 1003
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Tristram",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeTristram",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 1003
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Tristram",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-38"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon3_NodeTristram",
+      "fields": {
+        "rect": {
+          "x": 543,
+          "y": 1094,
+          "scale": 0.26
+        },
+        "filename": "items\\misc\\quest\\bark_scroll"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind3_NodeTristram",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 1092,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Story",
+        "style": {
+          "fontColor": "$FontColorBeige",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Perk3_NodeTristram",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 1120,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Rare ring from Akara",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line10",
+      "fields": {
+        "rect": {
+          "x": 735,
+          "y": 1150,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line11",
+      "fields": {
+        "rect": {
+          "x": 318,
+          "y": 1158,
+          "width": 874,
+          "height": 40
+        },
+        "text": "________________________________________________________",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Note4",
+      "fields": {
+        "rect": {
+          "x": 0,
+          "y": 1224,
+          "width": 1511,
+          "height": 30
+        },
+        "text": "Fork - pick 2",
+        "style": {
+          "fontColor": "$FontColorDarkGrayGold",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork2PitLocked",
+      "fields": {
+        "rect": {
+          "x": 143,
+          "y": 1264
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Pit",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork2Pit",
+      "fields": {
+        "rect": {
+          "x": 143,
+          "y": 1264
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Pit",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-16"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon4_Fork2Pit",
+      "fields": {
+        "rect": {
+          "x": 106,
+          "y": 1355,
+          "scale": 0.52
+        },
+        "filename": "items\\misc\\gem\\perfect_topaz"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind4_Fork2Pit",
+      "fields": {
+        "rect": {
+          "x": 172,
+          "y": 1353,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Magic find run",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Perk4_Fork2Pit",
+      "fields": {
+        "rect": {
+          "x": 172,
+          "y": 1381,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Guaranteed set or unique",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork2CountessLocked",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 1264
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Countess",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork2Countess",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 1264
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Countess",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-25"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon4_Fork2Countess",
+      "fields": {
+        "rect": {
+          "x": 543,
+          "y": 1355,
+          "scale": 0.3
+        },
+        "filename": "items\\weapon\\hammer\\horadric_malus"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind4_Fork2Countess",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 1353,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Crafting hunt",
+        "style": {
+          "fontColor": "$FontColorLightPurple",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Perk4_Fork2Countess",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 1381,
+          "width": 361,
+          "height": 28
+        },
+        "text": "5 runes, up to Ral",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork2MalusLocked",
+      "fields": {
+        "rect": {
+          "x": 1017,
+          "y": 1264
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Horadric Malus",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "Fork2Malus",
+      "fields": {
+        "rect": {
+          "x": 1017,
+          "y": 1264
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Horadric Malus",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-28"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon4_Fork2Malus",
+      "fields": {
+        "rect": {
+          "x": 980,
+          "y": 1355,
+          "scale": 0.26
+        },
+        "filename": "items\\misc\\quest\\book_of_skill"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind4_Fork2Malus",
+      "fields": {
+        "rect": {
+          "x": 1046,
+          "y": 1353,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Experience grind",
+        "style": {
+          "fontColor": "$FontColorLightBlue",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Perk4_Fork2Malus",
+      "fields": {
+        "rect": {
+          "x": 1046,
+          "y": 1381,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Socket chisel, +1 level",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line12",
+      "fields": {
+        "rect": {
+          "x": 298,
+          "y": 1411,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line13",
+      "fields": {
+        "rect": {
+          "x": 735,
+          "y": 1411,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line14",
+      "fields": {
+        "rect": {
+          "x": 1172,
+          "y": 1411,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line15",
+      "fields": {
+        "rect": {
+          "x": 318,
+          "y": 1419,
+          "width": 874,
+          "height": 40
+        },
+        "text": "________________________________________________________",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Line16",
+      "fields": {
+        "rect": {
+          "x": 735,
+          "y": 1455,
+          "width": 40,
+          "height": 40
+        },
+        "text": "|",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$MediumFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeAndarielLocked",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 1505
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Andariel",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorDarkGrayBlue",
+        "disabled": true
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "NodeAndariel",
+      "fields": {
+        "rect": {
+          "x": 580,
+          "y": 1505
+        },
+        "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
+        "pressedFrame": 1,
+        "disabledFrame": 2,
+        "hoveredFrame": 3,
+        "textString": "Andariel",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "disabled": true,
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-37"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "Icon5_NodeAndariel",
+      "fields": {
+        "rect": {
+          "x": 543,
+          "y": 1596,
+          "scale": 0.52
+        },
+        "filename": "items\\misc\\gem\\perfect_skull"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Kind5_NodeAndariel",
+      "fields": {
+        "rect": {
+          "x": 609,
+          "y": 1594,
+          "width": 361,
+          "height": 28
+        },
+        "text": "Act boss",
+        "style": {
+          "fontColor": "$FontColorLightRed",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "LegendIcon0",
+      "fields": {
+        "rect": {
+          "x": 100,
+          "y": 1821,
+          "scale": 0.26
+        },
+        "filename": "items\\misc\\quest\\book_of_skill"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Legend0",
+      "fields": {
+        "rect": {
+          "x": 164,
+          "y": 1829,
+          "width": 194,
+          "height": 28
+        },
+        "text": "Experience grind",
+        "style": {
+          "fontColor": "$FontColorLightBlue",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "LegendIcon1",
+      "fields": {
+        "rect": {
+          "x": 362,
+          "y": 1821,
+          "scale": 0.52
+        },
+        "filename": "items\\misc\\gem\\perfect_topaz"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Legend1",
+      "fields": {
+        "rect": {
+          "x": 426,
+          "y": 1829,
+          "width": 194,
+          "height": 28
+        },
+        "text": "Magic find run",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "LegendIcon2",
+      "fields": {
+        "rect": {
+          "x": 624,
+          "y": 1821,
+          "scale": 0.3
+        },
+        "filename": "items\\weapon\\hammer\\horadric_malus"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Legend2",
+      "fields": {
+        "rect": {
+          "x": 688,
+          "y": 1829,
+          "width": 194,
+          "height": 28
+        },
+        "text": "Crafting hunt",
+        "style": {
+          "fontColor": "$FontColorLightPurple",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "LegendIcon3",
+      "fields": {
+        "rect": {
+          "x": 886,
+          "y": 1821,
+          "scale": 0.26
+        },
+        "filename": "items\\misc\\quest\\bark_scroll"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Legend3",
+      "fields": {
+        "rect": {
+          "x": 950,
+          "y": 1829,
+          "width": 194,
+          "height": 28
+        },
+        "text": "Story",
+        "style": {
+          "fontColor": "$FontColorBeige",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "LegendIcon4",
+      "fields": {
+        "rect": {
+          "x": 1148,
+          "y": 1821,
+          "scale": 0.52
+        },
+        "filename": "items\\misc\\gem\\perfect_skull"
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "Legend4",
+      "fields": {
+        "rect": {
+          "x": 1212,
+          "y": 1829,
+          "width": 194,
+          "height": 28
+        },
+        "text": "Act boss",
+        "style": {
+          "fontColor": "$FontColorLightRed",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "left",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "LegendPerk",
+      "fields": {
+        "rect": {
+          "x": 0,
+          "y": 1783,
+          "width": 1511,
+          "height": 28
+        },
+        "text": "Green: a one-time reward",
+        "style": {
+          "fontColor": "$FontColorGreen",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "CloseButton",
+      "fields": {
+        "rect": {
+          "x": 1396,
+          "y": 12
+        },
+        "filename": "PANEL\\closebtn_4x",
+        "hoveredFrame": 3,
+        "tooltipString": "@d2r:strClose",
+        "sound": "cursor_close_window_hd",
+        "onClickMessage": "PanelManager:ClosePanel:darkestdiablo/RouteMap",
+        "pressedFrame": 1
+      }
     }
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeBurialLocked",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 330
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Blood Raven",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeBurial",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 330
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Blood Raven",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorWhite",
-    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-10",
-    "disabled": true
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line2",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 415,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line3",
-   "fields": {
-    "rect": {
-     "x": 205,
-     "y": 425,
-     "width": 752,
-     "height": 40
-    },
-    "text": "________________________________________________",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line4",
-   "fields": {
-    "rect": {
-     "x": 185,
-     "y": 460,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line5",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 460,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line6",
-   "fields": {
-    "rect": {
-     "x": 937,
-     "y": 460,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Fork1Note",
-   "fields": {
-    "rect": {
-     "x": 0,
-     "y": 475,
-     "width": 1162,
-     "height": 30
-    },
-    "text": "Fork - pick 2",
-    "style": {
-     "fontColor": "$FontColorDarkGrayGold",
-     "pointSize": "$SmallFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeInifussLocked",
-   "fields": {
-    "rect": {
-     "x": 30,
-     "y": 520
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Rakanishu & Treehead",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeInifuss",
-   "fields": {
-    "rect": {
-     "x": 30,
-     "y": 520
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Rakanishu & Treehead",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorWhite",
-    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-12",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "Fork1MausoleumLocked",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 520
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Mausoleum",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "Fork1Mausoleum",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 520
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Mausoleum",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorWhite",
-    "disabled": true,
-    "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-14"
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "Fork1Crypt",
-   "fields": {
-    "rect": {
-     "x": 782,
-     "y": 520
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Crypt",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Kind0_602",
-   "fields": {
-    "rect": {
-     "x": 30,
-     "y": 602,
-     "width": 350,
-     "height": 28
-    },
-    "text": "MF run",
-    "style": {
-     "fontColor": "$FontColorDarkGrayGold",
-     "pointSize": "$SmallFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Kind1_602",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 602,
-     "width": 350,
-     "height": 28
-    },
-    "text": "Crafting hunt",
-    "style": {
-     "fontColor": "$FontColorDarkGrayGold",
-     "pointSize": "$SmallFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Kind2_602",
-   "fields": {
-    "rect": {
-     "x": 782,
-     "y": 602,
-     "width": 350,
-     "height": 28
-    },
-    "text": "XP grind",
-    "style": {
-     "fontColor": "$FontColorDarkGrayGold",
-     "pointSize": "$SmallFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line11",
-   "fields": {
-    "rect": {
-     "x": 185,
-     "y": 630,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line12",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 630,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line13",
-   "fields": {
-    "rect": {
-     "x": 937,
-     "y": 630,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line14",
-   "fields": {
-    "rect": {
-     "x": 205,
-     "y": 635,
-     "width": 752,
-     "height": 40
-    },
-    "text": "________________________________________________",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line15",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 680,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeTristram",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 730
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Tristram",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line16",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 815,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line17",
-   "fields": {
-    "rect": {
-     "x": 205,
-     "y": 825,
-     "width": 752,
-     "height": 40
-    },
-    "text": "________________________________________________",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line18",
-   "fields": {
-    "rect": {
-     "x": 185,
-     "y": 860,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line19",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 860,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line20",
-   "fields": {
-    "rect": {
-     "x": 937,
-     "y": 860,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Fork2Note",
-   "fields": {
-    "rect": {
-     "x": 0,
-     "y": 895,
-     "width": 1162,
-     "height": 30
-    },
-    "text": "Fork - pick 2",
-    "style": {
-     "fontColor": "$FontColorDarkGrayGold",
-     "pointSize": "$SmallFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "Fork2Pit",
-   "fields": {
-    "rect": {
-     "x": 30,
-     "y": 940
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Pit",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "Fork2Countess",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 940
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Countess",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "Fork2Malus",
-   "fields": {
-    "rect": {
-     "x": 782,
-     "y": 940
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Horadric Malus",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Kind0_1022",
-   "fields": {
-    "rect": {
-     "x": 30,
-     "y": 1022,
-     "width": 350,
-     "height": 28
-    },
-    "text": "MF run",
-    "style": {
-     "fontColor": "$FontColorDarkGrayGold",
-     "pointSize": "$SmallFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Kind1_1022",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 1022,
-     "width": 350,
-     "height": 28
-    },
-    "text": "Crafting hunt",
-    "style": {
-     "fontColor": "$FontColorDarkGrayGold",
-     "pointSize": "$SmallFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Kind2_1022",
-   "fields": {
-    "rect": {
-     "x": 782,
-     "y": 1022,
-     "width": 350,
-     "height": 28
-    },
-    "text": "XP grind",
-    "style": {
-     "fontColor": "$FontColorDarkGrayGold",
-     "pointSize": "$SmallFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line25",
-   "fields": {
-    "rect": {
-     "x": 185,
-     "y": 1050,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line26",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 1050,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line27",
-   "fields": {
-    "rect": {
-     "x": 937,
-     "y": 1050,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line28",
-   "fields": {
-    "rect": {
-     "x": 205,
-     "y": 1055,
-     "width": 752,
-     "height": 40
-    },
-    "text": "________________________________________________",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "TextBoxWidget",
-   "name": "Line29",
-   "fields": {
-    "rect": {
-     "x": 561,
-     "y": 1100,
-     "width": 40,
-     "height": 40
-    },
-    "text": "|",
-    "style": {
-     "fontColor": "$FontColorGoldYellow",
-     "pointSize": "$MediumFontSize",
-     "alignment": {
-      "h": "center",
-      "v": "center"
-     }
-    }
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "NodeAndariel",
-   "fields": {
-    "rect": {
-     "x": 406,
-     "y": 1150
-    },
-    "filename": "FrontEnd\\HD\\Final\\FrontEnd_ButtonSmall",
-    "pressedFrame": 1,
-    "disabledFrame": 2,
-    "hoveredFrame": 3,
-    "textString": "Andariel",
-    "pointSize": "$SmallFontSize",
-    "textColor": "$FontColorDarkGrayBlue",
-    "disabled": true
-   }
-  },
-  {
-   "type": "ButtonWidget",
-   "name": "CloseButton",
-   "fields": {
-    "rect": {
-     "x": 1075,
-     "y": 9
-    },
-    "filename": "PANEL\\closebtn_4x",
-    "hoveredFrame": 3,
-    "tooltipString": "@d2r:strClose",
-    "sound": "cursor_close_window_hd",
-    "onClickMessage": "PanelManager:ClosePanel:darkestdiablo/RouteMap",
-    "pressedFrame": 1
-   }
-  }
- ]
+  ]
 }
