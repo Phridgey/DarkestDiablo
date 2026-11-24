@@ -185,7 +185,7 @@ Rules:
 | `launcher/build_stdlib.py` | Standard modules bundled for the build scripts the .exe runs. |
 | `tools/extract.cpp`, `tools/extract/`, `tools/build-extract.cmd` | The game file reader (CascLib), bundled in the launcher. |
 | `tools/vanilla_files.txt` | The game files the build reads. |
-| `launcher/darkestdiablo_launcher.py` | The window. Everything is drawn in code: no images, no sound (silent on purpose). |
+| `launcher/darkestdiablo_launcher.py`, `launcher/darkestdiablo.ico` | The window and its icon. Everything else is drawn in code; no sound (silent on purpose). |
 | `tools/release.py` | Makes and publishes releases. Shares the manifest code with the launcher. |
 | `launcher/ddself.py`, `launcher/build_info.py` | The launcher updating itself; its build number. |
 | `tools/build-launcher.cmd` | Builds `build\launcher\DarkestDiabloLauncher.exe` with PyInstaller. |
