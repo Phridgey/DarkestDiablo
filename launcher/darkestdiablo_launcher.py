@@ -13,8 +13,8 @@ Two channels (the "channel" setting in %APPDATA%\\DarkestDiablo\\launcher.json):
 - "releases": downloads published GitHub releases (ddcore.py, docs/updates.md).
 
 The look is a nod to the old installer menus: a dark screen, a gold title, a short list of
-text choices that light up under the mouse, and a few embers. All of it is drawn here; there
-are no image or sound files. It is silent on purpose.
+text choices that light up under the mouse, and a few embers. All of it is drawn here aside
+from the window icon (darkestdiablo.ico); there are no sound files. It is silent on purpose.
 """
 import os, queue, random, sys, threading, webbrowser
 import tkinter as tk
@@ -38,10 +38,32 @@ def pick_font(*names):
     return next((n for n in names if n.lower() in have), "Times")
 
 
+def icon_path():
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    p = base / "darkestdiablo.ico"
+    return p if p.is_file() else None
+
+
+def set_app_id():
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("DarkestDiablo.Launcher")
+    except Exception:
+        pass
+
+
 class Launcher:
     def __init__(self, root):
         self.root = root
         root.title("Darkest Diablo")
+        ico = icon_path()
+        if ico:
+            try:
+                root.iconbitmap(default=str(ico))
+            except tk.TclError:
+                pass
         root.resizable(False, False)
         root.configure(bg="black")
         root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -580,6 +602,7 @@ def run_as_python():
 def main():
     if Path(sys.executable).stem.lower() == "python" and getattr(sys, "frozen", False):
         sys.exit(run_as_python())
+    set_app_id()
     root = tk.Tk()
     Launcher(root)
     root.mainloop()
