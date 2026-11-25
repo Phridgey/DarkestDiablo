@@ -599,11 +599,15 @@ static constexpr Wave ClawViperWaves[] = {
 // Arcane Sanctuary (on level 62, a spare lair level with level 74's look; the real 74 crashed): one arm of the cross (src/maps/arcane.json), walked south to
 // north; monsters only come from ahead. Crafting hunt (runes up to Shael). The Summoner
 // (superunique 18) waits on his platform at the far end; his death clears it.
+// Four big waves, then the Summoner with a last pack (2026-11-24: "a lot more mobs"). Spawns go
+// off screen and ahead of the hero (OffscreenSpot): the walkways' spots are local (5,5) and (5,7)
+// of each walkway room, the platform's (5,7), (4,5) and (3,3).
 static constexpr Wave ArcaneWaves[] = {
-	{ { { "mspawn", "dd_craft_a2b_wraith3", 4, { 5, 29 } }, { "mspawn", "dd_craft_a2b_goatman4", 4, { 5, 17 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_craft_a2b_vampire1", 2, { 5, 17 } }, { "mspawn", "dd_craft_a2b_goatman4", 5, { 5, 7 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 7 } }, { "mspawn", "dd_craft_a2b_goatman4", 4, { 4, 5 } } }, 2, AnyClass },
-	{ { { "monster", "super:18", 1, { 3, 3 } }, { "mspawn", "dd_craft_a2b_vampire1", 2, { 4, 5 } } }, 2, AnyClass, SummonerClass },
+	{ { { "mspawn", "dd_craft_a2b_goatman4", 6, { 5, 29 } }, { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 31 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2b_goatman4", 6, { 5, 19 } }, { "mspawn", "dd_craft_a2b_vampire1", 2, { 5, 17 } }, { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 29 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_craft_a2b_wraith3", 6, { 5, 17 } }, { "mspawn", "dd_craft_a2b_goatman4", 6, { 5, 7 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2b_goatman4", 6, { 5, 7 } }, { "mspawn", "dd_craft_a2b_vampire1", 3, { 4, 5 } }, { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 19 } } }, 3, AnyClass },
+	{ { { "monster", "super:18", 1, { 3, 3 } }, { "mspawn", "dd_craft_a2b_goatman4", 5, { 5, 7 } }, { "mspawn", "dd_craft_a2b_wraith3", 4, { 4, 5 } } }, 3, AnyClass, SummonerClass },
 };
 // Ancient Tunnels (level 65): four sewer rooms in a line (src/maps/tunnels.json), MF run; every
 // pack is led by a unique, and a random one of them is the target. Monsters only come from ahead.

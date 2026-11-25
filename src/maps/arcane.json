@@ -2,7 +2,7 @@
   "name": "darkest_arcane",
   "folder": "act2/arcane",
   "room": 12,
-  "comment": "Arcane Sanctuary (src/patches/116_act2_tier3.py): one arm of the sanctuary's cross, a copy of four of its own rooms in a line: the hero arrives at the south end (sanctn) and walks north along the walkways (sanctns twice) to the Summoner's platform (summs). Monsters only come from ahead.",
+  "comment": "Arcane Sanctuary (src/patches/116_act2_tier3.py): one arm of the sanctuary's cross, a copy of four of its own rooms in a line: the hero arrives at the south end (sanctn) and walks north along the walkways (sanctns twice) to the Summoner's platform (summs). Monsters only come from ahead. Horazon's Journal (objpreset 14, ArcaneTome) is left out: its red portal would let the hero leave the stop (2026-11-24).",
   "keep_monsters": [],
   "pieces": [
     {
@@ -31,5 +31,8 @@
     "act2/arcane/sanctns",
     "act2/arcane/sanctn"
   ],
-  "close_edges": true
+  "close_edges": true,
+  "drop_objects": [
+    14
+  ]
 }
