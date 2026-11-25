@@ -77,7 +77,7 @@ def stop(t, a):
         return row
     if kind == "craft":
         arenas.mausoleum.crafting_loot(t, row, arena_id=a["id"], wave_types=a["waves"], craft=a["craft"],
-                                       name=a["loot_name"], id_prefix=a["prefix"])
+                                       name=a["loot_name"], id_prefix=a["prefix"], gem_to_rune=a.get("gem_to_rune", False))
         return row
     arenas.copies(t, a, arenas.XP_BONUS if kind == "xp" else 1.0)
     if kind == "mf":
@@ -132,7 +132,7 @@ LOWERKURAST = {"id": "95", "look": "79", "map": "Act3/Kurast/darkest_lowerkurast
                "template": "Act 3 - Burbs 16x16", "name": "Act 3 - Darkest Diablo Lower Kurast",
                "waves": ["baboon4", "sandleaper4", "zealot1"], "prefix": "dd_craft_a3_",
                "pieces": ["burbs16x16_0", "burbs16x16_1", "burbs16x16_2"], "kind": "craft", "craft": CRAFT_A3,
-               "loot_name": "DD Craft A3"}
+               "loot_name": "DD Craft A3", "gem_to_rune": True}
 TRAVINCAL = {"id": "96", "look": "83", "map": "Act3/Travincal/darkest_travincal.ds1", "size": ("32", "32"),
              "template": "Act 3 - Travincal N ", "name": "Act 3 - Darkest Diablo Travincal", "waves": ["cantor3", "vampire2"],
              "prefix": "dd_mf_a3b_", "pieces": ["travn"], "kind": "mf"}
