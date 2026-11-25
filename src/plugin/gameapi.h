@@ -109,6 +109,15 @@ struct SkillPlaces {
 };
 auto SkillsOf(uintptr_t copy) -> std::optional<SkillPlaces>;
 
+// The game's compiled skills.txt tables (D2RLoader's DataTableService), one per bank, after a game
+// starts; empty when it ends. With them the skill list is recognised by its skills' pointers into a
+// table, whatever the layout around them.
+struct SkillTable { uintptr_t rows = 0; uint32_t count = 0, size = 0; };
+void SetSkillTables(const std::vector<SkillTable>& tables);
+
+// Research: the unit's pointers and what lies there, for finding the skill list by hand.
+auto SkillSearchDump(uintptr_t copy) -> std::vector<std::string>;
+
 // Research for "dd-state skills": where the skill list was found and each skill's raw numbers.
 auto SkillsReport() -> std::string;
 

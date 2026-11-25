@@ -115,7 +115,92 @@ auto LooksLikeSkillList(uintptr_t list, SkillChain& chain) -> bool {
 
 std::atomic<int> g_skillsAt { -1 };  // where in the unit the skill list pointer sits, once found
 
+// The same list, recognised by pointers into the compiled skills tables (SetSkillTables).
+struct SkillLayout { std::size_t slot = 0, head = 0, record = 0, next = 0; };
+std::mutex                            g_layoutMutex;
+std::vector<SkillTable>               g_skillTables;
+std::optional<SkillLayout>            g_layout;
+std::chrono::steady_clock::time_point g_layoutSearched {};
+
+auto SkillRow(const std::vector<SkillTable>& tables, uintptr_t record) -> int {
+	for (const auto& t : tables) {
+		if (record >= t.rows && record < t.rows + static_cast<uintptr_t>(t.count) * t.size && (record - t.rows) % t.size == 0) {
+			return static_cast<int>((record - t.rows) / t.size);
+		}
+	}
+	return -1;
+}
+
+auto ReadByLayout(const std::vector<SkillTable>& tables, uintptr_t first, const SkillLayout& at, SkillChain& chain) -> bool {
+	chain = {};
+	for (uintptr_t skill = first; skill != 0;) {
+		uintptr_t record = 0, next = 0;
+		if (!Pointer(skill) || chain.nodes.size() >= 400 || !Get(skill + at.record, record)) {
+			return false;
+		}
+		const int row = SkillRow(tables, record);
+		if (row < 0 || !Get(skill + at.next, next) || std::find(chain.ids.begin(), chain.ids.end(), row) != chain.ids.end()) {
+			return false;
+		}
+		chain.nodes.push_back(skill);
+		chain.ids.push_back(row);
+		skill = next;
+	}
+	return chain.ids.size() >= 5 && std::find(chain.ids.begin(), chain.ids.end(), 0) != chain.ids.end();
+}
+
+// `list` becomes the address of { first, left, right }.
+auto FindByTables(uintptr_t unit, SkillChain& chain, uintptr_t& list) -> bool {
+	const std::lock_guard<std::mutex> guard(g_layoutMutex);
+	if (g_skillTables.empty()) {
+		return false;
+	}
+	const auto use = [&](const SkillLayout& at) {
+		uintptr_t block = 0, first = 0;
+		if (!Get(unit + at.slot, block) || !Pointer(block) || !Get(block + at.head, first) || !ReadByLayout(g_skillTables, first, at, chain)) {
+			return false;
+		}
+		list = block + at.head;
+		return true;
+	};
+	if (g_layout) {
+		return use(*g_layout);
+	}
+	const auto now = std::chrono::steady_clock::now();
+	if (now - g_layoutSearched < std::chrono::seconds(3)) {
+		return false;
+	}
+	g_layoutSearched = now;
+	for (std::size_t slot = 0x10; slot < 0x300; slot += 8) {
+		uintptr_t block = 0;
+		std::array<uintptr_t, 8> heads {};
+		if (!Get(unit + slot, block) || !Pointer(block) || !Get(block, heads)) {
+			continue;
+		}
+		for (std::size_t h = 0; h < heads.size(); ++h) {
+			std::array<uintptr_t, 12> node {};
+			if (!Pointer(heads[h]) || !Get(heads[h], node)) {
+				continue;
+			}
+			for (std::size_t record = 0; record < node.size(); ++record) {
+				for (std::size_t next = 0; next < node.size() && SkillRow(g_skillTables, node[record]) >= 0; ++next) {
+					const SkillLayout at { slot, h * 8, record * 8, next * 8 };
+					if (next != record && Pointer(node[next]) && use(at)) {
+						g_layout = at;
+						g_skillsAt = static_cast<int>(slot);
+						return true;
+					}
+				}
+			}
+		}
+	}
+	return false;
+}
+
 auto FindSkillList(const Unit& hero, SkillChain& chain, uintptr_t& list) -> bool {
+	if (FindByTables(hero.address, chain, list)) {
+		return true;
+	}
 	const auto tryAt = [&](std::size_t offset) {
 		chain = {};
 		return Get(hero.address + offset, list) && LooksLikeSkillList(list, chain);
@@ -296,6 +381,54 @@ auto SkillsOf(uintptr_t copy) -> std::optional<SkillPlaces> {
 		return std::nullopt;
 	}
 	return places;
+}
+
+void SetSkillTables(const std::vector<SkillTable>& tables) {
+	const std::lock_guard<std::mutex> guard(g_layoutMutex);
+	g_skillTables.clear();
+	for (const auto& t : tables) {
+		if (t.rows != 0 && t.count > 0 && t.size >= 16) {
+			g_skillTables.push_back(t);
+		}
+	}
+	g_layoutSearched = {};
+}
+
+auto SkillSearchDump(uintptr_t copy) -> std::vector<std::string> {
+	std::vector<std::string> lines;
+	const std::lock_guard<std::mutex> guard(g_layoutMutex);
+	char text[64];
+	for (const auto& t : g_skillTables) {
+		std::snprintf(text, sizeof(text), "table %llx, %u rows of %u", static_cast<unsigned long long>(t.rows), t.count, t.size);
+		lines.push_back(text);
+	}
+	for (std::size_t slot = 0; slot < 0x300; slot += 8) {
+		uintptr_t block = 0;
+		std::array<uintptr_t, 8> words {};
+		if (!Get(copy + slot, block) || !Pointer(block) || !Get(block, words)) {
+			continue;
+		}
+		std::snprintf(text, sizeof(text), "+%zx ->", slot);
+		std::string line = text;
+		for (const uintptr_t w : words) {
+			std::snprintf(text, sizeof(text), " %llx", static_cast<unsigned long long>(w));
+			line += text;
+			const int row = SkillRow(g_skillTables, w);
+			std::array<uintptr_t, 4> inner {};
+			if (row >= 0) {
+				line += "(skill " + std::to_string(row) + ")";
+			} else if (Pointer(w) && Get(w, inner)) {
+				line += "[";
+				for (const uintptr_t i : inner) {
+					std::snprintf(text, sizeof(text), SkillRow(g_skillTables, i) >= 0 ? " skill:%llx" : " %llx", static_cast<unsigned long long>(i));
+					line += text;
+				}
+				line += "]";
+			}
+		}
+		lines.push_back(line);
+	}
+	return lines;
 }
 
 auto SkillsReport() -> std::string {

@@ -355,6 +355,68 @@ auto FindSkillKeys(std::vector<std::string>* nearMisses) -> std::vector<uintptr_
 	return found;
 }
 
+auto SkillKeysHeld(uintptr_t table) -> std::vector<int> {
+	std::vector<unsigned char> now(SkillKeyBytes);
+	std::vector<int> held;
+	if (GameState::ReadBytes(table, now.data(), SkillKeyBytes) && LooksSkillKeys(now.data())) {
+		for (std::size_t i = 0; i < SkillKeyCount; ++i) {
+			int32_t skill = -1;
+			std::memcpy(&skill, now.data() + i * SkillKeySize, 4);
+			held.push_back(skill);
+		}
+	}
+	return held;
+}
+
+auto MissileColumns(const Game::SkillTable& table, const std::vector<std::pair<int, int>>& known) -> std::vector<std::size_t> {
+	std::vector<std::size_t> columns;
+	if (table.rows == 0 || table.size < 16 || table.size > 8192 || known.size() < 4) {
+		return columns;
+	}
+	std::vector<std::vector<unsigned char>> rows;
+	for (const auto& [row, missile] : known) {
+		std::vector<unsigned char> bytes(table.size);
+		if (row < 0 || static_cast<uint32_t>(row) >= table.count || !GameState::ReadBytes(table.rows + static_cast<uintptr_t>(row) * table.size, bytes.data(), table.size)) {
+			return columns;
+		}
+		rows.push_back(std::move(bytes));
+	}
+	for (std::size_t at = 0; at + 2 <= table.size; at += 2) {
+		bool all = true;
+		for (std::size_t i = 0; all && i < known.size(); ++i) {
+			uint16_t value = 0;
+			std::memcpy(&value, rows[i].data() + at, 2);
+			all = value == static_cast<uint16_t>(known[i].second);
+		}
+		if (all) {
+			columns.push_back(at);
+		}
+	}
+	if (columns.size() != 2) {
+		columns.clear();
+	}
+	return columns;
+}
+
+auto SetMissile(const Game::SkillTable& table, int row, const std::vector<std::size_t>& columns, int missile, const std::vector<int>& ours) -> bool {
+	const auto mine = [&](int value) { return std::find(ours.begin(), ours.end(), value) != ours.end(); };
+	if (columns.size() != 2 || row < 0 || static_cast<uint32_t>(row) >= table.count || !mine(missile)) {
+		return false;
+	}
+	const uintptr_t at = table.rows + static_cast<uintptr_t>(row) * table.size;
+	for (const std::size_t column : columns) {
+		uint16_t now = 0;
+		if (!Get(at + column, now) || !mine(now)) {
+			return false;
+		}
+	}
+	bool done = true;
+	for (const std::size_t column : columns) {
+		done = Put<uint16_t>(at + column, static_cast<uint16_t>(missile)) && done;
+	}
+	return done;
+}
+
 auto HoldSkill(const std::vector<uintptr_t>& tables, int skill) -> std::vector<SkillKeyTable> {
 	std::vector<SkillKeyTable> held;
 	for (const uintptr_t at : tables) {
