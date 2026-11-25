@@ -207,7 +207,17 @@ def chests_without_ammo(t):
                     chest[f"Item{k}"] = without(base) + item[len(base):]
 
 
+def orb_without_event(t):
+    """Smashing the Compelling Orb crashed the game (2026-11-24): its use (OperateFn 53) plays the
+    game's own event, which opens the way into the Durance in the real Travincal, and our copy on
+    another level has none of that. The orb now just opens when used (the Tower tome's OperateFn 6,
+    a book that only changes its look), which is all the plugin needs to clear the stop (it counts
+    the orb's change of state). The Durance is reached from the route map, as before."""
+    t.table("objects").first("Class", "CompellingOrb")["OperateFn"] = "6"
+
+
 def patch(t):
+    orb_without_event(t)
     chests_without_ammo(t)
     for a in (SPIDER, FLAYER, KSEWERS, LAMESEN, SWAMPY, LOWERKURAST, TRAVINCAL, DURANCE):
         stop(t, a)
