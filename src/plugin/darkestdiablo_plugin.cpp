@@ -599,11 +599,15 @@ static constexpr Wave ClawViperWaves[] = {
 // Arcane Sanctuary (on level 62, a spare lair level with level 74's look; the real 74 crashed): one arm of the cross (src/maps/arcane.json), walked south to
 // north; monsters only come from ahead. Crafting hunt (runes up to Shael). The Summoner
 // (superunique 18) waits on his platform at the far end; his death clears it.
+// Four big waves, then the Summoner with a last pack (2026-11-24: "a lot more mobs"). Spawns go
+// off screen and ahead of the hero (OffscreenSpot): the walkways' spots are local (5,5) and (5,7)
+// of each walkway room, the platform's (5,7), (4,5) and (3,3).
 static constexpr Wave ArcaneWaves[] = {
-	{ { { "mspawn", "dd_craft_a2b_wraith3", 4, { 5, 29 } }, { "mspawn", "dd_craft_a2b_goatman4", 4, { 5, 17 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_craft_a2b_vampire1", 2, { 5, 17 } }, { "mspawn", "dd_craft_a2b_goatman4", 5, { 5, 7 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 7 } }, { "mspawn", "dd_craft_a2b_goatman4", 4, { 4, 5 } } }, 2, AnyClass },
-	{ { { "monster", "super:18", 1, { 3, 3 } }, { "mspawn", "dd_craft_a2b_vampire1", 2, { 4, 5 } } }, 2, AnyClass, SummonerClass },
+	{ { { "mspawn", "dd_craft_a2b_goatman4", 6, { 5, 29 } }, { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 31 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2b_goatman4", 6, { 5, 19 } }, { "mspawn", "dd_craft_a2b_vampire1", 2, { 5, 17 } }, { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 29 } } }, 3, AnyClass },
+	{ { { "mspawn", "dd_craft_a2b_wraith3", 6, { 5, 17 } }, { "mspawn", "dd_craft_a2b_goatman4", 6, { 5, 7 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_craft_a2b_goatman4", 6, { 5, 7 } }, { "mspawn", "dd_craft_a2b_vampire1", 3, { 4, 5 } }, { "mspawn", "dd_craft_a2b_wraith3", 5, { 5, 19 } } }, 3, AnyClass },
+	{ { { "monster", "super:18", 1, { 3, 3 } }, { "mspawn", "dd_craft_a2b_goatman4", 5, { 5, 7 } }, { "mspawn", "dd_craft_a2b_wraith3", 4, { 4, 5 } } }, 3, AnyClass, SummonerClass },
 };
 // Ancient Tunnels (level 65): four sewer rooms in a line (src/maps/tunnels.json), MF run; every
 // pack is led by a unique, and a random one of them is the target. Monsters only come from ahead.
@@ -655,11 +659,11 @@ static constexpr Wave LamEsenWaves[] = {
 	{ { { "mspawn", "dd_xp_a3d_arach5", 3, { 13, 12 } }, { "mspawn", "dd_xp_a3d_vampire2", 4, { 13, 12 } }, { "monster", "super:24", 1, { 13, 12 } } }, 3, AnyClass },
 };
 // Swampy Pit (level 90, src/maps/swampy.json).
-static constexpr Wave SwampyWaves[] = {
-	{ { { "mspawn", "dd_mf_a3_bonefetish4", 3, { 3, 4 } }, { "mspawn", "dd_mf_a3_bonefetish5", 4, { 3, 4 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a3_batdemon2", 4, { 8, 10 } }, { "mspawn", "dd_mf_a3_willowisp1", 5, { 9, 10 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a3_bonefetish4", 5, { 16, 14 } }, { "mspawn", "dd_mf_a3_bonefetish5", 3, { 16, 14 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a3_batdemon2", 3, { 18, 17 } }, { "mspawn", "dd_mf_a3_willowisp1", 4, { 18, 20 } } }, 2, AnyClass },
+static constexpr Wave SwampyWaves[] = {  // open Kurast ruins (src/maps/swampy.json); hero arrives on the west edge
+	{ { { "mspawn", "dd_mf_a3_bonefetish4", 3, { 16, 4 } }, { "mspawn", "dd_mf_a3_bonefetish5", 4, { 20, 15 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_batdemon2", 4, { 26, 5 } }, { "mspawn", "dd_mf_a3_willowisp1", 5, { 8, 22 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_bonefetish4", 5, { 17, 26 } }, { "mspawn", "dd_mf_a3_bonefetish5", 3, { 28, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_batdemon2", 3, { 20, 15 } }, { "mspawn", "dd_mf_a3_willowisp1", 4, { 16, 4 } } }, 2, AnyClass },
 };
 // Lower Kurast (level 95, src/maps/lowerkurast.json).
 static constexpr Wave LowerKurastWaves[] = {
@@ -804,7 +808,7 @@ static constexpr Arena Arenas[] = {
 	{ "Flayer Dungeon", 91, 2000, 2340, FlayerWaves, static_cast<int>(sizeof(FlayerWaves) / sizeof(FlayerWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qbr", 406, { 4, 20 }, true, -1, 1 },
 	{ "Kurast Sewers", 93, 2500, 1300, KSewersWaves, static_cast<int>(sizeof(KSewersWaves) / sizeof(KSewersWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qhr", 405, { 9, 19 }, true, -1, 1 },
 	{ "Ruined Temple", 94, 3000, 1000, LamEsenWaves, static_cast<int>(sizeof(LamEsenWaves) / sizeof(LamEsenWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "bbb", 193, { 13, 5 }, false, -1, 1 },
-	{ "Swampy Pit", 90, 2000, 2200, SwampyWaves, static_cast<int>(sizeof(SwampyWaves) / sizeof(SwampyWaves[0])), false, { 0, 0 }, 0, AnyClass, true, true, 1, nullptr, -1, { 2, 2 }, false, -1, 1 },
+	{ "Swampy Pit", 90, 2000, 2200, SwampyWaves, static_cast<int>(sizeof(SwampyWaves) / sizeof(SwampyWaves[0])), false, { 0, 0 }, 0, AnyClass, true, true, 1, nullptr, -1, { 2, 16 }, false, -1, 1 },
 	{ "Lower Kurast", 95, 3000, 1124, LowerKurastWaves, static_cast<int>(sizeof(LowerKurastWaves) / sizeof(LowerKurastWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 13, 46 }, true, -1, 1 },
 	{ "Travincal", 96, 3000, 1248, TravincalWaves, static_cast<int>(sizeof(TravincalWaves) / sizeof(TravincalWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 28, 24 }, false, 404, 1 },
 	{ "Plains of Despair", 105, 2000, 1000, PlainsWaves, static_cast<int>(sizeof(PlainsWaves) / sizeof(PlainsWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 12, 46 }, true, -1, 1 },
@@ -2277,11 +2281,53 @@ static void WatchAkaraRing(const D2RL::PluginContext* context, int townLevel) no
 	}).detach();
 }
 
+// The Jade Figurine (Golden Bird quest) drops from the Khalim stops' uniques every time (1 in 5),
+// so heroes piled them up (2026-11-24). A hero keeps one, and none once the bird is done (the
+// Golden Bird or the Potion of Life held, or the potion drunk); extras vanish. Game thread.
+struct JadeScan { std::vector<D2RL::ItemHandle> figurines; bool birdDone = false; };
+
+static auto __cdecl ScanJade(const D2RL::PluginContext*, const D2RL::Items::ItemInfo* item, void* out) noexcept -> D2RL::Inventory::IterationAction {
+	auto* scan = static_cast<JadeScan*>(out);
+	if (item != nullptr) {
+		if (item->code == ItemCode("j34")) {
+			scan->figurines.push_back(item->handle);
+		} else if (item->code == ItemCode("g34") || item->code == ItemCode("xyz")) {
+			scan->birdDone = true;
+		}
+	}
+	return D2RL::Inventory::IterationAction::Continue;
+}
+
+static void RemoveExtraFigurines(const D2RL::PluginContext* context, D2RL::PlayerHandle player) noexcept {
+	if (g_items == nullptr) {
+		return;
+	}
+	const D2RL::Inventory::ItemFilter filter {
+		.structSize    = D2RL::Inventory::ItemFilterSize,
+		.containerMask = D2RL::Items::AllItemContainers,
+	};
+	JadeScan scan;
+	g_inventory->forEachInventoryItem(context, player, &filter, ScanJade, &scan);
+	scan.birdDone = scan.birdDone || LoadProgress().Flag("goldenbird") != 0;
+	const size_t keep = scan.birdDone ? 0 : 1;
+	int removed = 0;
+	for (size_t i = keep; i < scan.figurines.size(); ++i) {
+		removed += g_items->destroyItem(context, player, scan.figurines[i], D2RL::Items::SocketedItemPolicy::RejectIfNotEmpty) ==
+			D2RL::Items::Result::Success ? 1 : 0;
+	}
+	if (removed > 0) {
+		char message[96] {};
+		std::snprintf(message, sizeof(message), "Golden Bird: %d extra Jade Figurine(s) removed.", removed);
+		Trace(context, message);
+	}
+}
+
 static void __cdecl CheckHeldRewards(const D2RL::PluginContext* context, void* periodic) noexcept {
 	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 	if (g_inventory == nullptr || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
 		return;
 	}
+	RemoveExtraFigurines(context, player);
 	const D2RL::Inventory::ItemFilter filter {
 		.structSize    = D2RL::Inventory::ItemFilterSize,
 		.containerMask = D2RL::Items::AllItemContainers,
@@ -2495,6 +2541,21 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		}
 		if (g_panels != nullptr && g_anyaPanel != D2RL::Panels::InvalidHandle) {
 			g_panels->closePanel(context, g_anyaPanel);
+		}
+		return Action::Consume;
+	}
+	// Act tabs down the route map's left side ("darkestdiablo/routeact-<n>"): show another act's page,
+	// to go back to an earlier act's stops.
+	static constexpr char ActPrefix[] = "darkestdiablo/routeact-";
+	if (g_panels != nullptr && std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
+		std::strncmp(text, ActPrefix, sizeof(ActPrefix) - 1) == 0) {
+		const int act = std::atoi(text + sizeof(ActPrefix) - 1);
+		if (act >= 1 && act <= 5 && RouteMapPanel(act) != RouteMapPanel(g_routeAct.load())) {
+			g_panels->closePanel(context, RouteMapPanel(g_routeAct.load()));
+			g_routeAct = act;
+			g_panels->openPanel(context, RouteMapPanel(act));
+			RefreshRouteMap(context, nullptr);
+			g_threads->runOnUiThread(context, RefreshRouteMap, nullptr);
 		}
 		return Action::Consume;
 	}
@@ -2803,8 +2864,8 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	}
 
 	ReadLootData(context);
-	// Off in 0.17.28-0.17.35: looting broke (2026-11-23) right after it went in. Back on in 0.17.36 to
-	// test whether it was the cause; if looting breaks again, turn it off for good.
+	// Off in 0.17.28-0.17.35 (looting broke right after it went in, 2026-11-23); back on since
+	// 0.17.36, with looting fine (2026-11-24), so it wasn't the cause.
 	MercGear::Install(context, g_mercType.load());
 
 	// Route map panel and UI-message listener. Optional: without them the arenas still work.

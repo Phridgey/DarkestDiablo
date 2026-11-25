@@ -1,4 +1,5 @@
-"""No potions and no scrolls drop anywhere (decided 2026-11-23; health potions since 2026-11-19).
+"""No potions and no scrolls drop anywhere (decided 2026-11-23; health potions since 2026-11-19;
+throwing potions and elixirs since 2026-11-24).
 
 Every loot table entry for a potion (healing, mana, rejuvenation, antidote, stamina, thawing) or a
 scroll (Town Portal, Identify) is taken out, and in tables that pick by chance its weight moves to
@@ -11,7 +12,9 @@ Portal scroll that ends each stop still comes from the plugin.
 """
 
 HEALTH = {"hp1", "hp2", "hp3", "hp4", "hp5"}
-NO_DROP = HEALTH | {"mp1", "mp2", "mp3", "mp4", "mp5", "rvs", "rvl", "yps", "vps", "wms", "tsc", "isc"}
+NO_DROP = HEALTH | {"mp1", "mp2", "mp3", "mp4", "mp5", "rvs", "rvl", "yps", "vps", "wms", "tsc", "isc",
+                   # throwing potions (oil, exploding, gas) and elixirs too (2026-11-24)
+                   "ops", "opm", "opl", "gps", "gpm", "gpl", "elx"}
 
 
 def patch(t):
