@@ -1,6 +1,7 @@
 // Tests for the camp rules (src/plugin/camp.h). No game needed.
 //   g++ -std=c++20 -I src/plugin tests/camp_tests.cpp -o build/camp_tests && build/camp_tests
 // tools\build-plugin.cmd builds and runs them too.
+#include "ascend.h"
 #include "camp.h"
 #include "route.h"
 #include "stash.h"
@@ -595,6 +596,53 @@ static void JournalListsARunesWordsByLevel() {
 	}
 }
 
+// Ascend (ascend.h): a made-up save around real item bytes (a sorceress's starting kit).
+static auto AscendSave(const std::string& hex) -> Ascend::Bytes {
+	Ascend::Bytes b(400, 0);
+	b[0] = 0x55, b[1] = 0xAA, b[2] = 0x55, b[3] = 0xAA, b[4] = 105;
+	for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+		b.push_back(static_cast<uint8_t>(std::stoi(hex.substr(i, 2), nullptr, 16)));
+	}
+	Ascend::Checksum(b);
+	return b;
+}
+
+static void AscendMovesItems() {
+	using namespace Ascend;
+	Shapes shapes;
+	std::istringstream lines("isave hp1 m 0 0 1 1\nisave box m 0 0 2 2\nssave 83 3 3\n");
+	shapes.Read(lines);
+	const std::string potion = "1000a200150000cf4f232869b703c888aa738b166ce19ee18b01";
+	const std::string cube = "1000800005c044ff3c80dfa64052842a0d9915d785447abdd5699a333afc89fe03";
+	const std::string tail = "4a4d00006a666b6600";
+	Bytes donor = AscendSave("4a4d0200" + potion + cube + tail), heir = AscendSave("4a4d0000" + tail);
+	Ascend::Hero hero;
+	std::string error;
+	CHECK(ReadHero(donor, shapes, hero, error) && hero.items.size() == 2 && hero.items[0].loc == 2 && hero.items[1].code == "box");
+	std::vector<Item> legacy = Legacy(hero);
+	CHECK(legacy.size() == 1 && legacy[0].code == "hp1");  // the Cube itself stays behind
+	std::vector<int> pages;
+	CHECK(Pack(legacy, 10, pages) == 1 && pages[0] == 0);
+	CHECK(Inject(heir, legacy, shapes, error));
+	Ascend::Hero after;
+	CHECK(ReadHero(heir, shapes, after, error) && after.items.size() == 1 && after.items[0].loc == 0 && after.items[0].page == 5);
+	// Only its place bits differ from the original.
+	Bytes was = hero.items[0].bytes, is = after.items[0].bytes;
+	for (size_t i = 0; i < was.size(); ++i) {
+		if (i < 4 || i > 6) { CHECK(was[i] == is[i]); }
+	}
+	// A stash page in use, a cut-off file and an unknown item are refused, with the save untouched.
+	const Bytes before = heir;
+	CHECK(!Inject(heir, legacy, shapes, error) && heir == before);
+	Bytes cut(donor.begin(), donor.end() - 5);
+	CHECK(!ReadHero(cut, shapes, hero, error));
+	shapes.items.erase("hp1");
+	CHECK(!ReadHero(donor, shapes, hero, error));
+	// More than a page holds goes to a second page, nothing overlaps.
+	std::vector<Item> many(130, legacy[0]);
+	CHECK(Pack(many, 10, pages) == 2);
+}
+
 int main(int argc, char** argv) {
 	if (argc == 3 && std::string(argv[1]) == "layouts") {
 		WriteStashLayouts(argv[2]);
@@ -617,6 +665,7 @@ int main(int argc, char** argv) {
 	NewCampOffersEveryClassThenLocksTheRest();
 	TravelerOffersThreeLockedClasses();
 	OfferShrinksWhenFewClassesAreLocked();
+	AscendMovesItems();
 	FallenClassIsAlwaysOffered();
 	EmptyFireGetsATraveler();
 	CampFileRoundTrip();
