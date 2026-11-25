@@ -659,8 +659,13 @@ auto WaitForCast(uint32_t before, std::string& modes) -> bool {
 std::atomic<bool> g_dumped { false };  // the skill list's surroundings are in the log (once a run)
 
 // Returns true when a potion left the hand.
-auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) -> bool {
-	const auto lives = MonsterLives();
+auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code, bool test = false) -> bool {
+	const auto lives = test ? MonsterLives() : std::map<uint32_t, int> {};
+	const auto watch = [&] {  // searches all memory, so only for a test
+		if (test) {
+			std::thread(WatchThrow, context, code, g_throwSkill, lives).detach();
+		}
+	};
 	const auto fail = [&](const std::string& why) {
 		ToUi(context, "Throw: " + why, false);
 		return false;
@@ -725,7 +730,7 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) 
 		Note(context, "%s by key 0x%02x (%s%s): modes %s, hero%s: %s", code.c_str(), key, how, already ? ", already down" : "", modes.c_str(),
 			SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
 		if (cast) {
-			std::thread(WatchThrow, context, code, skill, lives).detach();
+			watch();
 		}
 		return cast;
 	};
@@ -750,7 +755,7 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) 
 			const bool cast = WaitForCast(before, modes);
 			Note(context, "%s by the right button: modes %s, hero%s: %s", code.c_str(), modes.c_str(), SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
 			if (cast) {
-				std::thread(WatchThrow, context, code, skill, lives).detach();
+				watch();
 				return true;
 			}
 			hand.LetGo();
@@ -782,7 +787,7 @@ void ThrowTest(const D2RL::PluginContext* context, std::string code) noexcept {
 	try {
 		std::this_thread::sleep_for(std::chrono::seconds(4));
 		if (g_inGame.load()) {
-			ThrowAtCursor(context, code);
+			ThrowAtCursor(context, code, true);
 		}
 	} catch (...) {
 	}

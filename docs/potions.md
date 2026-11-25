@@ -35,7 +35,7 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   are drawn over the belt's place in three spare panels, and the plugin works their effects by
   changing life, mana and stamina (`gamewrite.h`). Antidote and Thawing don't give the resistance the
   game's own do: a stat the hero doesn't have can't be added.
-- **Throwing** (seen to throw in 0.27.2). Every hero has the skill Throw Potion from the start, like
+- **Throwing** (seen in 0.27.3: it flies to the cursor and hurts monsters). Every hero has the skill Throw Potion from the start, like
   Throw or Unsummon (`131a_throw_skill.py`, `charstats.txt`), so nothing has to be granted or equipped and
   nothing can run out: the slot's charges are the only limit. By itself the skill sends off an invisible
   missile that does nothing, so using it outside a slot throws nothing. A press of the slot's key puts the
@@ -49,7 +49,7 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   past the cursor).
 - Every step is in the game folder's `d2rloader/logs/potion-throws.log`, which builds and restarts leave
   alone. `dd-potions throwtest [fire|gas]` throws one for no charge 4 seconds later (any hero, no tree
-  node needed). `dd-potions bag` (until the game closes) puts 5 throwing potions in the bag instead.
+  node needed) and logs the missiles it made and the monsters whose life fell. `dd-potions bag` (until the game closes) puts 5 throwing potions in the bag instead.
 - Before: 0.22.4 took charges and threw nothing; 0.24.2 gave the skill with a guessed console command and
   did not find the skill list ("no list"), and a crash report (01:05) fell within a minute of a throw,
   cause not known. The list is now recognised by its pointers into the compiled skills table; if it still
@@ -66,8 +66,8 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 3. Do healing and mana really fill, at the right pace? Log: "the hero has N copies in memory" (2 or more).
 4. Do Antidote and Thawing end poison, cold and freezing?
 5. Seen: the belt line shows the right number.
-6. Throwing: does it fly to the cursor, and does the old right skill come back, and the skill keys? Log:
-   "thrown at the cursor with key ...: cast seen", or why not.
+6. Seen: fire potions are thrown from the slot. Not yet: the gas potions and the stronger grades; does the
+   old right skill come back?
 7. Does the route map show the affixes, and change after they are won?
 
 Console: `dd-potions` (what the hero has); for tests `dd-potions fill`, `give <antidote|thawing|stamina>`,
