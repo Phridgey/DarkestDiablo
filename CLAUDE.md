@@ -1,6 +1,6 @@
 # Darkest Diablo — rules for Claude sessions
 
-A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/design.md` before design work.
+A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/design.md` before design work, and `docs/flattening.md` (the plan to flatten difficulties, which wins where they disagree).
 
 ## Game version
 - Target build: see `D2R_VERSION` (3.4.95032). Both of us play a frozen copy of the game that Battle.net never updates.
