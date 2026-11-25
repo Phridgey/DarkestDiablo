@@ -24,7 +24,17 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
 - **The Upgrades tab** (first node): one slot per gem and rune, kept as counts. Nodes open the
   kinds (by quality, rune range), raise the limit per slot from 20 to 99, and add the gem cutter,
   a "Store bag" button and the Porter (stores gems and runes on coming back to town). Click a slot
-  to take one out or to store what is in the hand; Ctrl+click a bag item stores it.
+  to take one out or to store what is in the hand; Ctrl+click a bag item stores it, from any page of the stash.
+
+- **The safe.** Heroes with the Warlock rules have three tabs of the game's own (Gems, Materials, Runes).
+  They are off (no tabs, their slots outside the window). What they hold when the stash is opened goes to the safe, a tab after Upgrades that
+  shows only what is in it. Click to take one out; nothing can be put in; the tab is gone once it is
+  empty. It is one safe for all saves (the game has one such stash for all of them): `camp/safe.txt`.
+  Ctrl+click on a gem or rune, which the game would send to the hidden tabs, stores it in the Upgrades
+  tab, whichever page shows (to that page if its slot is locked or full); anything that gets there all the same
+  goes to the Upgrades tab too, else back to the bag or an open page (to the safe only
+  if there is no room at all). The Warlock rules' stash file is copied to `camp/stash-backup-safe-<time>`
+  before anything in it is moved.
 
 ## Choices the engine forced
 - **Not the game's own gem and rune tabs.** They exist only for heroes made with the Warlock
@@ -55,6 +65,15 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
 
 Console: `dd-stash` (what this save has); for tests `dd-stash points <n>`, `dd-stash gold <n>`.
 
+The safe (0.28.0) is not tried in the game. To try it with a Warlock hero: put gems and runes in the old
+tabs with a version before 0.28.0, then open the stash with this one. `dd-stash old` writes to the log
+how the loader lists the shared items. To be seen: whether it lists those in the old tabs at all (if
+not they stay in their tab, hidden), and whether `quantity` is the stack's size (the log gives each as
+"old tabs: <code> x<n>"; if not, put the copy of the file back).
+Also seen while building it: Warlock heroes use a stash file of their own
+(`ModernSharedStashSoftCoreV2.d2i`), so they don't share pages with a save's other heroes, and joining,
+deleting a save and `split_stash.py` don't touch it.
+
 ## One stash file for all saves (0.22.1)
 The game reads `SharedStashSoftCoreV2.d2i` once, **when it starts** (not at the first game, as thought
 before: on 2026-11-24 a save opened right after starting got the other save's stash written over its
@@ -75,5 +94,5 @@ another). Changing saves needs no restart.
 - **Going back** to a version before this: `python tools/split_stash.py "<save folder>"` first.
 - **Not for the controller layout:** it still shows the game's page number and gold.
 - **Opening on Shared.** The game opens the stash on the hero's own page and plugins can't choose a tab.
-  Where the player clicks Shared is remembered (`camp/stash-tab.txt`, for that window size) and clicked
+  Where the player clicks Shared is remembered (`camp/stash-spot.txt`, for that window size) and clicked
   for them from then on; `dd-stash autotab` turns it off.

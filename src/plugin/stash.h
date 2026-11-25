@@ -148,6 +148,76 @@ inline auto KindOf(const std::string& code) -> const Kind* {
 	return nullptr;
 }
 
+// ---- The safe: what the Warlock rules' own tabs held ----------------------------------------
+// Counts, for all saves together (the game has one such stash for all of them): camp/safe.txt,
+// "item <code> <n>". Take only; it goes away when it is empty. Never holds a kind not listed here.
+struct SafeKind { std::string code, name, picture; };
+
+inline auto SafeKinds() -> const std::vector<SafeKind>& {
+	static const std::vector<SafeKind> all = [] {
+		std::vector<SafeKind> out;
+		for (const auto& kind : Kinds()) {
+			out.push_back({ kind.code, kind.name, kind.picture });
+		}
+		for (const SafeKind& kind : std::initializer_list<SafeKind> {
+			{ "rvs", "Rejuvenation Potion", "potion/rejuv_potion" }, { "rvl", "Full Rejuvenation Potion", "potion/full_rejuv_potion" },
+			{ "pk1", "Key of Terror", "key/mephisto_key" }, { "pk2", "Key of Hate", "key/mephisto_key" }, { "pk3", "Key of Destruction", "key/mephisto_key" },
+			{ "dhn", "Diablo's Horn", "body_part/fang" }, { "bey", "Baal's Eye", "body_part/eye" }, { "mbr", "Mephisto's Brain", "body_part/brain" },
+			{ "toa", "Token of Absolution", "quest/token_of_absolution" },
+			{ "tes", "Twisted Essence of Suffering", "quest/twisted_essence_of_suffering" }, { "ceh", "Charged Essence of Hatred", "quest/charged_essense_of_hatred" },
+			{ "bet", "Burning Essence of Terror", "quest/burning_essence_of_terror" }, { "fed", "Festering Essence of Destruction", "quest/festering_essence_of_destruction" },
+			{ "xa1", "Western Worldstone Shard", "shard/mote_of_anguish" }, { "xa2", "Eastern Worldstone Shard", "shard/mote_of_pain" },
+			{ "xa3", "Southern Worldstone Shard", "shard/mote_of_hatred" }, { "xa4", "Deep Worldstone Shard", "shard/mote_of_terror" },
+			{ "xa5", "Northern Worldstone Shard", "shard/mote_of_destruction" },
+			{ "ua1", "Talic's Anguish", "shard/talics_anguish" }, { "ua2", "Korlic's Pain", "shard/korlics_pain" }, { "ua3", "Madawc's Ire", "shard/madawcs_ire" },
+			{ "ua4", "Bul-Kathos' Nightmare", "shard/bulkathos_nightmare" }, { "ua5", "Worusk's End", "shard/worusks_end" } }) {
+			out.push_back(kind);
+		}
+		return out;
+	}();
+	return all;
+}
+
+inline auto SafeKindOf(const std::string& code) -> const SafeKind* {
+	for (const auto& kind : SafeKinds()) {
+		if (kind.code == code) {
+			return &kind;
+		}
+	}
+	return nullptr;
+}
+
+using Safe = std::map<std::string, int>;
+
+inline auto ParseSafe(const std::string& text) -> Safe {
+	Safe safe;
+	std::istringstream in(text);
+	std::string word, code;
+	int n = 0;
+	while (in >> word >> code >> n) {
+		if (word == "item" && n > 0 && SafeKindOf(code) != nullptr) {
+			safe[code] += n;
+		}
+	}
+	return safe;
+}
+
+inline auto SerializeSafe(const Safe& safe) -> std::string {
+	std::string out;
+	for (const auto& [code, n] : safe) {
+		if (n > 0) {
+			out += "item " + code + " " + std::to_string(n) + "\n";
+		}
+	}
+	return out;
+}
+
+// Is this what the Warlock rules' own tabs hold? Their items lie on shared pages whose number the
+// loader does not give (or past the mod's own pages).
+inline auto InWarlockTabs(bool shared, uint32_t page, int filePages, const std::string& code) -> bool {
+	return shared && page >= static_cast<uint32_t>(filePages) && SafeKindOf(code) != nullptr;
+}
+
 // ---- The save's state ---------------------------------------------------------------------
 enum class Buy { Bought, AlreadyOwned, Locked, NotEnoughPoints, Unknown };
 
@@ -556,6 +626,48 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
 }
 
+// The safe: lies over the stash like the Upgrades tab. Only what it holds is drawn.
+inline auto SafeLayout(const Safe& safe, bool upgrades) -> std::string {
+	using namespace Ui;
+	constexpr int W = 1162, H = 1507;
+	std::string out = Catcher(W, H) + ",{\"type\":\"ImageWidget\",\"name\":\"Background\",\"fields\":{\"filename\":\"PANEL\\\\Stash\\\\StashPanel_BG_Shared\"}}," +
+		Box("Sheet", { 70, 218, W - 140, 1215 }, "[0.035,0.03,0.028,1.0]") + "," + CloseButton(1075, "closebank");
+	const auto add = [&](const std::string& widget) { out += "," + widget; };
+	const auto tab = [&](const std::string& name, int x, const std::string& text, const std::string& action) {
+		add("{\"type\":\"ButtonWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x) +
+			",\"y\":146},\"filename\":\"PANEL\\\\stash\\\\MKB_Tabs_195_TGA\",\"normalFrame\":0,\"pressedFrame\":1,\"hoveredFrame\":0,\"disabledFrame\":0,\"textString\":\"" + text +
+			"\",\"pointSize\":\"$SmallPanelFontSize\",\"textColor\":\"$TabsInactiveTextColor\",\"onClickMessage\":\"" + ActionMessage + action + "\"}}");
+	};
+	add("{\"type\":\"TextBoxWidget\",\"name\":\"Title\",\"fields\":{\"rect\":\"$InGamePanelTitleRect\",\"text\":\"Safe\",\"style\":\"$StyleTitleBlock\"}}");
+	tab("TabShared", 82, "@d2r:shared", "shared");
+	tab("TabUpgrades", 277, "Upgrades", upgrades ? "upgrades" : "tree");
+	add(Text("Head", { 84, 236, 994, 40 }, "From the old Gems, Materials and Runes tabs. Take only.", TextGold, "$MediumFontSize", "left"));
+	int at = 0;
+	for (const auto& kind : SafeKinds()) {
+		const auto it = safe.find(kind.code);
+		if (it == safe.end() || it->second <= 0) {
+			continue;
+		}
+		const int x = 84 + at % 10 * 100, y = 292 + at / 10 * 100;
+		++at;
+		std::string picture = "items\\\\misc\\\\" + kind.picture;
+		for (size_t slash = picture.find('/'); slash != std::string::npos; slash = picture.find('/')) {
+			picture.replace(slash, 1, "\\\\");
+		}
+		add(Box("SlotEdge_" + kind.code, { x, y, 84, 84 }, "[0.55,0.43,0.18,1.0]"));
+		add(Box("Slot_" + kind.code, { x + 2, y + 2, 80, 80 }, "[0.08,0.075,0.07,1.0]"));
+		// Keys and the like are two cells high: half the size, so that they stay in their slot.
+		const bool tall = kind.code.size() == 3 && (kind.code.rfind("pk", 0) == 0 || kind.code.rfind("ua", 0) == 0);
+		add("{\"type\":\"ButtonWidget\",\"name\":\"Safe_" + kind.code + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x + (tall ? 22 : 2)) + ",\"y\":" + std::to_string(y + 2) +
+			",\"scale\":" + (tall ? "0.4" : "0.81") + "},\"filename\":\"" + picture + "\",\"normalFrame\":0,\"pressedFrame\":0,\"hoveredFrame\":0,\"disabledFrame\":0,\"tooltipString\":\"" +
+			kind.name + ": " + std::to_string(it->second) + "\",\"onClickMessage\":\"" + ActionMessage + "safe-" + kind.code + "\"}}");
+		add(Text("Count_" + kind.code, { x + 6, y + 2, 72, 26 }, std::to_string(it->second), TextWhite, "$SmallFontSize", "left"));
+	}
+	add(Text("Help1", { 84, 1300, 994, 36 }, "Click: take one out. Nothing can be put in.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
+	add(Text("Help2", { 84, 1340, 994, 36 }, "The safe is gone once it is empty.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
+	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
+}
+
 // How much gold Deposit and Take move at once; 0: all of it.
 inline constexpr std::array<long long, 8> GoldSteps = { 100, 500, 1000, 5000, 10000, 50000, 100000, 0 };
 
@@ -584,15 +696,18 @@ inline auto PageLayout(int page, int pages, long long purse, size_t step, const 
 
 // On the stash's own tab bar: a tab for every ascended hero's page in use, after Shared and Upgrades.
 // `active`: the one that shows (negative: none). With one showing, Shared is drawn as not chosen.
-inline auto TabsLayout(const std::map<int, std::string>& tabs, int active) -> std::string {
+// `safe`: the safe holds something and has a tab too, drawn as chosen with `safeOn`.
+inline auto TabsLayout(const std::map<int, std::string>& tabs, int active, bool safe = false, bool safeOn = false) -> std::string {
 	using namespace Ui;
 	constexpr int W = 195;
+	const int extra = static_cast<int>(tabs.size()) + (safe ? 1 : 0);
+	const double scale = extra > 3 ? 3.0 / extra : 1.0;  // the bar has room for three beside Shared and Upgrades
 	std::string out;
 	const auto tab = [&](const std::string& name, int at, bool on, const std::string& text, const std::string& action, const std::string& tip) {
 		const std::string frame = on ? "1" : "0";
 		const char* size = text[0] == '@' || text.size() <= 9 ? "\"$SmallPanelFontSize\"" : text.size() <= 12 ? "22" : "18";
-		out += std::string(out.empty() ? "" : ",") + "{\"type\":\"ButtonWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(at * W) +
-			",\"y\":0},\"filename\":\"PANEL\\\\stash\\\\MKB_Tabs_195_TGA\",\"normalFrame\":" + frame + ",\"pressedFrame\":1,\"hoveredFrame\":" + frame +
+		out += std::string(out.empty() ? "" : ",") + "{\"type\":\"ButtonWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(at < 2 ? at * W : 2 * W + static_cast<int>((at - 2) * W * scale)) +
+			",\"y\":" + std::to_string(at < 2 ? 0 : static_cast<int>(72 * (1 - scale))) + (at < 2 || scale == 1.0 ? std::string() : ",\"scale\":" + std::to_string(scale)) + "},\"filename\":\"PANEL\\\\stash\\\\MKB_Tabs_195_TGA\",\"normalFrame\":" + frame + ",\"pressedFrame\":1,\"hoveredFrame\":" + frame +
 			",\"disabledFrame\":" + frame + ",\"textString\":\"" + text + "\",\"pointSize\":" + size + ",\"textColor\":\"" +
 			(on ? "$TabsActiveTextColor" : "$TabsInactiveTextColor") + "\"" + (tip.empty() ? "" : ",\"tooltipString\":\"" + tip + "\"") +
 			",\"onClickMessage\":\"" + ActionMessage + action + "\"}}";
@@ -601,6 +716,9 @@ inline auto TabsLayout(const std::map<int, std::string>& tabs, int active) -> st
 		tab("TabShared", 0, false, "@d2r:shared", "shared", "");
 	}
 	int at = 2;
+	if (safe) {
+		tab("TabSafe", at++, safeOn, "Safe", "safe", "From the old Gems, Materials and Runes tabs. Take only. The tab goes when it is empty.");
+	}
 	for (const auto& [n, hero] : tabs) {
 		tab("TabHero" + std::to_string(n), at++, n == active, hero, "hero-" + std::to_string(n), hero + " has ascended. Take only. The tab goes when it is empty.");
 	}

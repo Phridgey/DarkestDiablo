@@ -27,11 +27,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace StashGame {
@@ -65,9 +67,17 @@ using ItemId = std::pair<uint64_t, uint32_t>;
 std::map<int, std::vector<ItemId>> g_known;  // what may lie on each ascended hero's page; empty until the first look of a visit
 std::atomic<bool>      g_delivering { false };
 
+Stash::Safe g_safe;            // what the Warlock rules' own tabs held (camp/safe.txt); read with g_state
+std::atomic<bool> g_safeTab { false };   // the safe shows in the Upgrades tab's place
+std::atomic<bool> g_warlock { false };   // a hero with the Warlock rules was played: their stash file exists
+bool              g_tabsSeen = false;    // the Warlock tabs were looked at since the stash opened; game thread only
+std::atomic<bool> g_safeFailed { false }; // no copy of their stash file could be made: nothing is moved
+
 // live folder and slot from camp/slot<N>/progress/<hero>.txt
 auto LiveOf(const fs::path& progress) -> fs::path { return progress.parent_path().parent_path().parent_path().parent_path(); }
 auto SlotOf(const fs::path& progress) -> int { return std::atoi(progress.parent_path().parent_path().filename().string().c_str() + 4); }
+auto SafeFile(const fs::path& live) -> fs::path { return live / "camp" / "safe.txt"; }
+auto WarlockFile(const fs::path& live) -> fs::path { return live / "ModernSharedStashSoftCoreV2.d2i"; }
 
 std::atomic<bool>      g_bankOpen { false };
 std::atomic<uintptr_t> g_visit { 0 };       // counts stash openings, so an old sweeper stops
@@ -136,6 +146,8 @@ auto Current(const fs::path& progress) -> bool {
 			Camp::WriteFile(g_file, Stash::Serialize(g_state));
 		}
 		g_legacy = Legacy::Load(LiveOf(progress), SlotOf(progress));
+		g_safe = Stash::ParseSafe(Camp::ReadFile(SafeFile(live)));
+		g_warlock = fs::exists(WarlockFile(live), ec);
 	}
 	return true;
 }
@@ -280,12 +292,20 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 			g_panels->openPanel(context, g_side);
 		}
 		const int heroTab = g_page.load() - Stash::PageCount - 1;  // negative: an ordinary page
-		if (!g_legacy.tabs.empty() && !g_treeWanted.load()) {
-			ShowRow(context, g_name, Stash::TabsLayout(g_legacy.tabs, g_tabWanted.load() ? -1 : heroTab));
+		if (g_safe.empty()) {
+			if (g_safeTab.exchange(false)) {
+				g_tabWanted = false;  // just emptied: back to the pages
+			}
+		}
+		const bool safeOn = g_safeTab.load() && g_tabWanted.load();
+		if ((!g_legacy.tabs.empty() || !g_safe.empty()) && !g_treeWanted.load()) {
+			ShowRow(context, g_name, Stash::TabsLayout(g_legacy.tabs, g_tabWanted.load() ? -1 : heroTab, !g_safe.empty(), safeOn));
 		} else {
 			CloseRow(context, g_name);
 		}
-		if (g_tabWanted.load() && g_state.Has("tab")) {
+		if (safeOn) {
+			ShowRow(context, g_tab, Stash::SafeLayout(g_safe, g_state.Has("tab")));
+		} else if (g_tabWanted.load() && g_state.Has("tab")) {
 			ShowRow(context, g_tab, Stash::UpgradesLayout(g_state));
 		} else {
 			CloseRow(context, g_tab);
@@ -476,6 +496,167 @@ void __cdecl ClickSlot(const D2RL::PluginContext* context, void* data) noexcept 
 
 void __cdecl LeaveTab(const D2RL::PluginContext* context, void*) noexcept;
 
+// ---- The safe --------------------------------------------------------------------------------
+auto SaveSafe(const D2RL::PluginContext* context) -> bool {
+	const fs::path file = SafeFile(g_file.parent_path().parent_path().parent_path());
+	if (g_safe.empty()) {
+		std::error_code ec;
+		fs::remove(file, ec);
+		return !fs::exists(file, ec);
+	}
+	if (Camp::WriteFile(file, Stash::SerializeSafe(g_safe))) {
+		return true;
+	}
+	context->LogWarn("Stash: could not write safe.txt.");
+	return false;
+}
+
+// Game thread. Makes one new item, in the hand, the bag or an open page, in the order asked for.
+auto MakeItem(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::string& code, bool intoHand, bool intoPages) -> bool {
+	D2RL::Items::ItemCreateSpec spec {
+		.structSize      = D2RL::Items::ItemCreateSpecSize,
+		.code            = CodeNumber(code),
+		.quality         = D2RL::Items::Quality::Normal,
+		.qualityRecordId = D2RL::Items::RandomQualityRecord,
+		.itemLevel       = 1,
+		.seedMode        = D2RL::Items::SeedMode::Random,
+		.quantity        = D2RL::Items::DefaultValue,
+		.durability      = D2RL::Items::DefaultValue,
+		.destination     = {
+			.structSize = D2RL::Items::ItemDestinationSize,
+			.container  = Container::Cursor,
+			.placement  = D2RL::Items::Placement::Automatic,
+		},
+	};
+	D2RL::ItemHandle made = D2RL::InvalidItemHandle;
+	if (intoHand && g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success) {
+		return true;
+	}
+	spec.destination.container = Container::Inventory;
+	if (g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success) {
+		return true;
+	}
+	for (int page = 0; intoPages && g_sharedWrite && page < g_state.Pages(); ++page) {
+		spec.destination.container = Container::SharedStash;
+		spec.destination.sharedStashPage = static_cast<uint32_t>(g_base.load() + page);
+		if (g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Game thread. One of a kind is taken out of the safe, into the hand or the bag. Nothing goes in here.
+void __cdecl TakeFromSafe(const D2RL::PluginContext* context, void* data) noexcept {
+	try {
+		const fs::path progress = Campfire::RouteProgressFile();
+		const Lock lock(g_mutex);
+		const auto& kinds = Stash::SafeKinds();
+		const size_t index = reinterpret_cast<size_t>(data);
+		D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+		D2RL::ItemHandle hand = D2RL::InvalidItemHandle;
+		if (index >= kinds.size() || !Current(progress) || g_safe.count(kinds[index].code) == 0 ||
+			g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success ||
+			(g_inventory->getCursorItem(context, player, &hand) == D2RL::Inventory::Result::Success && hand != D2RL::InvalidItemHandle)) {
+			return;
+		}
+		const std::string& code = kinds[index].code;
+		const Stash::Safe before = g_safe;
+		// Counted out first, like the Upgrades tab's.
+		if (--g_safe[code] <= 0) {
+			g_safe.erase(code);
+		}
+		if (!SaveSafe(context)) {
+			g_safe = before;
+			return;
+		}
+		if (!MakeItem(context, player, code, true, false)) {
+			g_safe = before;
+			SaveSafe(context);
+			Log(context, "Stash: taking %s out of the safe failed; it stays there.", code.c_str());
+		} else if (g_safe.empty()) {
+			context->LogInfo("Stash: the safe is empty and goes away.");
+		}
+		QueueRefresh(context);
+	} catch (...) {
+		context->LogWarn("Stash: taking from the safe failed.");
+	}
+}
+
+// The Warlock rules' stash file as it was, kept before the first move of a day (once per second at
+// most: the name is the time).
+auto KeepWarlockFile(const D2RL::PluginContext* context) -> bool {
+	const fs::path live = g_file.parent_path().parent_path().parent_path();
+	const fs::path folder = live / "camp" / ("stash-backup-safe-" + std::to_string(std::time(nullptr)));
+	std::error_code ec;
+	fs::create_directories(folder, ec);
+	const fs::path copy = folder / WarlockFile(live).filename();
+	fs::copy_file(WarlockFile(live), copy, fs::copy_options::overwrite_existing, ec);
+	if (ec || Camp::ReadFile(copy).empty() || Camp::ReadFile(copy) != Camp::ReadFile(WarlockFile(live))) {
+		context->LogWarn("Stash: could not copy the Warlock rules' stash file; its gems and runes stay where they are.");
+		return false;
+	}
+	Log(context, "Stash: the Warlock rules' stash file is kept in camp/%s.", folder.filename().string().c_str());
+	return true;
+}
+
+// Game thread, locked. Empties the Warlock rules' own tabs: what they held when the stash was opened
+// goes to the safe. Anything that gets in while it is open goes to the Upgrades tab, else back to the bag or an open page (the
+// safe can't be filled); only if there is no room at all the safe keeps it, so nothing is lost.
+void EmptyWarlockTabs(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::vector<D2RL::Items::ItemInfo>& items) {
+	const bool first = !std::exchange(g_tabsSeen, true);
+	if (!g_warlock.load() || g_safeFailed.load()) {
+		return;
+	}
+	std::vector<const D2RL::Items::ItemInfo*> out;
+	for (const auto& item : items) {
+		if (Stash::InWarlockTabs(item.container == Container::SharedStash, item.sharedStashPage, StashFile::FilePages, CodeText(item.code))) {
+			out.push_back(&item);
+		}
+	}
+	if (out.empty()) {
+		return;
+	}
+	if (first && !KeepWarlockFile(context)) {
+		g_safeFailed = true;
+		return;
+	}
+	int kept = 0, returned = 0, stored = 0;
+	for (const auto* item : out) {
+		const std::string code = CodeText(item->code);
+		const int n = (std::max)(1, item->quantity);
+		const auto result = g_items->destroyItem(context, player, item->handle, D2RL::Items::SocketedItemPolicy::RejectIfNotEmpty);
+		Log(context, "Stash: old tabs: %s x%d (page %u, %d,%d) -> code %d.", code.c_str(), n, item->sharedStashPage, item->x, item->y, static_cast<int>(result));
+		if (result != D2RL::Items::Result::Success) {
+			continue;
+		}
+		for (int i = 0; i < n; ++i) {
+			const Stash::Kind* kind = first ? nullptr : Stash::KindOf(code);
+			if (kind != nullptr && g_state.Room(*kind) > 0) {
+				g_state.Add(code, 1);
+				++stored;
+			} else if (!first && MakeItem(context, player, code, false, true)) {
+				++returned;
+			} else {
+				++g_safe[code];
+				++kept;
+			}
+		}
+	}
+	if (stored > 0) {
+		Save(context);
+	}
+	if (kept > 0) {
+		SaveSafe(context);
+	}
+	QueueRefresh(context);
+	Log(context, "Stash: old tabs: %d item(s) to the safe, %d to the Upgrades tab, %d back to the hero.", kept, stored, returned);
+}
+
+// Game thread. Ctrl+click would send the bag's gems and runes to the Warlock rules' hidden tabs:
+// they go to the Upgrades tab instead, or to the page that shows when its slot is locked or full.
+void __cdecl MoveToShownPage(const D2RL::PluginContext* context, void* data) noexcept;
+
 // ---- Page locks ------------------------------------------------------------------------------
 // `page`: in the stash file, from 0. With `x`, `y` at that cell, otherwise where there is room.
 auto MoveToFilePage(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2RL::ItemHandle item, int page, int x = -1, int y = -1) -> bool {
@@ -527,6 +708,33 @@ auto MoveToBag(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2
 	};
 	D2RL::Items::ExistingItemTransactionResult result { .structSize = D2RL::Items::ExistingItemTransactionResultSize };
 	return g_items->executeExistingItemTransaction(context, &transaction, &result) == D2RL::Items::Result::Success;
+}
+
+void __cdecl MoveToShownPage(const D2RL::PluginContext* context, void* data) noexcept {
+	try {
+		const fs::path progress = Campfire::RouteProgressFile();
+		const Lock lock(g_mutex);
+		D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+		std::vector<D2RL::Items::ItemInfo> items;
+		const int page = g_page.load();
+		if (!g_bankOpen.load() || !Current(progress) ||
+			!ItemsIn(context, D2RL::Items::ContainerBit(Container::Inventory), player, items)) {
+			return;
+		}
+		for (const auto& item : items) {
+			if (item.runtimeId != static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data))) {
+				continue;
+			}
+			if (Store(context, player, item)) {
+				Save(context);
+				QueueRefresh(context);
+			} else if (page >= 1 && page <= Stash::PageCount && g_state.PageOpen(page - 1)) {
+				MoveTo(context, player, item.handle, page - 1);
+			}
+		}
+	} catch (...) {
+		context->LogWarn("Stash: moving an item to the page failed.");
+	}
 }
 
 // Game thread, locked. The ascended heroes' pages: only what was there may lie there; anything put
@@ -721,6 +929,7 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 			WipePages(context, player, items);
 			return;
 		}
+		EmptyWarlockTabs(context, player, items);
 		GuardTabs(context, player, items, progress);
 		const bool carrying = g_legacy.CarriedBy(progress.stem().string()) != nullptr;  // not ours to move (Deliver)
 		std::set<int> used;
@@ -775,6 +984,16 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 		}
 	} catch (...) {
 		context->LogWarn("Stash: checking the pages failed.");
+	}
+}
+
+void __cdecl NewVisit(const D2RL::PluginContext*, void*) noexcept {
+	g_tabsSeen = false;
+	g_safeFailed = false;
+	const Lock lock(g_mutex);
+	if (!g_file.empty()) {  // a first Warlock hero's stash file appears while it plays
+		std::error_code ec;
+		g_warlock = fs::exists(WarlockFile(g_file.parent_path().parent_path().parent_path()), ec);
 	}
 }
 
@@ -980,13 +1199,28 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 		g_treeWanted = !RowOpen(context, g_tree);
 		SyncActs(context);
 	} else if (std::strcmp(action, "upgrades") == 0) {
+		g_safeTab = false;
 		if (g_state.Has("tab")) {
 			g_tabWanted = true;
 		} else {
+			g_tabWanted = false;
 			g_treeWanted = true;  // not unlocked yet: show where it is
+		}
+	} else if (std::strcmp(action, "safe") == 0) {
+		if (!g_safe.empty()) {
+			g_safeTab = true;
+			g_tabWanted = true;
+		}
+	} else if (StartsWith(action, "safe-")) {
+		const auto& kinds = Stash::SafeKinds();
+		for (size_t i = 0; i < kinds.size(); ++i) {
+			if (kinds[i].code == action + 5) {
+				g_threads->runOnGameThread(context, TakeFromSafe, reinterpret_cast<void*>(i));
+			}
 		}
 	} else if (std::strcmp(action, "shared") == 0) {
 		g_tabWanted = false;
+		g_safeTab = false;
 		if (g_page.load() > Stash::PageCount) {
 			g_threads->runOnUiThread(context, HomePage, nullptr);
 		}
@@ -1137,10 +1371,15 @@ auto __cdecl OnItemClick(const D2RL::PluginContext* context, const D2RL::ItemInt
 		}
 		if (event->container == Container::Inventory && (event->modifiers & D2RL::ItemInteractions::ModifierBit(D2RL::ItemInteractions::Modifier::Control)) != 0 &&
 			RowOpen(context, g_tab)) {
-			if (Stash::KindOf(CodeText(info.code)) != nullptr && info.runtimeId != 0) {
+			if (!g_safeTab.load() && Stash::KindOf(CodeText(info.code)) != nullptr && info.runtimeId != 0) {
 				g_threads->runOnGameThread(context, StoreFromBag, reinterpret_cast<void*>(static_cast<uintptr_t>(info.runtimeId)));
 			}
 			return Decision::Consume;  // never into the page hidden behind the tab
+		}
+		if (event->container == Container::Inventory && info.runtimeId != 0 && Stash::SafeKindOf(CodeText(info.code)) != nullptr &&
+			(event->modifiers & D2RL::ItemInteractions::ModifierBit(D2RL::ItemInteractions::Modifier::Control)) != 0) {
+			g_threads->runOnGameThread(context, MoveToShownPage, reinterpret_cast<void*>(static_cast<uintptr_t>(info.runtimeId)));
+			return Decision::Consume;
 		}
 	} catch (...) {
 	}
@@ -1164,7 +1403,7 @@ auto GameWindow(RECT& area) noexcept -> HWND {
 }
 
 auto SpotFile() -> fs::path {
-	return g_file.empty() ? fs::path() : g_file.parent_path().parent_path() / "stash-tab.txt";  // camp/
+	return g_file.empty() ? fs::path() : g_file.parent_path().parent_path() / "stash-spot.txt";  // camp/ (stash-tab.txt, before 0.28.1, could hold the place of a Warlock tab)
 }
 
 // UI thread: the player chose the Shared tab with the mouse.
@@ -1208,39 +1447,46 @@ void ClickShared(const D2RL::PluginContext* context) noexcept {
 			const auto wait = [](int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); };
 			const auto mine = [&] { return g_bankOpen.load() && g_visit.load() == visit; };
 			wait(120);  // the window is up
-			for (int i = 0; i < 100 && mine() && ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0; ++i) {
-				wait(20);  // the player still holds the mouse
-			}
-			RECT area {};
-			POINT before {}, spot { g_spotX.load(), g_spotY.load() };
-			const HWND window = GameWindow(area);
-			if (mine() && !g_tabChosen.load() && window != nullptr && area.right == g_spotW.load() && area.bottom == g_spotH.load() && GetCursorPos(&before) &&
-				ClientToScreen(window, &spot)) {
-				const auto button = [](DWORD flags) {
-					INPUT input {};
-					input.type = INPUT_MOUSE;
-					input.mi.dwFlags = flags;
-					SendInput(1, &input, sizeof(input));
-				};
-				SetCursorPos(spot.x, spot.y);
-				wait(40);
-				if (mine()) {
-					button(MOUSEEVENTF_LEFTDOWN);
-					wait(30);
-					button(MOUSEEVENTF_LEFTUP);
-					wait(40);
+			// A slow stash misses a click, so there are three tries before the place counts as wrong.
+			bool clicked = false;
+			for (int attempt = 0; attempt < 3 && mine() && !g_tabChosen.load(); ++attempt) {
+				for (int i = 0; i < 100 && mine() && ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0; ++i) {
+					wait(20);  // the player still holds the mouse
 				}
-				SetCursorPos(before.x, before.y);
-				wait(250);
-				if (mine() && !g_tabChosen.load()) {
-					g_spotX = -1;
-					context->LogInfo("Stash: the Shared tab was not where it was before; the next click on it is remembered.");
-					try {
-						const Lock lock(g_mutex);
-						std::error_code ec;
-						fs::remove(SpotFile(), ec);
-					} catch (...) {
+				RECT area {};
+				POINT before {}, spot { g_spotX.load(), g_spotY.load() };
+				const HWND window = GameWindow(area);
+				if (mine() && !g_tabChosen.load() && window != nullptr && area.right == g_spotW.load() && area.bottom == g_spotH.load() && GetCursorPos(&before) &&
+					ClientToScreen(window, &spot)) {
+					const auto button = [](DWORD flags) {
+						INPUT input {};
+						input.type = INPUT_MOUSE;
+						input.mi.dwFlags = flags;
+						SendInput(1, &input, sizeof(input));
+					};
+					SetCursorPos(spot.x, spot.y);
+					wait(40);
+					if (mine()) {
+						button(MOUSEEVENTF_LEFTDOWN);
+						wait(30);
+						button(MOUSEEVENTF_LEFTUP);
+						wait(40);
 					}
+					SetCursorPos(before.x, before.y);
+					clicked = true;
+					for (int i = 0; i < 6 + 6 * attempt && mine() && !g_tabChosen.load(); ++i) {
+						wait(50);
+					}
+				}
+			}
+			if (clicked && mine() && !g_tabChosen.load()) {
+				g_spotX = -1;
+				context->LogInfo("Stash: the Shared tab was not where it was before; the next click on it is remembered.");
+				try {
+					const Lock lock(g_mutex);
+					std::error_code ec;
+					fs::remove(SpotFile(), ec);
+				} catch (...) {
 				}
 			}
 			g_clicking = false;
@@ -1313,6 +1559,23 @@ void BankClosed(const D2RL::PluginContext* context) noexcept {
 	}
 }
 
+// Game thread. Lists every shared item as the loader gives it (dd-stash old).
+void __cdecl LogShared(const D2RL::PluginContext* context, void*) noexcept {
+	try {
+		D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+		std::vector<D2RL::Items::ItemInfo> items;
+		const bool ok = ItemsIn(context, D2RL::Items::AllItemContainers, player, items);
+		Log(context, "Stash: all items (%s, Warlock file %s):", ok ? "read" : "failed", g_warlock.load() ? "yes" : "no");
+		for (const auto& item : items) {
+			if (item.container == Container::SharedStash || item.container == Container::Unknown) {
+				Log(context, "Stash:   %s x%d, container %d, page %d, shared page %u, body %d, at %d,%d", CodeText(item.code).c_str(), item.quantity,
+					static_cast<int>(item.container), item.inventoryPage, item.sharedStashPage, item.bodyLocation, item.x, item.y);
+			}
+		}
+	} catch (...) {
+	}
+}
+
 // "dd-stash": what this save has. Test tools: "dd-stash points <n>", "dd-stash gold <n>", "dd-stash autotab".
 auto StashCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
 	if (command == nullptr || command->plugin == nullptr) {
@@ -1349,6 +1612,11 @@ auto StashCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 		} else if (what == "autotab") {
 			g_autoTab = !g_autoTab.load();
 			context->WriteConsoleMessage(g_autoTab.load() ? "Stash: tries to open on the shared pages." : "Stash: opens as the game does.");
+			return D2RL::ConsoleCommandResult::Handled;
+		}
+		if (what == "old") {  // what the plugin sees of the Warlock rules' own tabs
+			g_threads->runOnGameThread(context, LogShared, nullptr);
+			context->WriteConsoleMessage("Stash: every shared item is in darkestdiablo.log now.");
 			return D2RL::ConsoleCommandResult::Handled;
 		}
 		char message[256] {};
@@ -1472,12 +1740,13 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 					g_onShared = false;
 					g_treeWanted = false;
 					g_tabWanted = false;
+					g_safeTab = false;
 					if (!g_bankOpen.exchange(true)) {
 						{
 							const Lock lock(g_mutex);
 							g_known.clear();
 						}
-						g_threads->runOnGameThread(context, Sweep, nullptr);
+						g_threads->runOnGameThread(context, NewVisit, nullptr);
 						StartSweeping(context);
 					}
 					SyncActs(context);
