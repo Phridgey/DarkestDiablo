@@ -659,11 +659,11 @@ static constexpr Wave LamEsenWaves[] = {
 	{ { { "mspawn", "dd_xp_a3d_arach5", 3, { 13, 12 } }, { "mspawn", "dd_xp_a3d_vampire2", 4, { 13, 12 } }, { "monster", "super:24", 1, { 13, 12 } } }, 3, AnyClass },
 };
 // Swampy Pit (level 90, src/maps/swampy.json).
-static constexpr Wave SwampyWaves[] = {
-	{ { { "mspawn", "dd_mf_a3_bonefetish4", 3, { 3, 4 } }, { "mspawn", "dd_mf_a3_bonefetish5", 4, { 3, 4 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a3_batdemon2", 4, { 8, 10 } }, { "mspawn", "dd_mf_a3_willowisp1", 5, { 9, 10 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a3_bonefetish4", 5, { 16, 14 } }, { "mspawn", "dd_mf_a3_bonefetish5", 3, { 16, 14 } } }, 2, AnyClass },
-	{ { { "mspawn", "dd_mf_a3_batdemon2", 3, { 18, 17 } }, { "mspawn", "dd_mf_a3_willowisp1", 4, { 18, 20 } } }, 2, AnyClass },
+static constexpr Wave SwampyWaves[] = {  // open Kurast ruins (src/maps/swampy.json); hero arrives on the west edge
+	{ { { "mspawn", "dd_mf_a3_bonefetish4", 3, { 16, 4 } }, { "mspawn", "dd_mf_a3_bonefetish5", 4, { 20, 15 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_batdemon2", 4, { 26, 5 } }, { "mspawn", "dd_mf_a3_willowisp1", 5, { 8, 22 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_bonefetish4", 5, { 17, 26 } }, { "mspawn", "dd_mf_a3_bonefetish5", 3, { 28, 20 } } }, 2, AnyClass },
+	{ { { "mspawn", "dd_mf_a3_batdemon2", 3, { 20, 15 } }, { "mspawn", "dd_mf_a3_willowisp1", 4, { 16, 4 } } }, 2, AnyClass },
 };
 // Lower Kurast (level 95, src/maps/lowerkurast.json).
 static constexpr Wave LowerKurastWaves[] = {
@@ -808,7 +808,7 @@ static constexpr Arena Arenas[] = {
 	{ "Flayer Dungeon", 91, 2000, 2340, FlayerWaves, static_cast<int>(sizeof(FlayerWaves) / sizeof(FlayerWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qbr", 406, { 4, 20 }, true, -1, 1 },
 	{ "Kurast Sewers", 93, 2500, 1300, KSewersWaves, static_cast<int>(sizeof(KSewersWaves) / sizeof(KSewersWaves[0])), false, { 0, 0 }, 0, AnyClass, true, false, 1, "qhr", 405, { 9, 19 }, true, -1, 1 },
 	{ "Ruined Temple", 94, 3000, 1000, LamEsenWaves, static_cast<int>(sizeof(LamEsenWaves) / sizeof(LamEsenWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "bbb", 193, { 13, 5 }, false, -1, 1 },
-	{ "Swampy Pit", 90, 2000, 2200, SwampyWaves, static_cast<int>(sizeof(SwampyWaves) / sizeof(SwampyWaves[0])), false, { 0, 0 }, 0, AnyClass, true, true, 1, nullptr, -1, { 2, 2 }, false, -1, 1 },
+	{ "Swampy Pit", 90, 2000, 2200, SwampyWaves, static_cast<int>(sizeof(SwampyWaves) / sizeof(SwampyWaves[0])), false, { 0, 0 }, 0, AnyClass, true, true, 1, nullptr, -1, { 2, 16 }, false, -1, 1 },
 	{ "Lower Kurast", 95, 3000, 1124, LowerKurastWaves, static_cast<int>(sizeof(LowerKurastWaves) / sizeof(LowerKurastWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 13, 46 }, true, -1, 1 },
 	{ "Travincal", 96, 3000, 1248, TravincalWaves, static_cast<int>(sizeof(TravincalWaves) / sizeof(TravincalWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 28, 24 }, false, 404, 1 },
 	{ "Plains of Despair", 105, 2000, 1000, PlainsWaves, static_cast<int>(sizeof(PlainsWaves) / sizeof(PlainsWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 12, 46 }, true, -1, 1 },
