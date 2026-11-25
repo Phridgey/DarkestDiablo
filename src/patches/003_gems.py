@@ -22,8 +22,10 @@ GRADES = [("Chipped Gem", None, None), ("Flawed Gem", 4, 8), ("Normal Gem", 10, 
           ("Flawless Gem", 19, 25), ("Perfect Gem", 42, 50)]
 FULL, CHIPPED = 10, 12
 
-# Chance that one pick of the table drops a gem, by the table's kind.
-RATE = {"H2H": 0.06, "Cast": 0.06, "Miss": 0.06, "Wraith": 0.06, "Citem": 0.2, "Uitem": 0.35, "Chest": 0.10}
+# Chance that one pick of the table drops a gem, by the table's kind. Halved on 2026-11-25 (too many
+# gems everywhere), from 0.06 / 0.2 / 0.35 / 0.10; GOOD_SHARE halves the "Good" tables' gems too.
+RATE = {"H2H": 0.03, "Cast": 0.03, "Miss": 0.03, "Wraith": 0.03, "Citem": 0.1, "Uitem": 0.175, "Chest": 0.05}
+GOOD_SHARE = 0.5
 GOOD = re.compile(r"Act \d( \([NH]\))? Good")
 
 
@@ -90,7 +92,9 @@ def patch(t):
             gems = sum(int(p or 0) for i, p in items if i in grades)
             kept = [(i, p) for i, p in items if i not in grades]
             if gems:
-                kept.insert(1, (gem_table(good_level[row["Treasure Class"]]), str(gems)))
+                kept.insert(1, (gem_table(good_level[row["Treasure Class"]]), str(max(1, round(gems * GOOD_SHARE)))))
+                if int(row.get("Picks") or 1) > 0:  # the rest of their weight drops nothing
+                    row["NoDrop"] = str(int(row.get("NoDrop") or 0) + gems - max(1, round(gems * GOOD_SHARE)))
             set_entries(row, kept)
     # The game reads the tables top to bottom and can't find one that comes later ("Couldn't parse
     # treasure class item", 2026-11-25), so these go right after the gem grades they are made of.

@@ -130,11 +130,14 @@ def crafting_loot(t, arena, arena_id=ARENA_ID, wave_types=WAVE_TYPES, craft=CRAF
         tag = f" {diff}" if diff else ""
         if not isinstance(runes, str):  # our own rune table
             runes = table(f"{name} Runes{tag}", 1, 0, runes)
-        entries = [(gems[0], 10), (gems[1], 4), (potion, 8), ("gld", 12)]
+        # Gems halved on 2026-11-25 (were 10 and 4): the rest of their weight drops nothing.
+        entries = [(gems[0], 5), (gems[1], 2), (potion, 8), ("gld", 12)]
+        nodrop = 40 + 7
         if gem_to_rune:  # the lower gem's share drops a rune instead (Lower Kurast, 2026-11-25)
             entries[0] = (runes, 10)
-        base = table(f"{name} Hunt{tag}", 1, 40, entries)
-        base_champ = table(f"{name} Hunt Champ{tag}", 2, 10, entries)
+            nodrop = 40 + 2
+        base = table(f"{name} Hunt{tag}", 1, nodrop, entries)
+        base_champ = table(f"{name} Hunt Champ{tag}", 2, nodrop - 30, entries)
         white = table(f"{name} White{tag}", 1, 100 - WHITE_CHANCE,
                       [(nested(f"{name} White Bases{tag}", whites[d]), WHITE_CHANCE)])
         hunt[diff] = {}
