@@ -833,7 +833,7 @@ static constexpr Arena Arenas[] = {
 	{ "Halls of Vaught", 124, 2500, 1000, VaughtWaves, static_cast<int>(sizeof(VaughtWaves) / sizeof(VaughtWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 42, 79 }, false, -1, 1 },
 	{ "Cow Level", 39, 5000, 1148, CowWaves, static_cast<int>(sizeof(CowWaves) / sizeof(CowWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 6, 24 }, false, -1, 1 },
 	{ "Arreat Summit", 120, 2000, 2508, AncientsWaves, 1, false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 11, 25 } },
-	{ "Durance of Hate", 102, 3500, 1600, nullptr, 0, false, { 0, 0 }, 0, MephistoClass, false, false, 1, nullptr, -1, { 29, 19 } },
+	{ "Durance of Hate", 99, 3000, 1620, nullptr, 0, false, { 0, 0 }, 0, MephistoClass, false, false, 1, nullptr, -1, { 29, 19 } },
 	{ "Chaos Sanctuary", 108, 1500, 1000, nullptr, 0, false, { 0, 0 }, 0, DiabloClass },
 	{ "Throne of Destruction", 131, 3000, 1000, nullptr, 0, false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 3, 48 } },
 	{ "Worldstone Chamber", 132, 3000, 1152, nullptr, 0, false, { 0, 0 }, 0, BaalClass },

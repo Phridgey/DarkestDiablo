@@ -15,7 +15,9 @@ Tier 12, the fork:
   the spare temple level 95 (same tiles) and copies Lower Kurast's look and name onto it.
 Tier 13: Travincal (on level 96, borrowed the same way): the temple square with the High Council
   and the Compelling Orb; MF loot. Smashing the orb with Khalim's Will clears it.
-Tier 14: Durance of Hate 3 (level 102): Mephisto's hall as the game has it; his death clears it.
+Tier 14: Durance of Hate 3 (on spare level 99, a temple level, with level 102's look): Mephisto's
+  hall as the game has it; his death clears it. (On the real level 102 the game crashed on
+  arrival, 2026-11-25, at the same spot as the Canyon's and the Arcane Sanctuary's real levels.)
 
 Here are also the helpers the later acts' stops use (114_act4.py, 114a_act5.py): `stop()` makes
 a level one fixed map and its wave monsters (XP, MF or crafting copies).
@@ -136,7 +138,7 @@ LOWERKURAST = {"id": "95", "look": "79", "map": "Act3/Kurast/darkest_lowerkurast
 TRAVINCAL = {"id": "96", "look": "83", "map": "Act3/Travincal/darkest_travincal.ds1", "size": ("32", "32"),
              "template": "Act 3 - Travincal N ", "name": "Act 3 - Darkest Diablo Travincal", "waves": ["cantor3", "vampire2"],
              "prefix": "dd_mf_a3b_", "pieces": ["travn"], "kind": "mf"}
-DURANCE = {"id": "102", "map": "Act3/Travincal/darkest_durance.ds1", "size": ("41", "29"), "template": "Act 3 - Mephisto Complex",
+DURANCE = {"id": "99", "look": "102", "map": "Act3/Travincal/darkest_durance.ds1", "size": ("41", "29"), "template": "Act 3 - Mephisto Complex",
            "name": "Act 3 - Darkest Diablo Durance", "waves": [], "prefix": "dd_dur_", "pieces": ["mephcomp"]}
 
 KHALIM = (SPIDER, FLAYER, KSEWERS)

@@ -46,7 +46,7 @@ AREA_LEVELS = {
     85: 40, 91: 40, 93: 40,      # Khalim's three parts
     94: 46, 90: 46, 95: 46,      # fork: Ruined Temple, Swampy Pit, Lower Kurast
     96: 50,                      # Travincal
-    102: 53,                     # Durance of Hate 3
+    99: 53,                      # Durance of Hate 3 (spare level 99)
     # Act IV: 54-72
     105: 57,                     # Plains of Despair
     125: 62, 126: 62, 127: 62,   # fork: the three red portals
