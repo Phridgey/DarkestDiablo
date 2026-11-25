@@ -258,6 +258,7 @@ void __cdecl GiveKey(const D2RL::PluginContext* context, void* which) noexcept {
 		.seedMode        = D2RL::Items::SeedMode::Random,
 		.quantity        = D2RL::Items::DefaultValue,
 		.durability      = D2RL::Items::DefaultValue,
+		.stateFlags      = D2RL::Items::ItemStateIdentified,  // plain items: never "Unidentified"
 		.destination     = {
 			.structSize = D2RL::Items::ItemDestinationSize,
 			.container  = D2RL::Items::ItemContainer::Inventory,
