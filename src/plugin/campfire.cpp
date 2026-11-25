@@ -1359,6 +1359,7 @@ void PlayHero(const D2RL::PluginContext* context, int cls) {
 		return;
 	}
 	std::string error;
+	Camp::SyncBindings(g_live);  // the hero about to play gets the camp's keys
 	if (!Camp::Bench(g_live, g_slot, g_camp, hero->name, error)) {
 		Log(context, "Camp: could not set the other heroes aside (%s); %s was not loaded.", error.c_str(), hero->name.c_str());
 		Camp::Unbench(g_live, g_slot);
@@ -2552,6 +2553,9 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 						g_wantFire = g_fireOn && g_fireReady;
 					}
 					Reconcile(context, afterGame);
+				}
+				if (const int synced = Camp::SyncBindings(g_live); synced > 0) {
+					Log(context, "Camp: key bindings shared with %d hero file(s).", synced);
 				}
 				Log(context, "Camp: at the menu. %s", Describe().c_str());
 			} else if (std::strcmp(command, "ToCharacterCreate") == 0 && !(g_fireOn && g_fireReady) && Camp::Creatable(g_camp, g_rng).empty()) {

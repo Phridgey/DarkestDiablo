@@ -100,6 +100,7 @@ static void GiveItem(const D2RL::PluginContext* context, const char* code, const
 		.seedMode        = D2RL::Items::SeedMode::Random,
 		.quantity        = D2RL::Items::DefaultValue,
 		.durability      = D2RL::Items::DefaultValue,
+		.stateFlags      = D2RL::Items::ItemStateIdentified,  // plain items: never "Unidentified"
 		.destination     = {
 			.structSize = D2RL::Items::ItemDestinationSize,
 			.container  = D2RL::Items::ItemContainer::Inventory,
@@ -595,7 +596,7 @@ static constexpr Wave ClawViperWaves[] = {
 	{ { { "mspawn", "dd_viper_mummy3", 3, { 10, 13 } }, { "mspawn", "dd_viper_clawviper2", 4, { 4, 8 } } }, 2, AnyClass },
 	{ { { "monster", "super:12", 4, { 12, 13 } }, { "mspawn", "dd_viper_clawviper3", 3, { 5, 13 } } }, 2, AnyClass },
 };
-// Arcane Sanctuary (level 74): one arm of the cross (src/maps/arcane.json), walked south to
+// Arcane Sanctuary (on level 62, a spare lair level with level 74's look; the real 74 crashed): one arm of the cross (src/maps/arcane.json), walked south to
 // north; monsters only come from ahead. Crafting hunt (runes up to Shael). The Summoner
 // (superunique 18) waits on his platform at the far end; his death clears it.
 static constexpr Wave ArcaneWaves[] = {
@@ -792,7 +793,7 @@ static constexpr Arena Arenas[] = {
 	{ "Stony Tomb",     55,               3000, 1000, StonyWaves,  static_cast<int>(sizeof(StonyWaves) / sizeof(StonyWaves[0])),   true, { 16, 16 }, 11, AnyClass, false, false, 1, nullptr, -1, { 4, 16 } },
 	{ "Maggot Lair",    64,               3500, 1600, MaggotWaves,    static_cast<int>(sizeof(MaggotWaves) / sizeof(MaggotWaves[0])),       false, { 0, 0 }, 0, AnyClass, false, false, 1, "msf", StaffChestRow, { 4, 27 }, true },
 	{ "Claw Viper Temple", 61,            3000, 2800, ClawViperWaves, static_cast<int>(sizeof(ClawViperWaves) / sizeof(ClawViperWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, "vip", SunAltarRow, { 8, 4 } },
-	{ "Arcane Sanctuary", 74,             5000, 1000, ArcaneWaves,    static_cast<int>(sizeof(ArcaneWaves) / sizeof(ArcaneWaves[0])),       false, { 0, 0 }, 0, SummonerClass, false, false, 1, nullptr, -1, { 4, 41 }, true },
+	{ "Arcane Sanctuary", 62,             3500, 1000, ArcaneWaves,    static_cast<int>(sizeof(ArcaneWaves) / sizeof(ArcaneWaves[0])),       false, { 0, 0 }, 0, SummonerClass, false, false, 1, nullptr, -1, { 4, 41 }, true },
 	{ "Ancient Tunnels", 65,              4000, 1000, TunnelsWaves,   static_cast<int>(sizeof(TunnelsWaves) / sizeof(TunnelsWaves[0])),     false, { 0, 0 }, 0, AnyClass, true, true, 1, nullptr, -1, { 5, 42 }, true },
 	{ "Canyon of the Magi", 59,           3000, 2200, CanyonWaves,    static_cast<int>(sizeof(CanyonWaves) / sizeof(CanyonWaves[0])),       true, { 12, 12 }, 9, AnyClass, false, false, 1, nullptr, -1, { 3, 12 } },
 	// Duriel: the hero arrives in the orifice room (level 66, no waves); inserting the staff opens
@@ -1033,6 +1034,7 @@ static void __cdecl DeliverPotions(const D2RL::PluginContext* context, void*) no
 			.seedMode        = D2RL::Items::SeedMode::Random,
 			.quantity        = D2RL::Items::DefaultValue,
 			.durability      = D2RL::Items::DefaultValue,
+			.stateFlags      = D2RL::Items::ItemStateIdentified,  // plugin items start unidentified otherwise (red, "Unidentified")
 			.destination     = {
 				.structSize = D2RL::Items::ItemDestinationSize,
 				.container  = D2RL::Items::ItemContainer::PersonalStash,
@@ -2801,8 +2803,9 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	}
 
 	ReadLootData(context);
-	// MercGear::Install(context, g_mercType.load());  // off since 0.17.28: with it on, nothing could be
-	// picked up (2026-11-23); its byte patterns came from an older game build and may match the wrong spot.
+	// Off in 0.17.28-0.17.35: looting broke (2026-11-23) right after it went in. Back on in 0.17.36 to
+	// test whether it was the cause; if looting breaks again, turn it off for good.
+	MercGear::Install(context, g_mercType.load());
 
 	// Route map panel and UI-message listener. Optional: without them the arenas still work.
 	const D2RL::ResourceService* resources = nullptr;

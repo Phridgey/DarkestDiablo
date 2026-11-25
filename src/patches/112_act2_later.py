@@ -8,7 +8,7 @@ Tier 3, both forced, any order (quest stops: cleared on picking up the quest ite
 - Claw Viper Temple 2 (level 61): the temple's altar room alone. Fangskin and his clan; the
   Tainted Sun altar gives the Amulet of the Viper.
 Tier 4, the fork:
-- Arcane Sanctuary (level 74, crafting hunt): one arm of the cross, ending at the Summoner's
+- Arcane Sanctuary (on spare level 62 with level 74's look, crafting hunt): one arm of the cross, ending at the Summoner's
   platform; monsters only come from ahead; the Summoner's death clears it. Crafting loot as the
   Stony Tomb's (runes up to Shael).
 - Ancient Tunnels (level 65, MF run): four sewer rooms in a line (the tunnels use the sewers'
@@ -39,7 +39,7 @@ MAGGOT = {"id": "64", "map": "Act2/Maggot/darkest_maggot.ds1", "size": ("10", "3
           "prefix": "dd_maggot_"}
 CLAWVIPER = {"id": "61", "map": "Act2/Tomb/darkest_clawviper.ds1", "size": ("16", "16"), "template": "Act 2 - Tomb Tainted Sun X",
              "name": "Act 2 - Darkest Diablo Claw Viper Temple", "waves": ["clawviper2", "clawviper3", "mummy3"], "prefix": "dd_viper_"}
-ARCANE = {"id": "74", "map": "Act2/Arcane/darkest_arcane.ds1", "size": ("12", "48"), "template": "Act 2 - Arcane Summoner S",
+ARCANE = {"id": "62", "look": "74", "map": "Act2/Arcane/darkest_arcane.ds1", "size": ("12", "48"), "template": "Act 2 - Arcane Summoner S",
           "name": "Act 2 - Darkest Diablo Arcane Sanctuary", "waves": ["wraith3", "goatman4", "vampire1"], "prefix": "dd_craft_a2b_"}
 TUNNELS = {"id": "65", "map": "Act2/Sewer/darkest_tunnels.ds1", "size": ("12", "48"), "template": "Act 2 - Sewer NS",
            "name": "Act 2 - Darkest Diablo Ancient Tunnels", "waves": ["zombie5", "sandraider3", "mummy3", "skmage_ltng4"],
@@ -110,6 +110,12 @@ def patch(t):
             spare[col] = real[col]
     canyon = arenas.arena_level(t, CANYON)
     arenas.copies(t, CANYON, arenas.XP_BONUS)
+    # The Arcane Sanctuary too (2026-11-24): the real one (74) crashed the game on arrival, at the
+    # same spot in the game's code as the Canyon did; it moves to a spare lair level (62).
+    real, spare = levels.first("Id", ARCANE["look"]), levels.first("Id", ARCANE["id"])
+    for col in LOOK:
+        if col in spare and col in real:
+            spare[col] = real[col]
     arcane = arenas.arena_level(t, ARCANE)
     arenas.mausoleum.crafting_loot(t, arcane, arena_id=ARCANE["id"], wave_types=ARCANE["waves"], craft=arenas.STONY_CRAFT,
                                    name="DD Craft A2B", id_prefix=ARCANE["prefix"])
