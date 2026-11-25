@@ -1,7 +1,9 @@
 """Throwing a potion from its slot (docs/potions.md): one skill, "Throw Potion", that every hero has from
 the start, the way every hero has Throw and Unsummon (a free "Skill N" slot in charstats.txt).
 
-It is a plain missile skill made from Fire Bolt: a missile toward the cursor, no mana. By itself it sends
+It is a missile skill made from Fire Bolt, with no mana cost and "lob", which makes the potion arc to
+the spot under the cursor and burst there, as the Assassin's Fire Blast does (without it the potion flies straight
+on past the cursor). By itself it sends
 off a missile that is invisible and does nothing, so using it without the potion slot throws nothing. The
 plugin (potions.cpp) puts the potion's own missile, with its own damage (missiles.txt), in the skill's row
 for the moment of a throw. It is a right-button skill, so the player can also put it on a skill key.
@@ -16,8 +18,8 @@ from pathlib import Path
 NAME = "DD Throw Potion"
 DESC = "dd throw potion"
 SOURCE = "Fire Bolt"
-NOTHING = "leapknockback"  # no picture, no damage, 2 frames
-START = "oilpotion"  # what it holds until the plugin changes it (0.27.2 test: a real potion)
+NOTHING = "izual mist fade"  # no picture, hits nothing
+START = NOTHING  # what it holds until the plugin changes it
 REFERENCES = ("Fire Bolt", "Ice Bolt", "Glacial Spike", "Holy Bolt", "Lightning", "VampireFireball", "Bone Spear")
 STRINGS = {
     "skillname_ddthrow": "Throw Potion",
@@ -57,7 +59,7 @@ def patch(t):
     by_id = {r["*ID"]: r["Missile"] for r in missiles.values()}
     number = len(skills.rows)
     skills.add_copy("skill", SOURCE, **{"skill": NAME, "*Id": str(number), "charclass": "", "skilldesc": DESC,
-                    "srvmissile": START, "cltmissile": START, "stsound": "weapon_throw_1",
+                    "srvmissile": START, "cltmissile": START, "lob": "1", "castoverlay": "", "ItemCastSound": "", "stsound": "weapon_throw_1",
                     "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
                     "mana": "0", "minmana": "0", "lvlmana": "0",
                     "leftskill": "0", "rightskill": "1", "ContinueCastUnselected": "1"})

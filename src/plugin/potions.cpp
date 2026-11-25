@@ -504,6 +504,8 @@ auto LoadMissile(const std::string& code) -> bool {
 	return done > 0;
 }
 
+std::atomic<int> g_throwCount { 0 };
+
 // Whatever happens, the key comes up, the skill keys hold what they held, the player's right skill is
 // theirs again, and our skill throws nothing until the next press.
 struct ThrowInHand {
@@ -535,7 +537,14 @@ struct ThrowInHand {
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(80));
 			LetGo();
-			// 0.27.2 test: the potion stays in the skill, so neither timing nor "none" can be why nothing flies.
+			// The potion stays in the skill a while longer, unless another throw has begun since.
+			const int mine = ++g_throwCount;
+			std::thread([mine] {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+				if (mine == g_throwCount.load() && g_inGame.load()) {
+					LoadMissile("none");
+				}
+			}).detach();
 		} catch (...) {
 		}
 	}
@@ -676,6 +685,7 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) 
 	}
 	ThrowInHand hand;  // from here on everything is put back
 	hand.skill = skill;
+	++g_throwCount;
 	if (!LoadMissile(code)) {
 		return fail(Note(context, "%s could not be put in skill %d; tables:%s", code.c_str(), skill, g_tablesSeen.c_str()));
 	}

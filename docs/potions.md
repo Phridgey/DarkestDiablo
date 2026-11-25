@@ -35,7 +35,7 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   are drawn over the belt's place in three spare panels, and the plugin works their effects by
   changing life, mana and stamina (`gamewrite.h`). Antidote and Thawing don't give the resistance the
   game's own do: a stat the hero doesn't have can't be added.
-- **Throwing** (0.27.1; in 0.27.0 the cast was seen but no potion flew). Every hero has the skill Throw Potion from the start, like
+- **Throwing** (seen to throw in 0.27.2). Every hero has the skill Throw Potion from the start, like
   Throw or Unsummon (`131a_throw_skill.py`, `charstats.txt`), so nothing has to be granted or equipped and
   nothing can run out: the slot's charges are the only limit. By itself the skill sends off an invisible
   missile that does nothing, so using it outside a slot throws nothing. A press of the slot's key puts the
@@ -45,7 +45,8 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   key the game casts it by itself); the right button, which holds the skill until the cast is over; any of
   skill keys 1-8 that has a keyboard key, the same way. It needs the game's **Quick Cast**. A charge is taken only
   when the cast is seen. Not in town, not with the bag open, not with the cursor over the HUD.
-- The potion bursts on the first thing it hits (or at the end of its reach, not on the spot under the cursor).
+- The potion arcs to the spot under the cursor and bursts there ("lob", 0.27.3; without it, it flew straight on
+  past the cursor).
 - Every step is in the game folder's `d2rloader/logs/potion-throws.log`, which builds and restarts leave
   alone. `dd-potions throwtest [fire|gas]` throws one for no charge 4 seconds later (any hero, no tree
   node needed). `dd-potions bag` (until the game closes) puts 5 throwing potions in the bag instead.
