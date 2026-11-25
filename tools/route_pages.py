@@ -129,6 +129,28 @@ def button(name, x, y, label, level, live):
     return {"type": "ButtonWidget", "name": name if live else name + "Locked", "fields": fields}
 
 
+ACT_NAMES = ("Act I", "Act II", "Act III", "Act IV", "Act V")
+TAB = "PANEL\\Waypoints\\Waypoints_Tab"  # the game's waypoint act tabs: 174 x 70, frame 0 lit, 1 dark
+TAB_X, TAB_Y, TAB_STEP = -205, 150, 90      # down the left hinge, outside the page
+
+
+def act_tabs(act):
+    """One tab per act down the left side: the others open that act's page
+    ("darkestdiablo/routeact-<n>", caught by the plugin); this act's tab is lit and does nothing."""
+    out = []
+    for n, label in enumerate(ACT_NAMES, 1):
+        y = TAB_Y + (n - 1) * TAB_STEP
+        if n == act:
+            out.append({"type": "ImageWidget", "name": f"ActTab{n}", "fields": {"rect": {"x": TAB_X, "y": y}, "filename": TAB, "frame": 0}})
+            out.append(text(f"ActTabText{n}", TAB_X, y, 174, 70, label, "$FontColorGoldYellow"))
+        else:
+            out.append({"type": "ButtonWidget", "name": f"ActTab{n}", "fields": {
+                "rect": {"x": TAB_X, "y": y}, "filename": TAB, "pressedFrame": 0, "hoveredFrame": 0, "disabledFrame": 1,
+                "textString": label, "pointSize": "$SmallFontSize", "textColor": "$FontColorWhite",
+                "onClickMessage": f"PanelManager:OpenPanel:darkestdiablo/routeact-{n}"}})
+    return out
+
+
 def text(name, x, y, w, h, value, color, size="$SmallFontSize", align="center"):
     return {"type": "TextBoxWidget", "name": name, "fields": {"rect": {"x": x, "y": y, "width": w, "height": h}, "text": value,
             "style": {"fontColor": color, "pointSize": size, "alignment": {"h": align, "v": "center"}}}}
@@ -148,6 +170,7 @@ def page(act):
         {"type": "TextBoxWidget", "name": "Title", "fields": {"rect": TITLE_RECT, "text": title, "style": "$StyleTitleBlock"}},
         button("NodeTown", 70, 150, "Return to town", town, False),
         button("NodeTown", 70, 150, "Return to town", town, True),
+        *act_tabs(act),
     ]
     lines = 0
 

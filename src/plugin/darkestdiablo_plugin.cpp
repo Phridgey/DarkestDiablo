@@ -2502,6 +2502,21 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 		}
 		return Action::Consume;
 	}
+	// Act tabs down the route map's left side ("darkestdiablo/routeact-<n>"): show another act's page,
+	// to go back to an earlier act's stops.
+	static constexpr char ActPrefix[] = "darkestdiablo/routeact-";
+	if (g_panels != nullptr && std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
+		std::strncmp(text, ActPrefix, sizeof(ActPrefix) - 1) == 0) {
+		const int act = std::atoi(text + sizeof(ActPrefix) - 1);
+		if (act >= 1 && act <= 5 && RouteMapPanel(act) != RouteMapPanel(g_routeAct.load())) {
+			g_panels->closePanel(context, RouteMapPanel(g_routeAct.load()));
+			g_routeAct = act;
+			g_panels->openPanel(context, RouteMapPanel(act));
+			RefreshRouteMap(context, nullptr);
+			g_threads->runOnUiThread(context, RefreshRouteMap, nullptr);
+		}
+		return Action::Consume;
+	}
 	static constexpr char TravelPrefix[] = "darkestdiablo/travel-";
 	if (std::strcmp(target, "PanelManager") == 0 && std::strcmp(command, "OpenPanel") == 0 &&
 		std::strncmp(text, TravelPrefix, sizeof(TravelPrefix) - 1) == 0) {
