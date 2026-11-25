@@ -160,7 +160,8 @@ def save_slots():
     kids.append(fe_button("AskNo", -960, ROW_Y, "Keep it", act + "slot-delete-cancel"))
     kids.append(fe_button("SureNo", 490, ROW_Y, "Keep it", act + "slot-delete-cancel"))
     kids.append(fe_button("SureYes", 990, ROW_Y, "Yes, delete it", act + "slot-delete-yes"))
-    kids.append(line("RestartNotice", 1000, "This Delve is ready. Close the game and start it again to play it.", "$FontColorWhite"))
+    kids.append(line("RestartNotice", 1000, "The game has to start again for this. Press Exit Diablo II, then start it again.", "$FontColorWhite"))
+    kids.append(fe_button("NoticeBack", -235, 1130, "Back", act + "slot-notice-back"))
     # Exit in the top left corner, the same button in the same place as at the Campfire
     # (ExitCorner in campfire.cpp, FireLayoutJson).
     exit_button = fe_button("ExitGame", 100, 60, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit")
