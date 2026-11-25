@@ -378,7 +378,7 @@ inline auto Button(const std::string& name, int x, int y, double scale, const st
 }
 inline auto CloseButton(int x, const std::string& action) -> std::string {
 	return "{\"type\":\"ButtonWidget\",\"name\":\"Close\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x) +
-		",\"y\":9},\"filename\":\"PANEL\\\\closebtn_4x\",\"hoveredFrame\":3,\"tooltipString\":\"@strClose\",\"sound\":\"cursor_close_window_hd\",\"onClickMessage\":\"" +
+		",\"y\":9},\"filename\":\"PANEL\\\\closebtn_4x\",\"hoveredFrame\":3,\"tooltipString\":\"@d2r:strClose\",\"sound\":\"cursor_close_window_hd\",\"onClickMessage\":\"" +
 		ActionMessage + action + "\"}}";
 }
 // Keeps clicks from the game behind the panel.
@@ -394,12 +394,14 @@ inline auto Panel(const Rect& r, const char* anchor, int priority, const std::st
 
 inline constexpr int    TreeW = 1900, TreeH = 1507, TreeX = 420, TreeColumnW = 245, TreeRowY = 190, TreeRowH = 205;
 inline constexpr double NodeScale = 0.65;
+inline constexpr int    SideW = 275, SideH = 70, SideY = 151;  // the Caravan / Stash button at a window's right edge
 
-// The caravan window on the right: the page tiers down its left side, the passive tree beside them.
+// The caravan window, in the stash's place (the inventory stays beside it): the page tiers down its left side, the passive tree beside them.
 inline auto TreeLayout(const State& state) -> std::string {
 	using namespace Ui;
 	std::string out = Catcher(TreeW, TreeH) + "," + Box("Edge", { 0, 0, TreeW, TreeH }, Bronze) + "," +
-		Box("Sheet", { 4, 4, TreeW - 8, TreeH - 8 }, "[0.035,0.03,0.028,1.0]") + "," + CloseButton(TreeW - 90, "tree");
+		Box("Sheet", { 4, 4, TreeW - 8, TreeH - 8 }, "[0.035,0.03,0.028,1.0]") + "," + CloseButton(TreeW - 90, "closebank") + "," +
+		Button("Stash", TreeW + 2, SideY, 0.75, "Stash", TextGold, "tree", "Back to the stash");
 	const auto add = [&](const std::string& widget) { out += "," + widget; };
 
 	add(Text("PagesTitle", { 30, 50, 360, 50 }, "Caravan Stash", TextGold, "$LargeFontSize"));
@@ -461,7 +463,7 @@ inline auto TreeLayout(const State& state) -> std::string {
 			owned ? TextGreen : now ? TextBeige : TextGrey, "$SmallFontSize"));
 	}
 	add(Text("Hint", { TreeX, TreeH - 62, 1470, 36 }, "A point is earned each time a class finishes an act for the first time in this save.", "$FontColorDarkGrayGold", "$MediumFontSize"));
-	return Panel({ -232 - TreeW, -651, TreeW, TreeH }, "$RightPanelAnchor", 8600, out);
+	return Panel({ 236, -651, TreeW + 2 + SideW, TreeH }, "$LeftPanelAnchor", 8700, out);  // over the Upgrades tab (8600) too
 }
 
 // The Upgrades tab: lies over the stash, the same size, on the stash's own picture. Only unlocked
@@ -480,7 +482,7 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 			(on ? "$TabsActiveTextColor" : "$TabsInactiveTextColor") + "\",\"onClickMessage\":\"" + ActionMessage + action + "\"}}");
 	};
 	add("{\"type\":\"TextBoxWidget\",\"name\":\"Title\",\"fields\":{\"rect\":\"$InGamePanelTitleRect\",\"text\":\"Upgrades\",\"style\":\"$StyleTitleBlock\"}}");
-	tab("TabShared", 82, false, "@shared", "shared");
+	tab("TabShared", 82, false, "@d2r:shared", "shared");
 	tab("TabUpgrades", 277, true, "Upgrades", "upgrades");
 	if (state.Has("quick")) {
 		add(Button("Deposit", 820, 1340, 0.7, "Store bag", TextWhite, "deposit", "Store everything in the bag that the unlocked slots take."));
@@ -541,10 +543,10 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
 }
 
-// The button attached to the stash's right side that opens and closes the caravan window.
+// The button attached to the stash's right side that shows the caravan window in its place.
 inline auto SideLayout() -> std::string {
 	using namespace Ui;
-	return Panel({ 1400, -500, 275, 70 }, "$LeftPanelAnchor", 8500, Button("Caravan", 0, 0, 0.75, "Caravan", TextGold, "tree", "Stash pages and passives"));
+	return Panel({ 1400, -651 + SideY, SideW, SideH }, "$LeftPanelAnchor", 8500, Button("Caravan", 0, 0, 0.75, "Caravan", TextGold, "tree", "Stash pages and passives"));
 }
 
 }

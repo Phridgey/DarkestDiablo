@@ -10,8 +10,8 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   300,000 / 500,000 / 750,000 / 1,000,000 / 1,500,000 / 2,500,000 gold (6,875,000 in all). Gold is
   paid in parts, by any hero of the save (a hero can only carry 10,000 per level). Gold on the
   shared pages has to be withdrawn first; the hero's old personal stash gold is used up first.
-- **The Caravan button** on the stash's right side opens the window with the page tiers (left) and
-  the passive tree (right).
+- **The Caravan button** on the stash's right edge puts the caravan window in the stash's place: page
+  tiers on its left, passive tree beside them. Its **Stash** button goes back; the X closes both.
 - **Points.** 1 point the first time a class finishes an act in this save (8 classes x 5 acts: 40).
   They stay when the hero dies; a later hero of the same class earns nothing for the same act. Acts
   finished before this was added count the next time that hero is played. The tree costs 28.
@@ -41,7 +41,7 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
 1. Does the stash open on the shared pages? If it opens on an empty page, click Shared. `dd-stash
    autotab` makes the plugin ask for the shared tab (`SelectTab:1`) instead; try it on a save that
    doesn't matter first, because the game's own message carries no text.
-2. Do the Caravan button and both windows open, over the bag and the stash, and close with the stash?
+2. Do the Caravan button and both windows open, over the stash, and close with the stash?
 3. Do changes show after more than 5 of them (spare panels used a second time)?
 4. Does paying take the gold (`cheat stat gold,<n>`)? It only counts gold that is seen to be gone.
 5. Taking out to the hand, storing from the hand, Ctrl+click, "Store bag", Porter, gem cutter.

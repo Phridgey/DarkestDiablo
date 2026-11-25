@@ -4,6 +4,7 @@ panel, every button known to stash.cpp. Needs the built camp_tests.exe.
 Usage: python tests/test_stash_layouts.py
 """
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,9 @@ PREFIX = "PanelManager:OpenPanel:darkestdiablo/stash-"
 
 def check(name, panel):
     size = panel["fields"]["rect"]
+    # The loader rejects the whole panel if a game text has no namespace ("@strClose").
+    for text in re.findall(r'"(@[^"]*)"', json.dumps(panel)):
+        assert text.startswith(("@d2r:", "@darkestdiablo:", "@PANEL@")), (name, text)
     names = [c["name"] for c in panel["children"]]
     assert len(names) == len(set(names)), f"{name}: a name is used twice"
     for child in panel["children"]:

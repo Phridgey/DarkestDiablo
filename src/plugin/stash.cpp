@@ -205,7 +205,7 @@ void ShowRow(const D2RL::PluginContext* context, Row& row, const std::string& js
 		Log(context, "Stash: opening %s gave code %d.", name.c_str(), static_cast<int>(result));
 	}
 	row.current = i;
-	row.content = json;
+	row.content = result == D2RL::Panels::Result::Success ? json : std::string();  // failed: the next try uses the next panel
 	if (old >= 0) {
 		const auto oldPanel = row.panels[static_cast<size_t>(old)];
 		if (IsOpen(context, oldPanel)) {
