@@ -1,5 +1,9 @@
 # Darkest Diablo — design
 
+**Direction (2026-11-20): difficulties are being flattened** (one run through Acts I-V, about
+18 levels per act, camp-wide progress, re-runs until 2 levels over). Read `docs/flattening.md`
+first; where this page disagrees, that plan wins.
+
 A Hades-style roguelite built in Diablo II: Resurrected. Decisions so far (16 Nov 2026).
 The shared whiteboard has the same plan as a picture; this file is the reference.
 
