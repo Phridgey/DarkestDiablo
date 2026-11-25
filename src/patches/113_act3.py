@@ -154,7 +154,39 @@ def jade_figurine(t):
             first_drop(t, row, ["TreasureClassUnique"], "DD Jade Chance", f"DD Jade {a['prefix']}{source}")
 
 
+def chests_without_ammo(t):
+    """No arrows or bolts from Act III's chests (2026-11-24: Lower Kurast's super chests were full
+    of them). The game picks a chest's table by act and difficulty ("Act 3 Chest A/B/C"), so every
+    Act III chest changes: their "Act 3 Junk" becomes a copy without its "Ammo" entry (whose weight
+    goes to NoDrop). Monsters keep the game's own junk table."""
+    tcs = t.table("treasureclassex")
+    by_name = {r["Treasure Class"]: r for r in tcs.rows}
+    for tag in ("", " (N)", " (H)"):
+        junk = by_name.get(f"Act 3{tag} Junk")
+        if junk is None:
+            continue
+        copy = dict(junk)
+        copy["Treasure Class"] = f"DD Act 3{tag} Junk NoAmmo"
+        kept, dropped = [], 0
+        for k in range(1, 11):
+            item, prob = copy.get(f"Item{k}", ""), copy.get(f"Prob{k}", "")
+            if item.split(",")[0] == "Ammo":
+                dropped += int(prob) if prob.strip().isdigit() else 0
+            elif item:
+                kept.append((item, prob))
+        copy["NoDrop"] = str((int(copy["NoDrop"]) if copy.get("NoDrop", "").strip().isdigit() else 0) + dropped)
+        for k in range(1, 11):
+            copy[f"Item{k}"], copy[f"Prob{k}"] = kept[k - 1] if k <= len(kept) else ("", "")
+        tcs.rows.append(copy)
+        for letter in "ABC":
+            chest = by_name.get(f"Act 3{tag} Chest {letter}")
+            for k in range(1, 11):
+                if chest is not None and chest.get(f"Item{k}") == junk["Treasure Class"]:
+                    chest[f"Item{k}"] = copy["Treasure Class"]
+
+
 def patch(t):
+    chests_without_ammo(t)
     for a in (SPIDER, FLAYER, KSEWERS, LAMESEN, SWAMPY, LOWERKURAST, TRAVINCAL, DURANCE):
         stop(t, a)
     jade_figurine(t)
