@@ -11,8 +11,9 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   paid in parts, by any hero of the save (a hero can only carry 10,000 per level). Gold on the
   shared pages has to be withdrawn first; the hero's old personal stash gold is used up first.
 - **The Journal** (button under Caravan; click again or Minimize to fold it) is a small window beside the
-  stash with every rune. Clicking a rune there, in the bag, on a shared page or in the Upgrades tab lists its
-  runewords by level; pointing at a name shows what it does. Alt+click looks a rune up without picking it up.
+  stash. Clicking a rune in the bag, on a shared page or in the Upgrades tab lists its
+  runewords by level; pointing at a name shows what it does. Alt+click looks a rune up without picking it up;
+  in the Upgrades tab the first click on a rune looks it up and the next takes it out.
   Its data comes from the game's tables (`tools/gen_journal.py`); the window is `src/plugin/journal.h`.
 - **The Caravan button** on the stash's right edge puts the caravan window in the stash's place: page
   tiers on its left, passive tree beside them. Its **Stash** button goes back; the X closes both.

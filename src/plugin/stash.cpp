@@ -60,7 +60,7 @@ std::atomic<int>       g_page { 1 };        // the shared page we believe is sho
 std::atomic<bool>      g_autoTab { false }; // dd-stash autotab: try to open the stash on the shared pages
 std::atomic<bool>      g_treeWanted { false }, g_tabWanted { false };
 std::atomic<bool>      g_journalWanted { true };  // not minimized; stays as it is between visits
-std::atomic<int>       g_journalRune { 0 }, g_journalPage { 0 };
+std::atomic<int>       g_journalRune { -1 }, g_journalPage { 0 };
 std::atomic<bool>      g_refresh { false };
 std::atomic<bool>      g_paying { false };
 
@@ -356,13 +356,16 @@ void __cdecl StoreFromBag(const D2RL::PluginContext* context, void* data) noexce
 }
 
 // Game thread. A slot was clicked: an item in the hand is stored if it belongs in the tab, else
-// one of the slot's kind is taken out, into the hand (the bag if the hand is full).
+// one of the slot's kind is taken out, into the hand (the bag if the hand is full). With StoreOnly
+// in `data` nothing is taken out: the click looked a rune up in the journal.
+constexpr size_t StoreOnly = 0x10000;
+
 void __cdecl ClickSlot(const D2RL::PluginContext* context, void* data) noexcept {
 	try {
 		const fs::path progress = Campfire::RouteProgressFile();
 		const Lock lock(g_mutex);
 		const auto& kinds = Stash::Kinds();
-		const size_t index = reinterpret_cast<size_t>(data);
+		const size_t index = reinterpret_cast<size_t>(data) & (StoreOnly - 1);
 		D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 		if (index >= kinds.size() || !Current(progress) || !g_state.Has("tab") || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
 			return;
@@ -378,7 +381,7 @@ void __cdecl ClickSlot(const D2RL::PluginContext* context, void* data) noexcept 
 			return;
 		}
 		const Stash::Kind& kind = kinds[index];
-		if (g_state.Count(kind.code) <= 0) {
+		if ((reinterpret_cast<size_t>(data) & StoreOnly) != 0 || g_state.Count(kind.code) <= 0) {
 			return;
 		}
 		D2RL::Items::ItemCreateSpec spec {
@@ -658,13 +661,16 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 			Log(context, "Stash: the gem cutter made %d gem(s).", made);
 		}
 	} else if (StartsWith(action, "slot-")) {
-		if (const int rune = Journal::RuneIndex(action + 5); rune >= 0) {
+		// With the journal up, a rune's first click only looks it up; the next one takes it out.
+		size_t storeOnly = 0;
+		if (const int rune = Journal::RuneIndex(action + 5); rune >= 0 && g_journalWanted.load() && g_journalRune.load() != rune) {
 			LookUp(rune);
+			storeOnly = StoreOnly;
 		}
 		const auto& kinds = Stash::Kinds();
 		for (size_t i = 0; i < kinds.size(); ++i) {
 			if (kinds[i].code == action + 5) {
-				g_threads->runOnGameThread(context, ClickSlot, reinterpret_cast<void*>(i));
+				g_threads->runOnGameThread(context, ClickSlot, reinterpret_cast<void*>(i | storeOnly));
 			}
 		}
 	}

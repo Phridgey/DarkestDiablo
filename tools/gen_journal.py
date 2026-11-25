@@ -124,10 +124,8 @@ class Words:
 def cpp(text):
     """Text that ends up inside a JSON string inside a C++ string."""
     assert '"' not in text and "\\" not in text and "|" not in text, text
-    return '"' + text.replace("\n", "\\\\n").replace("ÿ", "\\\\u00ff") + '"'
+    return '"' + text.replace("\n", "\\\\n") + '"'
 
-
-BLUE, GOLD, GREY, WHITE = "ÿc3", "ÿc4", "ÿc5", "ÿc0"
 
 
 def main():
@@ -152,12 +150,12 @@ def main():
         name = words.text[row["Name"]]
         level = max(levels[r] for r in runes)
         kinds = ", ".join(TYPES[t][0] for t in types)
-        lines = [GOLD + name, GREY + "'" + "".join(RUNES[codes.index(r)] for r in runes) + "'",
-                 WHITE + f"{len(runes)} sockets: {kinds}", WHITE + f"Required Level: {level}"]
-        lines += [BLUE + words.stat(row[f"T1Code{i}"], row[f"T1Param{i}"], row[f"T1Min{i}"], row[f"T1Max{i}"]) for i in range(1, 8) if row[f"T1Code{i}"]]
+        lines = [name, "'" + "".join(RUNES[codes.index(r)] for r in runes) + "'",
+                 f"{len(runes)} sockets: {kinds}", f"Required Level: {level}", " "]
+        lines += [words.stat(row[f"T1Code{i}"], row[f"T1Param{i}"], row[f"T1Min{i}"], row[f"T1Max{i}"]) for i in range(1, 8) if row[f"T1Code{i}"]]
         for part in dict.fromkeys(TYPES[t][1] for t in types):
-            lines.append(GREY + f"From the runes ({SLOT[part]}):")
-            lines += [BLUE + text for r in runes for text in effects[r][part]]
+            lines += [" ", f"From the runes ({SLOT[part]}):"]
+            lines += [text for r in runes for text in effects[r][part]]
         out.append((level, name, kinds, [codes.index(r) for r in runes], "\n".join(lines)))
     out.sort(key=lambda w: (w[0], w[1]))
     text = ["// Made by tools/gen_journal.py from your own game's tables. Not committed.", "#pragma once", "namespace Journal {",
@@ -165,7 +163,7 @@ def main():
             "struct WordData { int level; const char* name; const char* types; int count; int runes[6]; const char* tip; };",
             "inline constexpr RuneData Runes[] = {"]
     for code, name in zip(codes, RUNES):
-        parts = [cpp(", ".join(effects[code][p]).replace("Attack Rating against", "AR vs.").replace("Damage to", "Damage vs.")) for p in ("weapon", "helm", "shield")]
+        parts = [cpp(";".join(effects[code][p]).replace("Attack Rating against", "AR vs.").replace("Damage to", "Damage vs.").replace("Better Chance of Getting Magic Items", "Magic Find")) for p in ("weapon", "helm", "shield")]
         text.append(f'\t{{ "{name}", {levels[code]}, {", ".join(parts)} }},')
     text += ["};", "// In order of level.", "inline constexpr WordData Words[] = {"]
     for level, name, kinds, runes, tip in out:

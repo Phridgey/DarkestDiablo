@@ -363,7 +363,7 @@ inline auto Box(const std::string& name, const Rect& r, const char* color) -> st
 }
 inline auto Text(const std::string& name, const Rect& r, const std::string& text, const char* color, const char* size, const char* h = "center") -> std::string {
 	return "{\"type\":\"TextBoxWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":" + RectJson(r) + ",\"text\":\"" + text +
-		"\",\"style\":{\"fontColor\":\"" + color + "\",\"pointSize\":\"" + size + "\",\"alignment\":{\"h\":\"" + h +
+		"\",\"style\":{\"fontColor\":\"" + color + "\",\"pointSize\":" + (size[0] == '$' ? "\"" + std::string(size) + "\"" : std::string(size)) + ",\"alignment\":{\"h\":\"" + h +
 		"\",\"v\":\"center\"},\"dropShadow\":\"$DefaultDropShadow\"}}}";
 }
 inline constexpr int ButtonW = 366, ButtonH = 93;  // FrontEnd_ButtonSmall at full size
@@ -507,7 +507,7 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 		}
 	}
 	if (!any[0] && !any[1] && !any[2]) {
-		add(Text("Empty", { 100, 620, W - 200, 60 }, "Spend caravan points to open the gem, rune and potion sections.", TextBeige, "$MediumFontSize"));
+		add(Text("Empty", { 100, 620, W - 200, 60 }, "Caravan points open the sections here.", TextBeige, "$MediumFontSize"));
 	}
 	for (const auto& kind : Kinds()) {
 		if (!shown(kind)) {
@@ -538,8 +538,9 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 				"\"tooltipString\":\"Turn every 3 equal gems of this row into 1 of the next quality\",\"onClickMessage\":\"" + ActionMessage + "cut-" + std::to_string(grade) + "\"}}");
 		}
 	}
-	add(Text("Help1", { 84, 1300, 700, 36 }, "Click a slot to take one out, or to store the item in your hand.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
-	add(Text("Help2", { 84, 1336, 700, 36 }, "Ctrl + click an item in the bag to store it.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
+	add(Text("Help1", { 84, 1284, 994, 36 }, "Click: take one out, or store the item in hand.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
+	add(Text("Help3", { 84, 1356, 730, 36 }, "Runes: first click looks up, next takes out.", "$FontColorDarkGrayGold", "18", "left"));
+	add(Text("Help2", { 84, 1320, 730, 36 }, "Ctrl + click a bag item to store it.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
 }
 

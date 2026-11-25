@@ -11,7 +11,8 @@
 namespace Journal {
 
 inline constexpr int RuneCount = static_cast<int>(std::size(Runes));
-inline constexpr int W = 560, H = 1040, PageSize = 8;
+inline constexpr int W = 660, H = 1180, PageSize = 11;
+inline constexpr char TinyFont[] = "18";
 
 // "r22" -> 21; -1 for anything that is not a rune.
 inline auto RuneIndex(const std::string& code) -> int {
@@ -50,68 +51,81 @@ inline auto Picture(const std::string& name, int rune, int x, int y, double scal
 }
 
 // A runeword's name; its tooltip tells what the runeword does. The game writes a tooltip's lines
-// from the bottom up unless told otherwise.
+// from the bottom up unless told otherwise, and shows color codes as plain letters.
 inline auto NameButton(const std::string& name, int x, int y, const WordData& word) -> std::string {
 	char rect[96] {};
-	std::snprintf(rect, sizeof(rect), "{\"x\":%d,\"y\":%d,\"scale\":%.2f}", x, y, 0.62);
+	std::snprintf(rect, sizeof(rect), "{\"x\":%d,\"y\":%d,\"scale\":%.2f}", x, y, 0.66);
 	return "{\"type\":\"ButtonWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":" + rect +
 		",\"filename\":\"FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonSmall\",\"pressedFrame\":0,\"disabledFrame\":2,\"hoveredFrame\":3,\"textString\":\"" + word.name +
 		"\",\"pointSize\":\"$SmallFontSize\",\"textColor\":\"" + Stash::Ui::TextGold + "\",\"tooltipString\":\"" + word.tip +
-		"\",\"tooltipStyle\":{\"fontStyle\":{\"options\":{\"newlineHandling\":\"standard\"}}},\"onClickMessage\":\"" + Stash::ActionMessage + "jnone\"}}";
+		"\",\"tooltipStyle\":{\"fontStyle\":{\"fontColor\":\"$FontColorLightBlue\",\"pointSize\":26,\"options\":{\"newlineHandling\":\"standard\"}},\"backgroundColor\":[0,0,0,0.93]},\"onClickMessage\":\"" + Stash::ActionMessage + "jnone\"}}";
 }
 
+// `rune` -1: none chosen yet.
 inline auto Layout(int rune, int page) -> std::string {
 	using namespace Stash::Ui;
-	rune = std::clamp(rune, 0, RuneCount - 1);
-	page = std::clamp(page, 0, PageCount(rune) - 1);
-	const auto words = WordsWith(rune);
-	const RuneData& data = Runes[rune];
 	std::string out = Catcher(W, H) + "," + Box("Edge", { 0, 0, W, H }, Bronze) + "," + Box("Sheet", { 4, 4, W - 8, H - 8 }, "[0.035,0.03,0.028,1.0]");
 	const auto add = [&](const std::string& widget) { out += "," + widget; };
 	add(Text("Title", { 16, 8, 300, 46 }, "Rune Journal", TextGold, "$MediumLargeFontSize", "left"));
-	add("{\"type\":\"ButtonWidget\",\"name\":\"Minimize\",\"fields\":{\"rect\":{\"x\":404,\"y\":12,\"scale\":0.38},\"filename\":\"FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonSmall\","
+	add("{\"type\":\"ButtonWidget\",\"name\":\"Minimize\",\"fields\":{\"rect\":{\"x\":504,\"y\":12,\"scale\":0.38},\"filename\":\"FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonSmall\","
 		"\"pressedFrame\":1,\"disabledFrame\":2,\"hoveredFrame\":3,\"textString\":\"Minimize\",\"pointSize\":\"$SmallFontSize\",\"textColor\":\"$FontColorWhite\",\"onClickMessage\":\"" +
 		std::string(Stash::ActionMessage) + "journal\"}}");
-	for (int i = 0; i < RuneCount; ++i) {
-		const std::string n = std::to_string(i);
-		const int x = 16 + i % 11 * 48, y = 60 + i / 11 * 48;
-		add(Box("RuneEdge" + n, { x, y, 46, 46 }, i == rune ? Gold : "[0.2,0.18,0.15,1.0]"));
-		add(Box("RuneBox" + n, { x + 2, y + 2, 42, 42 }, i == rune ? "[0.25,0.19,0.07,1.0]" : "[0.08,0.075,0.07,1.0]"));
-		add(Picture("Rune" + n, i, x + 2, y + 2, 0.43));
+	const Stash::Ui::Rect frame { 1400, -651 + Stash::SideY + 2 * Stash::SidePitch, W, H };
+	if (rune < 0 || rune >= RuneCount) {
+		add(Text("Hint1", { 16, 90, W - 32, 34 }, "Click a rune in the Upgrades tab,", TextBeige, "$SmallFontSize"));
+		add(Text("Hint2", { 16, 124, W - 32, 34 }, "on a shared page or in the bag.", TextBeige, "$SmallFontSize"));
+		return Panel(frame, "$LeftPanelAnchor", 8550, out);
 	}
-	add(Box("Rule1", { 16, 210, W - 32, 3 }, Bronze));
-	add(Box("ChosenEdge", { 16, 222, 60, 60 }, Gold));
-	add(Box("ChosenBox", { 18, 224, 56, 56 }, "[0.08,0.075,0.07,1.0]"));
-	add(Picture("Chosen", rune, 18, 224, 0.57));
-	add(Text("ChosenName", { 88, 220, 456, 34 }, std::string(data.name) + " Rune", TextGold, "$MediumLargeFontSize", "left"));
-	add(Text("ChosenLevel", { 88, 254, 456, 30 }, LevelText(data.level) + ", in " + std::to_string(words.size()) + " runewords", TextBeige, "$SmallFontSize", "left"));
-	add(Text("ChosenWeapon", { 16, 288, 528, 26 }, std::string("Weapon: ") + data.weapon, TextGrey, "$SmallFontSize", "left"));
-	add(Text("ChosenArmor", { 16, 314, 528, 26 }, std::string("Armor, helm: ") + data.armor, TextGrey, "$SmallFontSize", "left"));
-	add(Text("ChosenShield", { 16, 340, 528, 26 }, std::string("Shield: ") + data.shield, TextGrey, "$SmallFontSize", "left"));
-	add(Box("Rule2", { 16, 372, W - 32, 3 }, Bronze));
+	page = std::clamp(page, 0, PageCount(rune) - 1);
+	const auto words = WordsWith(rune);
+	const RuneData& data = Runes[rune];
+	add(Box("ChosenEdge", { 16, 62, 60, 60 }, Gold));
+	add(Box("ChosenBox", { 18, 64, 56, 56 }, "[0.08,0.075,0.07,1.0]"));
+	add(Picture("Chosen", rune, 18, 64, 0.57));
+	add(Text("ChosenName", { 88, 60, 556, 34 }, std::string(data.name) + " Rune", TextGold, "$MediumLargeFontSize", "left"));
+	add(Text("ChosenLevel", { 88, 94, 556, 28 }, LevelText(data.level) + ", in " + std::to_string(words.size()) + " runewords", TextBeige, TinyFont, "left"));
+	int top = 130;
+	const auto effects = [&](const char* label, const std::string& text) {  // one effect per line, split at ';'
+		size_t from = 0;
+		for (int i = 0; from <= text.size(); ++i) {
+			const size_t end = (std::min)(text.find(';', from), text.size());
+			const std::string n = std::to_string(top);
+			if (i == 0) {
+				add(Text("EffectOf" + n, { 16, top, 120, 24 }, label, TextBeige, TinyFont, "left"));
+			}
+			add(Text("Effect" + n, { 140, top, 510, 24 }, text.substr(from, end - from), "$FontColorLightBlue", TinyFont, "left"));
+			top += 25;
+			from = end + 1;
+		}
+	};
+	effects("Weapon", data.weapon);
+	effects("Armor", data.armor);
+	effects("Shield", data.shield);
+	add(Box("Rule", { 16, top + 6, W - 32, 3 }, Bronze));
+	top += 18;
 	for (int i = 0; i < PageSize && page * PageSize + i < static_cast<int>(words.size()); ++i) {
 		const WordData& word = *words[static_cast<size_t>(page * PageSize + i)];
 		const std::string n = std::to_string(i);
-		const int y = 382 + i * 76;
+		const int y = top + i * 76;
 		add(Text("Level" + n, { 12, y + 6, 46, 46 }, std::to_string(word.level), TextWhite, "$MediumLargeFontSize"));
 		add(NameButton("Word" + n, 60, y, word));
 		for (int k = 0; k < word.count; ++k) {
 			const std::string id = n + "_" + std::to_string(k);
-			const int x = 298 + k * 42;
+			const int x = 312 + k * 42;
 			const bool chosen = word.runes[k] == rune;
 			add(Box("WordEdge" + id, { x, y, 40, 40 }, chosen ? Gold : "[0.2,0.18,0.15,1.0]"));
 			add(Box("WordBox" + id, { x + 2, y + 2, 36, 36 }, chosen ? "[0.25,0.19,0.07,1.0]" : "[0.08,0.075,0.07,1.0]"));
 			add(Picture("WordRune" + id, word.runes[k], x + 2, y + 2, 0.37));
 		}
-		add(Text("Types" + n, { 298, y + 40, 250, 28 }, word.types, TextBeige, "$SmallFontSize", "left"));
+		add(Text("Types" + n, { 312, y + 42, 340, 26 }, word.types, TextBeige, TinyFont, "left"));
 	}
 	if (const int pages = PageCount(rune); pages > 1) {
 		const int y = H - 46;
-		add(Button("Previous", 60, y, 0.38, "Back", page > 0 ? TextWhite : TextGrey, "jpage-" + std::to_string((std::max)(0, page - 1)), {}, "$SmallFontSize"));
-		add(Text("Pages", { 210, y, 140, 36 }, std::to_string(page + 1) + " of " + std::to_string(pages), TextBeige, "$SmallFontSize"));
-		add(Button("Next", 360, y, 0.38, "Next", page + 1 < pages ? TextWhite : TextGrey, "jpage-" + std::to_string((std::min)(pages - 1, page + 1)), {}, "$SmallFontSize"));
+		add(Button("Previous", 110, y, 0.38, "Back", page > 0 ? TextWhite : TextGrey, "jpage-" + std::to_string((std::max)(0, page - 1)), {}, "$SmallFontSize"));
+		add(Text("Pages", { 260, y, 140, 36 }, std::to_string(page + 1) + " of " + std::to_string(pages), TextBeige, "$SmallFontSize"));
+		add(Button("Next", 410, y, 0.38, "Next", page + 1 < pages ? TextWhite : TextGrey, "jpage-" + std::to_string((std::min)(pages - 1, page + 1)), {}, "$SmallFontSize"));
 	}
-	return Panel({ 1400, -651 + Stash::SideY + 2 * Stash::SidePitch, W, H }, "$LeftPanelAnchor", 8550, out);
+	return Panel(frame, "$LeftPanelAnchor", 8550, out);
 }
 
 }
