@@ -807,7 +807,7 @@
         "pointSize": "$SmallFontSize",
         "textColor": "$FontColorWhite",
         "disabled": true,
-        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-74"
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/travel-62"
       }
     },
     {

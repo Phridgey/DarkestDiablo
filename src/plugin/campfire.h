@@ -5,11 +5,12 @@
 #include <D2RLPlugin/api.h>
 
 #include <filesystem>
+#include <string>
 
 namespace Campfire {
 
 // The mod version, shown in the log, the console and the corner of the menus. One place only.
-inline constexpr char Version[] = "0.23.0";
+inline constexpr char Version[] = "0.24.0";
 
 // Call once from D2RLoaderLoadPlugin. Returns false only if a console command could not be added;
 // missing optional services just switch parts of the Campfire off (see the log).
@@ -29,5 +30,14 @@ void NoteDifficulty(const D2RL::PluginContext* context, uint32_t difficulty) noe
 // The route progress file (route.h) of the hero in the current game. A game not started from the
 // Campfire uses "_unknown". Empty when the save folder isn't known.
 auto RouteProgressFile() noexcept -> std::filesystem::path;
+
+// Ascend (ascension.cpp): the fight has begun (leaving the game from here on is a death); it is
+// won (leaving ascends); Save and Exit to the Campfire.
+void AscensionBegan(const std::string& hero) noexcept;
+void AscensionWon(const std::string& hero) noexcept;
+void LeaveForCampfire(const D2RL::PluginContext* context) noexcept;
+
+// The text of d2rloader/loot_data.txt ("" if it can't be found).
+auto LootData() noexcept -> const std::string&;
 
 }

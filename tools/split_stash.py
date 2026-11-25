@@ -74,6 +74,9 @@ def main():
         gold, text = purse(folder)
         if text is None or "pursemoved 1" not in (folder / "stash.txt").read_text():
             gold += marks.get(slot, 0)
+        tabs = whole[30 + (slot - 1) * 4:30 + slot * 4]
+        if any(page[66] or page[67] for page in tabs):  # ascended heroes' pages: 11-14 of the save's own file
+            mine = mine + tabs
         first = bytearray(mine[0])
         struct.pack_into("<I", first, 12, gold)
         target = joined.with_name(NAME + ".own") if slot == active else folder / "files" / NAME

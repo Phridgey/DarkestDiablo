@@ -1,6 +1,8 @@
 // Tests for the camp rules (src/plugin/camp.h). No game needed.
 //   g++ -std=c++20 -I src/plugin tests/camp_tests.cpp -o build/camp_tests && build/camp_tests
 // tools\build-plugin.cmd builds and runs them too.
+#include "ascend.h"
+#include "legacy.h"
 #include "camp.h"
 #include "route.h"
 #include "stash.h"
@@ -772,7 +774,7 @@ static void StashesJoinIntoOneFile() {
 		pages[3] = StashPage(2, 0, a + " fourth \x55\xAA\x55\xAA inside");  // a page mark inside an item must not matter
 		return StashFile::JoinPages(pages);
 	};
-	const std::string one = save("one", 500), three = save("three", 7);
+	const std::string one = save("one", 500) + StashFile::BlankPage() + StashPage(3, 0, "ascended") + StashFile::BlankPage() + StashFile::BlankPage(), three = save("three", 7);
 	CHECK(WriteFile(live / "camp" / "active.txt", "3\n"));
 	CHECK(WriteFile(live / StashName, three));
 	CHECK(WriteFile(SlotDir(live, 1) / "files" / StashName, one));  // save 2 has none
@@ -780,7 +782,7 @@ static void StashesJoinIntoOneFile() {
 	CHECK(StashFile::Join(live, "t", log));
 	CHECK(StashJoined(live) && StashFile::Join(live, "t2", log) && !fs::exists(live / "camp" / "stash-backup-t2"));
 	const auto pages = StashFile::Pages(ReadFile(live / StashName));
-	CHECK(pages && pages->size() == 30);
+	CHECK(pages && pages->size() == 42 && StashFile::ItemCount((*pages)[31]) == 3);  // save 1's ascended hero
 	CHECK(StashFile::ItemCount((*pages)[0]) == 1 && StashFile::ItemCount((*pages)[3]) == 2 && StashFile::ItemCount((*pages)[20]) == 1);
 	CHECK((*pages)[0].find("one") != std::string::npos && (*pages)[23].find("three fourth") != std::string::npos);
 	CHECK(StashFile::ItemCount((*pages)[10]) == 0 && StashFile::Gold((*pages)[0]) == 0 && StashFile::Gold((*pages)[20]) == 0);
@@ -792,13 +794,13 @@ static void StashesJoinIntoOneFile() {
 	CHECK(SwitchSlot(live, 1, error) && ReadFile(live / StashName) == file);
 	CHECK(SwitchSlot(live, 2, error) && ReadFile(live / StashName) == file);
 	// Deleting: a copy, then blank pages, and only its own.
-	CHECK(StashFile::CopyPages(live, 1, live / "copy.d2i") && StashFile::Pages(ReadFile(live / "copy.d2i"))->size() == 10);
+	CHECK(StashFile::CopyPages(live, 1, live / "copy.d2i") && StashFile::Pages(ReadFile(live / "copy.d2i"))->size() == 14);
 	CHECK(StashFile::SetWipes(live, { 1, 3 }) && StashFile::Wipes(live) == std::set<int>({ 1, 3 }));
 	CHECK(StashFile::SetWipes(live, {}) && StashFile::Wipes(live).empty());
 	CHECK(StashFile::BlankPages(live, 1));
 	StashFile::ForgetJoinedGold(live, 1);
 	const auto after = StashFile::Pages(ReadFile(live / StashName));
-	CHECK(after && after->size() == 30 && StashFile::ItemCount((*after)[0]) == 0 && (*after)[20] == (*pages)[20]);
+	CHECK(after && after->size() == 42 && StashFile::ItemCount((*after)[0]) == 0 && StashFile::ItemCount((*after)[31]) == 0 && (*after)[20] == (*pages)[20]);
 	CHECK(StashJoined(live) && StashFile::JoinedGold(live, 1) == 0 && StashFile::JoinedGold(live, 3) == 7);
 }
 
@@ -830,6 +832,104 @@ static void JournalListsARunesWordsByLevel() {
 			CHECK(words[i - 1]->level <= words[i]->level);
 		}
 	}
+}
+
+// Ascend (ascend.h): a made-up save around real item bytes (a sorceress's starting kit).
+static auto AscendSave(const std::string& hex) -> Ascend::Bytes {
+	Ascend::Bytes b(400, 0);
+	b[0] = 0x55, b[1] = 0xAA, b[2] = 0x55, b[3] = 0xAA, b[4] = 105;
+	for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+		b.push_back(static_cast<uint8_t>(std::stoi(hex.substr(i, 2), nullptr, 16)));
+	}
+	Ascend::Checksum(b);
+	return b;
+}
+
+static void AscendMovesItems() {
+	using namespace Ascend;
+	Shapes shapes;
+	std::istringstream lines("isave hp1 m 0 0 1 1\nisave box m 0 0 2 2\nssave 83 3 3\n");
+	shapes.Read(lines);
+	const std::string potion = "1000a200150000cf4f232869b703c888aa738b166ce19ee18b01";
+	const std::string cube = "1000800005c044ff3c80dfa64052842a0d9915d785447abdd5699a333afc89fe03";
+	const std::string tail = "4a4d00006a666b6600";
+	Bytes donor = AscendSave("4a4d0200" + potion + cube + tail), heir = AscendSave("4a4d0000" + tail);
+	Ascend::Hero hero;
+	std::string error;
+	CHECK(ReadHero(donor, shapes, hero, error) && hero.items.size() == 2 && hero.items[0].loc == 2 && hero.items[1].code == "box");
+	std::vector<Item> legacy = Ascend::Legacy(hero);
+	CHECK(legacy.size() == 1 && legacy[0].code == "hp1");  // the Cube itself stays behind
+	std::vector<int> pages;
+	CHECK(Pack(legacy, 10, pages) == 1 && pages[0] == 0);
+	CHECK(Inject(heir, legacy, shapes, error));
+	Ascend::Hero after;
+	CHECK(ReadHero(heir, shapes, after, error) && after.items.size() == 1 && after.items[0].loc == 0 && after.items[0].page == 5);
+	// Only its place bits differ from the original.
+	Bytes was = hero.items[0].bytes, is = after.items[0].bytes;
+	for (size_t i = 0; i < was.size(); ++i) {
+		if (i < 4 || i > 6) { CHECK(was[i] == is[i]); }
+	}
+	// A belt potion with a stack count (27 bytes) reads, and the item after it too.
+	const Bytes belt = AscendSave("4a4d0200" "0000a0001500004fa6cf6e6437ddff475ea3e6c35a65dd3dea0100" + potion + tail);
+	shapes.items["hp2"] = {};
+	Ascend::Hero belted;
+	CHECK(ReadHero(belt, shapes, belted, error) && belted.items.size() == 2 && belted.items[0].bytes.size() == 27 && belted.items[1].code == "hp1");
+	// A stash page in use, a cut-off file and an unknown item are refused, with the save untouched.
+	const Bytes before = heir;
+	CHECK(!Inject(heir, legacy, shapes, error) && heir == before);
+	Bytes cut(donor.begin(), donor.end() - 5);
+	CHECK(!ReadHero(cut, shapes, hero, error));
+	shapes.items.erase("hp1");
+	CHECK(!ReadHero(donor, shapes, hero, error));
+	// More than a page holds goes to a second page, nothing overlaps.
+	std::vector<Item> many(130, legacy[0]);
+	CHECK(Pack(many, 10, pages) == 2);
+}
+
+static void AscendedItemsTravel() {
+	namespace L = Legacy;
+	const fs::path live = fs::temp_directory_path() / "dd_ascend_test";
+	fs::remove_all(live);
+	fs::create_directories(Camp::SlotDir(live, 1));
+	Ascend::Shapes shapes;
+	std::istringstream lines("isave hp1 m 0 0 1 1\nssave 83 3 3\n");
+	shapes.Read(lines);
+	const std::string potion = "1000a200150000cf4f232869b703c888aa738b166ce19ee18b01", tail = "4a4d00006a666b6600";
+	L::WriteBytes(live / "Anna.d2s", AscendSave("4a4d0100" + potion + tail));
+	L::WriteBytes(live / "Bert.d2s", AscendSave("4a4d0000" + tail));
+	std::string who, error;
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::None);
+	L::WriteFight(live, 1, L::Fight::Fighting, "Anna");
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::Fighting && who == "Anna");
+	L::WriteFight(live, 1, L::Fight::Won, "Anna");
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::Won);
+	CHECK(L::Keep(live, 1, "Anna", "7", error));
+	L::WriteFight(live, 1, L::Fight::None, "");
+	who.clear();
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::None);
+	CHECK(!L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());
+	CHECK(L::Load(live, 1).CarriedBy("bert") != nullptr);
+	Ascend::Hero bert;
+	CHECK(Ascend::ReadHero(L::ReadBytes(live / "Bert.d2s"), shapes, bert, error) && bert.items.size() == 1);
+	CHECK(L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());  // never twice
+	// Bert dies on the way: the items go with the next hero.
+	L::WriteBytes(live / "Cleo.d2s", AscendSave("4a4d0000" + tail));
+	CHECK(!L::Send(live, 1, "Cleo", { "Cleo" }, shapes).empty());
+	L::State state = L::Load(live, 1);
+	L::Delivered(state, "Cleo");
+	CHECK(state.tabs.size() == 1 && state.tabs.begin()->second == "Anna" && state.CarriedBy("Cleo") == nullptr);
+	L::Save(live, 1, state);
+	CHECK(L::Send(live, 1, "Cleo", { "Cleo" }, shapes).empty());  // nothing left to send
+	CHECK(L::Load(live, 1).estates[0].done);
+	// Arrows: 2 open pages, a tab on page 11.
+	CHECK(L::Presses(1, 1, 2, 11, state) == 1 && L::Presses(2, 1, 2, 11, state) == 9 && L::Presses(11, 1, 2, 11, state) == 0);
+	CHECK(L::Presses(11, -1, 2, 11, state) == 9 && L::Presses(1, -1, 2, 11, state) == 0);
+	// Take only: what was taken out can't go back.
+	std::vector<int> known { 1, 2 };
+	CHECK(L::Strangers(known, std::vector<int> { 1, 2, 3 }) == std::vector<int> { 3 });
+	CHECK(L::Strangers(known, std::vector<int> { 1 }).empty());
+	CHECK(L::Strangers(known, std::vector<int> { 1, 2 }) == std::vector<int> { 2 });
+	fs::remove_all(live);
 }
 
 int main(int argc, char** argv) {
@@ -869,6 +969,8 @@ int main(int argc, char** argv) {
 	NewCampOffersEveryClassThenLocksTheRest();
 	TravelerOffersThreeLockedClasses();
 	OfferShrinksWhenFewClassesAreLocked();
+	AscendMovesItems();
+	AscendedItemsTravel();
 	FallenClassIsAlwaysOffered();
 	EmptyFireGetsATraveler();
 	CampFileRoundTrip();

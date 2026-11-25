@@ -26,6 +26,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <random>
 #include <sstream>
 #include <utility>
@@ -556,6 +557,80 @@ inline auto HeroFiles(const fs::path& dir, const std::string& name) -> std::vect
 		}
 	}
 	return files;
+}
+
+// Key bindings are shared by the whole camp (2026-11-24): the game keeps them per hero
+// (<hero>.key, and <hero>.ctl for a controller), so a new recruit started with the default keys.
+// The newest binding file of any hero in the live folder becomes the camp's copy
+// (camp/bindings/), and every hero's file is made the same as it. Run at the menu, after a game
+// wrote its files, and before a hero is played. Returns how many hero files were changed.
+inline auto SyncBindings(const fs::path& live) -> int {
+	std::error_code ec;
+	const fs::path store = live / "camp" / "bindings";
+	fs::create_directories(store, ec);
+	std::vector<std::string> heroes;
+	for (const auto& entry : fs::directory_iterator(live, ec)) {
+		if (entry.is_regular_file(ec) && Lower(entry.path().extension().string()) == ".d2s") {
+			heroes.push_back(entry.path().stem().string());
+		}
+	}
+	// Heroes seen at an earlier sync. A new recruit's first game writes the default keys, newest of
+	// all, so only known heroes may set the camp's copy; a recruit just receives it.
+	std::vector<std::string> known;
+	{
+		std::ifstream list(store / "heroes.txt");
+		for (std::string line; std::getline(list, line);) {
+			known.push_back(Lower(line));
+		}
+	}
+	const bool firstSync = known.empty();
+	const auto isKnown = [&](const std::string& hero) {
+		return firstSync || std::find(known.begin(), known.end(), Lower(hero)) != known.end();
+	};
+	int changed = 0;
+	for (const char* ext : { ".key", ".ctl" }) {
+		const fs::path camp = store / (std::string("camp") + ext);
+		fs::path newest;
+		auto newestTime = fs::exists(camp, ec) ? fs::last_write_time(camp, ec) : fs::file_time_type::min();
+		for (const auto& hero : heroes) {
+			const fs::path file = live / (hero + ext);
+			if (isKnown(hero) && fs::exists(file, ec) && fs::last_write_time(file, ec) > newestTime) {
+				newest = file;
+				newestTime = fs::last_write_time(file, ec);
+			}
+		}
+		if (!newest.empty()) {
+			fs::copy_file(newest, camp, fs::copy_options::overwrite_existing, ec);
+			if (!ec) {
+				fs::last_write_time(camp, newestTime, ec);  // so the same file isn't taken as newer next time
+			}
+		}
+		if (!fs::exists(camp, ec)) {
+			continue;
+		}
+		std::ifstream in(camp, std::ios::binary);
+		const std::string wanted((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+		for (const auto& hero : heroes) {
+			const fs::path file = live / (hero + ext);
+			std::string have;
+			if (fs::exists(file, ec)) {
+				std::ifstream h(file, std::ios::binary);
+				have.assign((std::istreambuf_iterator<char>(h)), std::istreambuf_iterator<char>());
+			}
+			if (have != wanted) {
+				fs::copy_file(camp, file, fs::copy_options::overwrite_existing, ec);
+				if (!ec) {
+					fs::last_write_time(file, newestTime, ec);  // not newer than the camp's copy
+					++changed;
+				}
+			}
+		}
+	}
+	std::ofstream list(store / "heroes.txt", std::ios::trunc);
+	for (const auto& hero : heroes) {
+		list << hero << "\n";
+	}
+	return changed;
 }
 
 // Benches every hero of the camp except `keep`.

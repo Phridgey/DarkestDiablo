@@ -58,11 +58,11 @@ Console: `dd-stash` (what this save has); for tests `dd-stash points <n>`, `dd-s
 ## One stash file for all saves (0.22.1)
 The game reads `SharedStashSoftCoreV2.d2i` once, **when it starts** (not at the first game, as thought
 before: on 2026-11-24 a save opened right after starting got the other save's stash written over its
-own), and keeps it until it closes. So the file is never swapped. It holds 30 pages: save 1 has pages
-1-10, save 2 11-20, save 3 21-30 (`src/plugin/stashfile.h`; the file is just its pages one after
+own), and keeps it until it closes. So the file is never swapped. Save 1 has pages
+1-10, save 2 11-20, save 3 21-30; ascended heroes' pages follow, 4 a save (31-42) (`src/plugin/stashfile.h`; the file is just its pages one after
 another). Changing saves needs no restart.
 - **Joining** happens once, while the game starts. The old files are kept in `camp/stash-backup-<time>`.
-  A file it doesn't know, or items past page 10, and nothing is touched (then changing saves still needs
+  A file it doesn't know, or items past page 14, and nothing is touched (then changing saves still needs
   a restart).
 - **Always pages 1-10.** Opening the stash goes all the way back and then forward to the save's own
   pages (`HomePage`); the arrows stop at its ends; our own page number covers the game's. An item on

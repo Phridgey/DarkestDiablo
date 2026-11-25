@@ -1,0 +1,14 @@
+{
+  "name": "darkest_ascend2",
+  "folder": "act2/tomb",
+  "room": 32,
+  "comment": "Ascension arena of Act 2 (990_ascension.py): the boss's room without monsters.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act2/tomb/duriel"
+    }
+  ],
+  "keep_monsters": []
+}

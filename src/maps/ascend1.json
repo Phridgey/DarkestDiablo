@@ -1,0 +1,63 @@
+{
+  "name": "darkest_ascend1",
+  "folder": "act1/catacomb",
+  "room": 22,
+  "comment": "Ascension arena of Act 1 (990_ascension.py): the boss's room without monsters. As andariel.json: no doors, no stairs.",
+  "keep_monsters": [],
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act1/catacomb/andy3"
+    }
+  ],
+  "remove_walls": [
+    [
+      8,
+      22
+    ],
+    [
+      9,
+      22
+    ],
+    [
+      16,
+      26
+    ],
+    [
+      16,
+      27
+    ]
+  ],
+  "close_edges": false,
+  "drop_entities": [
+    "door01",
+    "stairs02"
+  ],
+  "copy_walls": [
+    [
+      17,
+      22,
+      18,
+      22
+    ],
+    [
+      20,
+      22,
+      19,
+      22
+    ]
+  ],
+  "add_entities": [
+    {
+      "copy": "wall_plain_37",
+      "x": 188,
+      "z": 222
+    },
+    {
+      "copy": "wall_plain_37",
+      "x": 198,
+      "z": 222
+    }
+  ]
+}

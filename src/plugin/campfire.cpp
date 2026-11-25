@@ -21,6 +21,8 @@
 
 #include "campfire.h"
 #include "stashfile.h"
+#include "ascension.h"
+#include "legacy.h"
 #include "camp.h"
 #include "gamememory.h"
 #include "gamestate.h"
@@ -132,6 +134,9 @@ bool g_slotsOpen = false;
 bool g_slotNotice = false;  // the slot screen shows only "close the game and start it again"
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
 bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
+int  g_ascendAsk  = -1;     // Ascend was pressed for this hero: only the question shows
+std::string g_lootData;
+Ascend::Shapes g_shapes;    // how items are stored in saves (ascend.h)
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
 int  g_hoveredHero = -1;    // the class under the mouse at the Campfire (from the game's Hover messages)
 int  g_clickedHero = -1;    // the hero under the mouse when the left button went down (see WatchFireClicks)
@@ -261,6 +266,29 @@ auto PlayedHero() -> std::string {
 // levels reported during it are applied to the hero that was played.
 void Reconcile(const D2RL::PluginContext* context, bool afterGame) {
 	Camp::Hints hints;
+	// A fight for ascension that was left: lost unless it was won (docs/ascend.md).
+	std::string ascender;
+	const Legacy::Fight fight = g_inGame ? Legacy::Fight::None : Legacy::ReadFight(g_live, g_slot, ascender);
+	if (fight == Legacy::Fight::Won && g_camp.HeroNamed(ascender) != nullptr) {
+		Camp::Unbench(g_live, g_slot);
+		std::string error;
+		const std::string stamp = std::to_string(std::time(nullptr));
+		if (Legacy::Keep(g_live, g_slot, ascender, stamp, error) && Camp::Bury(g_live, g_slot, ascender, error)) {
+			Camp::MarkFallen(g_camp, ascender);
+			Camp::SaveState(g_live, g_slot, g_camp);
+			Legacy::WriteFight(g_live, g_slot, Legacy::Fight::None, "");
+			Log(context, "Camp: %s has ascended.", ascender.c_str());
+		} else {
+			Log(context, "Camp: %s has won, but could not ascend yet (%s); tried again next time.", ascender.c_str(), error.c_str());
+		}
+		g_died = false;
+	} else if (fight != Legacy::Fight::None) {
+		if (fight == Legacy::Fight::Fighting) {
+			Log(context, "Camp: %s did not come back from the arena.", ascender.c_str());
+			hints.diedName = ascender;
+		}
+		Legacy::WriteFight(g_live, g_slot, Legacy::Fight::None, "");
+	}
 	hints.newClass = g_pendingClass >= 0 ? g_pendingClass : g_pickedClass;
 	if (afterGame) {
 		const std::string played = PlayedHero();
@@ -880,9 +908,55 @@ auto GlowWidget(const std::string& picture, int x, int y) -> std::string {
 		"},\"filename\":\"PANEL\\\\DarkestDiablo\\\\" + picture + "\"}},";
 }
 
+// The act a hero is in: that of its first open stop.
+auto ActOfHero(const std::string& name) -> int {
+	const int tier = Route::Load(Route::ProgressFile(g_live, g_slot, name)).CurrentTier();
+	return Route::ActOfTier((std::min)(tier, Route::TierCount - 1));
+}
+
+// The question after Ascend: nothing else is in the layout (hidden buttons take clicks).
+auto AscendLayoutJson(const Camp::Hero& hero) -> std::string {
+	static constexpr char Med[] = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonMed";
+	static constexpr const char* Bosses[] = { "Andariel", "Duriel", "Mephisto", "Diablo", "Baal" };
+	const int actNumber = ActOfHero(hero.name);
+	const int advised = Ascension::AdvisedLevel(actNumber);
+	// A letter of the large font is about 29 wide (measured in a screenshot), so 66 letters need
+	// about 1920 of the box's 2300.
+	constexpr int Top = 330, BoxW = 2300, Margin = 70, LineH = 54, Gap = 40;
+	constexpr size_t Letters = 66;
+	std::string kids;
+	int line = 0, y = Top + Margin;
+	const auto text = [&](const std::string& words, const char* color, const char* size, int height) {
+		for (const std::string& part : Ascension::Wrap(words, Letters)) {
+			kids += "{\"type\":\"TextBoxWidget\",\"name\":\"Ask" + std::to_string(line++) + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(-BoxW / 2 + Margin) + ",\"y\":" + std::to_string(y) +
+				",\"width\":" + std::to_string(BoxW - 2 * Margin) + ",\"height\":" + std::to_string(height) + "},\"text\":\"" + part + "\",\"style\":{\"fontColor\":\"" + color +
+				"\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"" + size + "\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
+			y += height;
+		}
+		y += Gap;
+	};
+	text(hero.name + " seeks Ascension", "$FontColorRed", "$XExtraLargeFontSize", 90);
+	text(std::string(Bosses[actNumber - 1]) + " waits in Ascended form: more life, harder hits, faster, with four elite powers.", "$FontColorWhite", "$LargeFontSize", LineH);
+	text("There is no way out. Dying, leaving or quitting before the boss is dead is a permanent death, and everything on this hero is lost.", "$FontColorRed", "$LargeFontSize", LineH);
+	text("Win, and this hero leaves the camp for good. All it wears and carries, and what is in its Cube, waits in the camp's stash.", "$FontColorGoldYellow", "$LargeFontSize", LineH);
+	text("Meant to be fought alone, one on one. A mercenary may come along, but its gear does NOT come home. Stash anything you want to keep from it first, and leave the mercenary behind.", "$FontColorWhite", "$LargeFontSize", LineH);
+	if (hero.level < advised) {
+		text("WARNING: " + hero.name + " is level " + std::to_string(hero.level) + ". This fight is meant for level " + std::to_string(advised) + " and up. Good luck...", "$FontColorRed", "$LargeFontSize", LineH);
+	}
+	text("Are you sure?", "$FontColorWhite", "$LargeFontSize", LineH);
+	const std::string act = "PanelManager:OpenPanel:darkestdiablo/";
+	kids += FireButton("AskYes", -560, y + 10, "Ascend", act + "ascend-accept", Med, "$FontColorRed") + ",";
+	kids += FireButton("AskNo", 80, y + 10, "Turn back", act + "ascend-cancel", Med, "$LightButtonTextColor") + ",";
+	kids += VersionWidgetJson();
+	// The box, as high as the text needs, behind everything.
+	kids = "{\"type\":\"NineTileImageWidget\",\"name\":\"AskBack\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\",\"backgroundColor\":[0.07,0.0,0.0,0.97],\"tileScale\":1.0,"
+		"\"rect\":{\"x\":" + std::to_string(-BoxW / 2) + ",\"y\":" + std::to_string(Top) + ",\"width\":" + std::to_string(BoxW) + ",\"height\":" + std::to_string(y + 10 + 120 + Margin - Top) + "}}}," + kids;
+	return "{\"type\":\"Panel\",\"name\":\"@PANEL@\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
+}
+
 // The Fire panel's layout for the camp as it is now: each living hero as a figure in its gear
-// where its class stands, and the Options, Retire and Exit buttons. What changes while the screen is up
-// (names, glow, Enter...) is in FireTopJson.
+// where its class stands, and the Options, Dismiss and Exit buttons. What changes while the screen is
+// up (names, glow, Enter...) is in FireTopJson.
 auto FireLayoutJson() -> std::string {
 	static constexpr char Med[]   = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonMed";
 	const std::string act = "PanelManager:OpenPanel:darkestdiablo/";
@@ -891,6 +965,9 @@ auto FireLayoutJson() -> std::string {
 	// buttons: hidden widgets still take clicks, so nothing else may be in the layout (0.11.18:
 	// the hidden Enter button took the clicks meant for Accept and Not now).
 	const bool traveler = TravelerWaits();
+	if (g_ascendAsk >= 0 && !traveler && g_camp.HeroOf(g_ascendAsk) != nullptr) {
+		return AscendLayoutJson(*g_camp.HeroOf(g_ascendAsk));
+	}
 	const auto figure = [&](int c, const std::string& look) {
 		const Spot& s = g_spots[c];
 		const std::string cls = Camp::ClassNames[c];
@@ -925,7 +1002,7 @@ auto FireLayoutJson() -> std::string {
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
 		FireButton("Options", 100, -500, "@d2r:OptionsHD", "PanelManager:OpenPanel:SettingsPanel", Med, "$LightButtonTextColor") + "," +
-		FireButton("Delete", 100, -360, "Retire", act + "delete-mode", Med, "$LightButtonTextColor") + "]}";
+		FireButton("Delete", 100, -360, "Dismiss", act + "delete-mode", Med, "$LightButtonTextColor") + "]}";
 	// Exit Game in the top left corner (Sam), away from the buttons used while at the fire.
 	kids += ",{\"type\":\"Widget\",\"name\":\"ExitCorner\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":0.0}},\"children\":[" +
 		FireButton("ExitGame", 100, 60, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit", Med, "$LightButtonTextColor") + "]}";
@@ -953,7 +1030,7 @@ auto FireTopJson() -> std::string {
 			}
 			const std::string cls = Camp::ClassNames[hero.cls];
 			if (g_deleteMode) {
-				kids += FireButton("Bury" + cls, s.x + (s.w - 300) / 2, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
+				kids += FireButton("Bury" + cls, s.x + (s.w - 300) / 2, 1590, "Dismiss " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 				continue;
 			}
 			// No frame, just the name and "Lv N" small under it, dim unless picked. Every other hero's,
@@ -976,7 +1053,7 @@ auto FireTopJson() -> std::string {
 		}
 		if (g_deleteMode) {
 			kids += "{\"type\":\"TextBoxWidget\",\"name\":\"DeleteHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
-				"\"text\":\"Choose the hero to retire. This can't be undone. Press Retire again to keep everyone.\","
+				"\"text\":\"Choose the hero to dismiss. Everything it carries is lost. This can't be undone. Press Dismiss again to keep everyone.\","
 				"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
 		}
 		if (!g_camp.heroes.empty() && !g_createMode) {
@@ -991,6 +1068,11 @@ auto FireTopJson() -> std::string {
 				"\",\"textString\":\"ENTER\",\"onClickMessage\":\"" + act + "enter\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"
 				"\"text/style\":\"$StyleFEButtonText\",\"pointSize\":\"$XExtraLargeFontSize\"," +
 				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.94,\"b\":0.80,\"a\":1.0},\"textColor\":\"$FontColorGoldYellow\"" : "\"textColor\":\"$FontColorGray\"") + "}},";
+			if (ready) {  // Ascend, under Enter: blood red, only while a hero is picked
+				kids += std::string("{\"type\":\"ButtonWidget\",\"name\":\"Ascend\",\"fields\":{\"rect\":{\"x\":-235,\"y\":1985},\"filename\":\"") + Med +
+					"\",\"textString\":\"ASCEND\",\"onClickMessage\":\"" + act + "ascend\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"
+					"\"text/style\":\"$StyleFEButtonText\",\"tint\":{\"r\":0.75,\"g\":0.12,\"b\":0.10,\"a\":1.0},\"textColor\":\"$FontColorRed\"}},";
+			}
 		}
 	}
 	if (!kids.empty()) {
@@ -1009,12 +1091,23 @@ auto RegisterFireLayout(const D2RL::PluginContext* context) -> bool {
 
 // Shows the right widgets for where the Campfire is: picking a hero, Delete, or making a hero.
 void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
-	const bool traveler = g_travelerMode;
+	const bool traveler = g_travelerMode || g_ascendAsk >= 0;
 	try {
-		if (g_atFire && PoolIsOpen(context, g_fire)) {
+		if (g_ascendAsk >= 0) {
+			Close(context, PoolHandle(g_top));
+		} else if (g_atFire && PoolIsOpen(context, g_fire)) {
 			PoolSwap(context, g_top, FireTopJson(), "Campfire names");
 		}
 	} catch (...) {
+	}
+	// The game's class name and description would shine through the question.
+	static bool infoWasHidden = false;
+	const bool infoHidden = g_ascendAsk >= 0;
+	if (infoHidden || infoWasHidden) {
+		for (const char* part : { "InfoContainer", "ClassTitle", "ClassDescription" }) {
+			SetVisible(context, "CharacterCreatePanel", part, !infoHidden);
+		}
+		infoWasHidden = infoHidden;
 	}
 	// The game's own name box, version picker and Create button.
 	// The game shows its name box again by itself, so each part of it is hidden too.
@@ -1027,7 +1120,7 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 		lastFound = found;
 		Log(context, "Camp: name box parts reached: %d of 7.", found);
 	}
-	SetVisible(context, "CharacterCreatePanel", "ToGame", !traveler && !Camp::Creatable(g_camp, g_rng).empty());
+	SetVisible(context, "CharacterCreatePanel", "ToGame", !traveler && g_ascendAsk < 0 && !Camp::Creatable(g_camp, g_rng).empty());
 }
 
 void __cdecl ShowFireState(const D2RL::PluginContext* context, void*) noexcept {
@@ -1158,6 +1251,7 @@ void __cdecl GoToFire(const D2RL::PluginContext* context, void*) noexcept {
 		return;
 	}
 	Camp::Unbench(g_live, g_slot);
+	g_ascendAsk = -1;
 	RegisterFireLayout(context);
 	Dispatch(context, "FrontEndNavigation", "ToCharacterCreate");
 }
@@ -1217,6 +1311,7 @@ void __cdecl PlayTimedOut(const D2RL::PluginContext* context, void*) noexcept {
 	}
 	Log(context, "Camp: %s was not loaded in time; back to the Campfire.", g_pendingPlay.c_str());
 	g_pendingPlay.clear();
+	Ascension::Plan("", 0);
 	Close(context, g_curtainPanel);
 	GoToFire(context, nullptr);
 }
@@ -1249,6 +1344,17 @@ void PlayHero(const D2RL::PluginContext* context, int cls) {
 		return;
 	}
 	std::string error;
+	if (!Ascension::Planned() && !g_shapes.items.empty() && !g_shapes.stats.empty()) {  // an ascended hero's items may travel with this one
+		std::vector<std::string> living;
+		for (const auto& h : g_camp.heroes) {
+			living.push_back(h.name);
+		}
+		const std::string note = Legacy::Send(g_live, g_slot, hero->name, living, g_shapes);
+		if (!note.empty()) {
+			Log(context, "Camp: %s", note.c_str());
+		}
+	}
+	Camp::SyncBindings(g_live);  // the hero about to play gets the camp's keys
 	if (!Camp::Bench(g_live, g_slot, g_camp, hero->name, error)) {
 		Log(context, "Camp: could not set the other heroes aside (%s); %s was not loaded.", error.c_str(), hero->name.c_str());
 		Camp::Unbench(g_live, g_slot);
@@ -2353,7 +2459,25 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 		g_chosenHero = Camp::ClassFromName(action + 5);
 		g_createMode = false;
 		ShowDeleteMode(context);
+	} else if (Ascension::OnAction(context, action)) {
+		return true;
+	} else if (std::strcmp(action, "ascend") == 0) {
+		if (g_atFire && !g_inGame && !g_deleteMode && !g_createMode && g_camp.HeroOf(g_chosenHero) != nullptr) {
+			g_ascendAsk = g_chosenHero;
+			RefreshFire(context);
+		}
+	} else if (std::strcmp(action, "ascend-cancel") == 0) {
+		g_ascendAsk = -1;
+		RefreshFire(context);
+	} else if (std::strcmp(action, "ascend-accept") == 0) {
+		const int cls = g_ascendAsk;
+		g_ascendAsk = -1;
+		if (const Camp::Hero* hero = g_camp.HeroOf(cls); hero != nullptr && !g_inGame) {
+			Ascension::Plan(hero->name, ActOfHero(hero->name));
+			PlayHero(context, cls);
+		}
 	} else if (std::strcmp(action, "enter") == 0) {
+		Ascension::Plan("", 0);
 		PlayHero(context, g_chosenHero);
 	} else if (StartsWith(action, "bury-")) {
 		BuryHero(context, Camp::ClassFromName(action + 5));
@@ -2376,6 +2500,26 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 }  // namespace
 
 auto Load(const D2RL::PluginContext* context) noexcept -> bool {
+	try {
+		std::vector<fs::path> places;  // the same places as ReadLootData (darkestdiablo_plugin.cpp)
+		if (context->pluginDirectory != nullptr) {
+			places.push_back(fs::path(context->pluginDirectory).parent_path());
+			places.push_back(fs::path(context->pluginDirectory));
+		}
+		if (context->modDirectory != nullptr) {
+			places.push_back(fs::path(context->modDirectory) / "d2rloader");
+			places.push_back(fs::path(context->modDirectory).parent_path() / "d2rloader");
+		}
+		std::error_code ec;
+		for (const auto& place : places) {
+			if (g_lootData.empty() && fs::exists(place / "loot_data.txt", ec)) {
+				g_lootData = Camp::ReadFile(place / "loot_data.txt");
+			}
+		}
+		std::istringstream in(g_lootData);
+		g_shapes.Read(in);
+	} catch (...) {
+	}
 	OpenStateLog();  // darkestdiablo-state.log: dd-state results survive restarts
 	try {
 		const Lock lock(g_mutex);
@@ -2498,6 +2642,32 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		context->RegisterConsoleCommand("dd-units", UnitsCommand, "List the units the game has loaded: 'dd-units', 'dd-units objects 39', 'dd-units monsters', 'dd-units find' (test).");
 }
 
+void AscensionBegan(const std::string& hero) noexcept {
+	try {
+		const Lock lock(g_mutex);
+		Legacy::WriteFight(g_live, g_slot, Legacy::Fight::Fighting, hero);
+	} catch (...) {
+	}
+}
+
+void AscensionWon(const std::string& hero) noexcept {
+	try {
+		const Lock lock(g_mutex);
+		Legacy::WriteFight(g_live, g_slot, Legacy::Fight::Won, hero);
+	} catch (...) {
+	}
+}
+
+void LeaveForCampfire(const D2RL::PluginContext* context) noexcept {
+	if (g_threads != nullptr) {
+		g_threads->runOnUiThread(context, LeaveGame, nullptr);
+	}
+}
+
+auto LootData() noexcept -> const std::string& {
+	return g_lootData;
+}
+
 auto RouteProgressFile() noexcept -> std::filesystem::path {
 	try {
 		const Lock lock(g_mutex);
@@ -2540,6 +2710,9 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 						g_wantFire = g_fireOn && g_fireReady;
 					}
 					Reconcile(context, afterGame);
+				}
+				if (const int synced = Camp::SyncBindings(g_live); synced > 0) {
+					Log(context, "Camp: key bindings shared with %d hero file(s).", synced);
 				}
 				Log(context, "Camp: at the menu. %s", Describe().c_str());
 			} else if (std::strcmp(command, "ToCharacterCreate") == 0 && !(g_fireOn && g_fireReady) && Camp::Creatable(g_camp, g_rng).empty()) {
@@ -2756,6 +2929,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 				}
 			}
 			Log(context, "Camp: playing %s.", g_currentHero.empty() ? "an unknown hero (route progress is shared)" : g_currentHero.c_str());
+			Ascension::OnReady(context, g_currentHero);
 			Later(context, 1000, ScanTown);  // when the game starts in the Rogue Encampment
 			Later(context, 2000, RecordGear);
 			break;
@@ -2771,11 +2945,12 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 		case Kind::LevelChanged: {
 			const int from = event->previousValue;
 			g_levelId = event->currentValue;
+			Ascension::OnLevelChanged(context, g_levelId);
 			Later(context, 1000, RecordGear);
 			if (g_levelId == RogueEncampment) {
 				Later(context, 1000, ScanTown);  // the town's units are loaded by then
 			}
-			if (IsTown(g_levelId) && from > 0 && !IsTown(from) && !g_died && !g_camp.LockedClasses().empty()) {
+			if (IsTown(g_levelId) && from > 0 && !IsTown(from) && !g_died && !Ascension::Active() && !g_camp.LockedClasses().empty()) {
 				const int roll = std::uniform_int_distribution<int>(1, 100)(g_rng);
 				Log(context, "Camp: back in town; traveler roll %d (needs %d or less).", roll, g_travelerChance);
 				if (roll <= g_travelerChance) {
@@ -2785,6 +2960,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			break;
 		}
 		case Kind::GameLeft:
+			Ascension::OnGameLeft();
 			g_travelerArrives = false;
 			g_levelId = -1;  // g_inGame stays set until the menu loads, so the camp knows a game just ended
 			break;

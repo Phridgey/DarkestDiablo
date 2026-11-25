@@ -54,7 +54,7 @@ PAGES = {
                            ("Fork3Stony", "Stony Tomb", 55, "craft", "Runes up to Shael")]),
         ("Both, any order", [("NodeMaggot", "Maggot Lair", 64, "story", "Staff of Kings"),
                              ("NodeClawViper", "Claw Viper Temple", 61, "story", "Amulet of the Viper")]),
-        ("Fork - pick 2", [("Fork4Arcane", "Arcane Sanctuary", 74, "craft", "Runes up to Shael"),
+        ("Fork - pick 2", [("Fork4Arcane", "Arcane Sanctuary", 62, "craft", "Runes up to Shael"),
                            ("Fork4Tunnels", "Ancient Tunnels", 65, "mf", "Unique-led packs"),
                            ("Fork4Canyon", "Canyon of the Magi", 59, "xp", "+1 level")]),
         (None, [("NodeDuriel", "Duriel", 66, "boss", "")]),

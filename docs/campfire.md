@@ -20,14 +20,14 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    in a soft gold light (names, light, Enter and the retire buttons are their own panel, drawn anew for every state: 0.23.0), and Enter lights up; Enter loads it. A click on another hero counts even while the picked one
    plays its long animation: the game ignores such clicks (it sends no Select), so the plugin
    watches the left mouse button itself, picks the hero that was under the mouse (the game's
-   Hover messages say which) and asks the game to select its figure. Create brings out the name box for a new hero; on a save with no heroes yet the name box is out from the start. Options, Retire and Exit Game are
+   Hover messages say which) and asks the game to select its figure. Create brings out the name box for a new hero; on a save with no heroes yet the name box is out from the start. Options, Dismiss and Exit Game are
    on the left; Change save (or Escape) lays the save slots over the fire.
 3. **New heroes** stand at the same fire in the game's standard look, and are made the usual
    way (click, name, Create). Only classes that may join right now are shown:
    - a brand new save: every class. The one picked starts the camp; the rest lock.
    - later: only classes a traveler brought (see below). They start at level 1 with nothing.
    - every hero dead and nobody waiting: a traveler turns up by himself with up to 3 classes.
-   **Retire** asks which hero to bury. A retired hero counts as a death.
+   **Dismiss** asks which hero to bury. A dismissed hero counts as a death. **Ascend** is under Enter (`docs/ascend.md`).
 4. **In town.** Each time a hero comes back to town from a stop there is a chance (25%) that
    a traveler arrives with up to 3 locked classes; a notice says "A traveler waits by your fire".
    The class of the last hero that fell is always one of them, once. Using the fire then opens
@@ -110,7 +110,7 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 | `tools/camp_layouts.py` | Our three panels (save slots, traveler, roster), written into the mod by the build. |
 | `src/patches/040_campfire.py` | Bonfire, stash button, hero screen title. |
 | `d2rloader/camp_data.txt` (built) | Where each class stands at the fire and how each item looks; made by `tools/build.py`. |
-| `src/d2rloader/` | The mod's D2RLoader settings: `add_shared_tabs = 27`. |
+| `src/d2rloader/` | The mod's D2RLoader settings: `add_shared_tabs = 39`. |
 
 In the save folder (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`):
 

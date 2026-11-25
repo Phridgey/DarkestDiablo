@@ -58,7 +58,7 @@ inline constexpr Stop Stops[] = {
 	{ "stony",     "Fork3Stony",     7, 55, 55 },  // crafting hunt: Stony Tomb
 	{ "maggot",    "NodeMaggot",     8, 64, 64 },  // tier 8: both forced stops, any order; the Staff of Kings
 	{ "clawviper", "NodeClawViper",  8, 61, 61 },  // the Amulet of the Viper
-	{ "arcane",    "Fork4Arcane",    9, 74, 74 },  // crafting hunt; the Summoner ends it
+	{ "arcane",    "Fork4Arcane",    9, 62, 62 },  // crafting hunt; the Summoner ends it (spare level 62: the real 74 crashed)
 	{ "tunnels",   "Fork4Tunnels",   9, 65, 65 },  // MF run
 	{ "canyon",    "Fork4Canyon",    9, 59, 59 },  // XP grind (on level 59; the real 46 is outdoors)
 	{ "duriel",    "NodeDuriel",    10, 66, 73 },  // arrive at the orifice (66); Duriel dies in his lair (73)

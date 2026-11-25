@@ -3,7 +3,7 @@
 //
 // The game reads SharedStashSoftCoreV2.d2i once and keeps it until it closes, so the file can't be
 // swapped when another save is opened. Instead it holds 30 pages: save 1 has pages 1-10, save 2
-// 11-20, save 3 21-30. The file is its pages one after another: 64 bytes of header (mark, 2, version,
+// 11-20, save 3 21-30; then come 4 pages each for ascended heroes (31-34, 35-38, 39-42; legacy.h). The file is its pages one after another: 64 bytes of header (mark, 2, version,
 // gold, length) and a list of items. Only page 1's gold counts, and it is one purse for every page,
 // so gold is kept by the plugin (stash.txt "purse") and the header's is 0.
 //
@@ -27,7 +27,9 @@ namespace StashFile {
 namespace fs = std::filesystem;
 
 inline constexpr int PagesPerSave = 10;
-inline constexpr int AllPages     = PagesPerSave * Camp::SlotCount;
+inline constexpr int AllPages     = PagesPerSave * Camp::SlotCount;  // the ordinary pages
+inline constexpr int TabsPerSave  = 4;                                // ascended heroes' (Legacy::TabCount)
+inline constexpr int FilePages    = AllPages + TabsPerSave * Camp::SlotCount;
 inline constexpr size_t HeaderSize = 64;
 inline constexpr uint32_t Version = 0x69;
 
@@ -85,9 +87,11 @@ inline auto JoinPages(const std::vector<std::string>& pages) -> std::string {
 	return file;
 }
 
-// One save's ten pages out of its own file (a missing file: blank pages). `gold` is its purse.
-inline auto SavePages(const fs::path& file, std::vector<std::string>& out, uint32_t& gold, std::string& error) -> bool {
+// One save's ten pages out of its own file (a missing file: blank pages), and its ascended heroes'
+// (pages 11-14 of it). `gold` is its purse.
+inline auto SavePages(const fs::path& file, std::vector<std::string>& out, std::vector<std::string>& tabs, uint32_t& gold, std::string& error) -> bool {
 	out.clear();
+	tabs.clear();
 	gold = 0;
 	std::error_code ec;
 	if (fs::exists(file, ec)) {
@@ -98,19 +102,23 @@ inline auto SavePages(const fs::path& file, std::vector<std::string>& out, uint3
 		}
 		for (const auto& page : *pages) {
 			gold += Gold(page);
-			if (out.size() >= PagesPerSave) {
+			if (out.size() >= PagesPerSave && tabs.size() >= TabsPerSave) {
 				if (ItemCount(page) != 0) {
-					error = "items past page 10: " + file.string();
+					error = "items past page 14: " + file.string();
 					return false;
 				}
 				continue;
 			}
-			out.push_back(page);
-			SetNumber(out.back(), 12, 0);
+			auto& to = out.size() < PagesPerSave ? out : tabs;
+			to.push_back(page);
+			SetNumber(to.back(), 12, 0);
 		}
 	}
 	while (out.size() < PagesPerSave) {
 		out.push_back(BlankPage());
+	}
+	while (tabs.size() < TabsPerSave) {
+		tabs.push_back(BlankPage());
 	}
 	return true;
 }
@@ -140,23 +148,25 @@ inline auto Join(const fs::path& live, const std::string& stamp, std::string& lo
 		}
 	}
 	const int active = Camp::ActiveSlot(live);
-	std::vector<std::string> all;
+	std::vector<std::string> all, allTabs;
 	std::string marks;
 	std::vector<fs::path> sources;
 	int items = 0;
 	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
 		const fs::path file = slot == active ? joined : Camp::SlotDir(live, slot) / "files" / Camp::StashName;
-		std::vector<std::string> pages;
+		std::vector<std::string> pages, tabs;
 		uint32_t gold = 0;
-		if (!SavePages(file, pages, gold, log)) {
+		if (!SavePages(file, pages, tabs, gold, log)) {
 			return false;
 		}
-		for (const auto& page : pages) {
-			items += ItemCount(page);
-		}
 		all.insert(all.end(), pages.begin(), pages.end());
+		allTabs.insert(allTabs.end(), tabs.begin(), tabs.end());
 		marks += "gold " + std::to_string(slot) + " " + std::to_string(gold) + "\n";
 		sources.push_back(file);
+	}
+	all.insert(all.end(), allTabs.begin(), allTabs.end());
+	for (const auto& page : all) {
+		items += ItemCount(page);
 	}
 	const fs::path backup = live / "camp" / ("stash-backup-" + stamp);
 	fs::create_directories(backup, ec);
@@ -178,7 +188,7 @@ inline auto Join(const fs::path& live, const std::string& stamp, std::string& lo
 		return false;
 	}
 	const auto check = Pages(text);
-	if (!check || check->size() != AllPages || *check != all) {
+	if (!check || check->size() != FilePages || *check != all) {
 		log = "the joined stash does not read back the same";
 		fs::remove(next, ec);
 		return false;
@@ -272,7 +282,12 @@ inline auto CopyPages(const fs::path& live, int slot, const fs::path& to) -> boo
 		return false;
 	}
 	const auto from = pages->begin() + (slot - 1) * PagesPerSave;
-	return Camp::WriteFile(to, JoinPages({ from, from + PagesPerSave }));
+	std::vector<std::string> mine(from, from + PagesPerSave);
+	if (pages->size() >= FilePages) {
+		const auto tabs = pages->begin() + AllPages + (slot - 1) * TabsPerSave;
+		mine.insert(mine.end(), tabs, tabs + TabsPerSave);
+	}
+	return Camp::WriteFile(to, JoinPages(mine));
 }
 
 // Empties a save's pages in the file. Only while the game does not hold the stash in memory.
@@ -283,6 +298,9 @@ inline auto BlankPages(const fs::path& live, int slot) -> bool {
 	}
 	for (int i = 0; i < PagesPerSave; ++i) {
 		(*pages)[static_cast<size_t>((slot - 1) * PagesPerSave + i)] = BlankPage();
+	}
+	for (int i = 0; i < TabsPerSave && pages->size() >= FilePages; ++i) {
+		(*pages)[static_cast<size_t>(AllPages + (slot - 1) * TabsPerSave + i)] = BlankPage();
 	}
 	return Camp::WriteFile(live / Camp::StashName, JoinPages(*pages));
 }
