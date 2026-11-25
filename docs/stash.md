@@ -55,7 +55,7 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
 
 Console: `dd-stash` (what this save has); for tests `dd-stash points <n>`, `dd-stash gold <n>`.
 
-## One stash file for all saves (0.22.0)
+## One stash file for all saves (0.22.1)
 The game reads `SharedStashSoftCoreV2.d2i` once, **when it starts** (not at the first game, as thought
 before: on 2026-11-24 a save opened right after starting got the other save's stash written over its
 own), and keeps it until it closes. So the file is never swapped. It holds 30 pages: save 1 has pages

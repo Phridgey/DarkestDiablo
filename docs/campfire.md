@@ -62,6 +62,7 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
   from a single folder. So a slot is a set of files: the live folder holds the loaded slot, the
   other slots are parked in `camp/slot<N>/files/`, and picking a slot moves files both ways.
   Settings and loot filters stay put and are shared by all slots.
+- **Since 0.22.1 all saves share one stash file** (`docs/stash.md`); the next point only holds when the files could not be joined.
 - **The game keeps the stash in memory.** It reads the shared stash at the first game of a
   session and keeps that copy until it closes: later games show it and write it back on leaving,
   whatever file is in the folder. Moving files was not enough (2026-11-19: save 2's stash item
@@ -109,7 +110,7 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
 | `tools/camp_layouts.py` | Our three panels (save slots, traveler, roster), written into the mod by the build. |
 | `src/patches/040_campfire.py` | Bonfire, stash button, hero screen title. |
 | `d2rloader/camp_data.txt` (built) | Where each class stands at the fire and how each item looks; made by `tools/build.py`. |
-| `src/d2rloader/` | The mod's D2RLoader settings: `add_shared_tabs = 7`. |
+| `src/d2rloader/` | The mod's D2RLoader settings: `add_shared_tabs = 27`. |
 
 In the save folder (`Saved Games\Diablo II Resurrected\mods\darkestdiablo`):
 
