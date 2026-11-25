@@ -601,7 +601,7 @@ auto KeepWarlockFile(const D2RL::PluginContext* context) -> bool {
 }
 
 // Game thread, locked. Empties the Warlock rules' own tabs: what they held when the stash was opened
-// goes to the safe. Anything that gets in while it is open goes back to the bag or an open page (the
+// goes to the safe. Anything that gets in while it is open goes to the Upgrades tab, else back to the bag or an open page (the
 // safe can't be filled); only if there is no room at all the safe keeps it, so nothing is lost.
 void EmptyWarlockTabs(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::vector<D2RL::Items::ItemInfo>& items) {
 	const bool first = !std::exchange(g_tabsSeen, true);
@@ -621,7 +621,7 @@ void EmptyWarlockTabs(const D2RL::PluginContext* context, D2RL::PlayerHandle pla
 		g_safeFailed = true;
 		return;
 	}
-	int kept = 0, returned = 0;
+	int kept = 0, returned = 0, stored = 0;
 	for (const auto* item : out) {
 		const std::string code = CodeText(item->code);
 		const int n = (std::max)(1, item->quantity);
@@ -631,7 +631,11 @@ void EmptyWarlockTabs(const D2RL::PluginContext* context, D2RL::PlayerHandle pla
 			continue;
 		}
 		for (int i = 0; i < n; ++i) {
-			if (!first && MakeItem(context, player, code, false, true)) {
+			const Stash::Kind* kind = first ? nullptr : Stash::KindOf(code);
+			if (kind != nullptr && g_state.Room(*kind) > 0) {
+				g_state.Add(code, 1);
+				++stored;
+			} else if (!first && MakeItem(context, player, code, false, true)) {
 				++returned;
 			} else {
 				++g_safe[code];
@@ -639,15 +643,18 @@ void EmptyWarlockTabs(const D2RL::PluginContext* context, D2RL::PlayerHandle pla
 			}
 		}
 	}
+	if (stored > 0) {
+		Save(context);
+	}
 	if (kept > 0) {
 		SaveSafe(context);
-		QueueRefresh(context);
 	}
-	Log(context, "Stash: old tabs: %d item(s) to the safe, %d back to the hero.", kept, returned);
+	QueueRefresh(context);
+	Log(context, "Stash: old tabs: %d item(s) to the safe, %d to the Upgrades tab, %d back to the hero.", kept, stored, returned);
 }
 
 // Game thread. Ctrl+click would send the bag's gems and runes to the Warlock rules' hidden tabs:
-// they go to the page that shows instead.
+// they go to the Upgrades tab instead, or to the page that shows when its slot is locked or full.
 void __cdecl MoveToShownPage(const D2RL::PluginContext* context, void* data) noexcept;
 
 // ---- Page locks ------------------------------------------------------------------------------
@@ -710,12 +717,18 @@ void __cdecl MoveToShownPage(const D2RL::PluginContext* context, void* data) noe
 		D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 		std::vector<D2RL::Items::ItemInfo> items;
 		const int page = g_page.load();
-		if (!g_bankOpen.load() || page < 1 || page > Stash::PageCount || !Current(progress) || !g_state.PageOpen(page - 1) ||
+		if (!g_bankOpen.load() || !Current(progress) ||
 			!ItemsIn(context, D2RL::Items::ContainerBit(Container::Inventory), player, items)) {
 			return;
 		}
 		for (const auto& item : items) {
-			if (item.runtimeId == static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data))) {
+			if (item.runtimeId != static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data))) {
+				continue;
+			}
+			if (Store(context, player, item)) {
+				Save(context);
+				QueueRefresh(context);
+			} else if (page >= 1 && page <= Stash::PageCount && g_state.PageOpen(page - 1)) {
 				MoveTo(context, player, item.handle, page - 1);
 			}
 		}
