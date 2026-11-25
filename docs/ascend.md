@@ -39,6 +39,10 @@ A hero's last fight. Rules decided 2026-11-24. Code: `src/plugin/ascension.cpp` 
 ## Seen in the game (2026-11-24)
 Act II: the arena loads, the boss comes out with its affixes, its death is noticed and the win recorded.
 
+Act III (2026-11-25): the whole fight, the portal, the ascension, and 39 of 40 items on the page. The 40th
+found no room where the game put things by itself, and the page only showed once all were there. Since
+0.24.1 each goes to the cell it was packed for, and the page shows as soon as anything is on it.
+
 ## Not yet tried in the game
 1. Does each arena load, and is the hero's, boss's and portal's spot open floor?
 2. Does the boss come out, tinted, with 3 affixes? The log says its life before and after.

@@ -135,6 +135,7 @@ bool g_slotNotice = false;  // the slot screen shows only "close the game and st
 bool g_createMode = false;  // Create was pressed at the Campfire: the name box is showing
 bool g_exiting    = false;  // Exit was pressed at the Campfire: the game passes its menu on the way out
 int  g_ascendAsk  = -1;     // Ascend was pressed for this hero: only the question shows
+std::string g_ascendedNote;  // at the Campfire after an ascension, until a game starts
 std::string g_lootData;
 Ascend::Shapes g_shapes;    // how items are stored in saves (ascend.h)
 int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
@@ -277,6 +278,7 @@ void Reconcile(const D2RL::PluginContext* context, bool afterGame) {
 			Camp::MarkFallen(g_camp, ascender);
 			Camp::SaveState(g_live, g_slot, g_camp);
 			Legacy::WriteFight(g_live, g_slot, Legacy::Fight::None, "");
+			g_ascendedNote = ascender + " has ascended. The next hero you play brings the belongings to the stash.";
 			Log(context, "Camp: %s has ascended.", ascender.c_str());
 		} else {
 			Log(context, "Camp: %s has won, but could not ascend yet (%s); tried again next time.", ascender.c_str(), error.c_str());
@@ -1050,6 +1052,10 @@ auto FireTopJson() -> std::string {
 			};
 			text("Name" + cls, 0, 34, hero.name, "28", picked ? "$FontColorWhite" : "$FontColorDarkGrayGold");
 			text("Rank" + cls, 34, 26, "Lv " + std::to_string(hero.level), "18", picked ? "$FontColorWhite" : "$FontColorDarkGrayBlue");
+		}
+		if (!g_ascendedNote.empty() && !g_deleteMode && !g_createMode) {
+			kids += "{\"type\":\"TextBoxWidget\",\"name\":\"AscendedNote\",\"fields\":{\"rect\":{\"x\":-1300,\"y\":210,\"width\":2600,\"height\":70},\"text\":\"" + g_ascendedNote +
+				"\",\"style\":{\"fontColor\":\"$FontColorGoldYellow\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
 		}
 		if (g_deleteMode) {
 			kids += "{\"type\":\"TextBoxWidget\",\"name\":\"DeleteHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
@@ -2903,6 +2909,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 		case Kind::GameJoined:
 			Game::ResetCounters();  // a game with a hero starts the run's counters (gameapi.h)
 			g_inGame = true;
+			g_ascendedNote.clear();
 			g_slotChosen = true;
 			g_stashSlot = g_slot;  // from now on the game keeps this save's stash in memory
 			g_died = false;

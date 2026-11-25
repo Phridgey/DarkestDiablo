@@ -482,8 +482,8 @@ void __cdecl ClickSlot(const D2RL::PluginContext* context, void* data) noexcept 
 void __cdecl LeaveTab(const D2RL::PluginContext* context, void*) noexcept;
 
 // ---- Page locks ------------------------------------------------------------------------------
-// `page`: in the stash file, from 0.
-auto MoveToFilePage(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2RL::ItemHandle item, int page) -> bool {
+// `page`: in the stash file, from 0. With `x`, `y` at that cell, otherwise where there is room.
+auto MoveToFilePage(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2RL::ItemHandle item, int page, int x = -1, int y = -1) -> bool {
 	D2RL::Items::ExistingItemOperation operation {};
 	operation.structSize                        = D2RL::Items::ExistingItemOperationSize;
 	operation.kind                              = D2RL::Items::ExistingItemOperationKind::Move;
@@ -491,6 +491,11 @@ auto MoveToFilePage(const D2RL::PluginContext* context, D2RL::PlayerHandle playe
 	operation.move.destination.structSize       = D2RL::Items::ItemDestinationSize;
 	operation.move.destination.container        = Container::SharedStash;
 	operation.move.destination.placement        = D2RL::Items::Placement::Automatic;
+	if (x >= 0 && y >= 0) {
+		operation.move.destination.placement    = D2RL::Items::Placement::Exact;
+		operation.move.destination.x            = static_cast<uint32_t>(x);
+		operation.move.destination.y            = static_cast<uint32_t>(y);
+	}
 	operation.move.destination.sharedStashPage  = static_cast<uint32_t>(page);
 	const D2RL::Items::ExistingItemTransaction transaction {
 		.structSize     = D2RL::Items::ExistingItemTransactionSize,
@@ -605,14 +610,41 @@ void __cdecl Deliver(const D2RL::PluginContext* context, void*) noexcept {
 			return;
 		}
 		const int page = g_tabBase.load() + estate->tab;
-		size_t moved = 0;
+		// They were packed to fit one page, so each goes to the same cell there; put wherever there is
+		// room they fit worse, and one of 40 stayed behind (2026-11-25). The rest is for when the cell is
+		// taken after all: elsewhere on the page, an open page, the bag.
+		size_t moved = 0, onPage = 0;
+		std::string stuck;
 		for (const auto& item : items) {
-			moved += MoveToFilePage(context, player, item.handle, page) ? 1 : 0;
+			bool done = MoveToFilePage(context, player, item.handle, page, item.x, item.y) || MoveToFilePage(context, player, item.handle, page);
+			onPage += done ? 1 : 0;
+			for (int own = 0; own < g_state.Pages() && !done && g_deliverTries >= 2; ++own) {
+				done = MoveTo(context, player, item.handle, own);
+			}
+			done = done || (g_deliverTries >= 2 && MoveToBag(context, player, item.handle));
+			moved += done ? 1 : 0;
+			if (!done) {
+				stuck += " " + CodeText(item.code) + "@" + std::to_string(item.x) + "," + std::to_string(item.y);
+			}
 		}
-		Log(context, "Stash: %d of %d item(s) of %s moved to their page.", static_cast<int>(moved), static_cast<int>(items.size()), estate->name.c_str());
+		if (moved > 0 || g_deliverTries == 0) {
+			Log(context, "Stash: %d of %d item(s) of %s moved, %d of them to their page.%s%s", static_cast<int>(moved), static_cast<int>(items.size()), estate->name.c_str(),
+				static_cast<int>(onPage), stuck.empty() ? "" : " Left:", stuck.substr(0, 200).c_str());
+		}
+		if (onPage > 0) {  // the page can be turned to at once, even if something is still to come
+			g_known.erase(estate->tab);
+			g_legacy.tabs[estate->tab] = estate->name;
+			Legacy::Save(live, slot, g_legacy);
+			QueueRefresh(context);
+		}
 		if (moved == items.size()) {
 			g_known.erase(estate->tab);
+			const bool anyThere = g_legacy.tabs.count(estate->tab) != 0;
+			const int tab = estate->tab;
 			Legacy::Delivered(g_legacy, hero);
+			if (!anyThere) {
+				g_legacy.tabs.erase(tab);  // everything found room elsewhere
+			}
 			Legacy::Save(live, slot, g_legacy);
 			g_delivering = false;
 			context->WriteConsoleMessage("An ascended hero's belongings wait in the stash.");
