@@ -132,9 +132,9 @@ int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
 int  g_hoveredHero = -1;    // the class under the mouse at the Campfire (from the game's Hover messages)
 int  g_clickedHero = -1;    // the hero under the mouse when the left button went down (see WatchFireClicks)
 std::atomic<bool> g_watchingClicks { false };
-std::atomic<bool> g_shimmering { false };      // the Campfire's aurora thread runs (see ShimmerFire)
-std::vector<std::string> g_shimmerShown;       // the aurora widgets the last step showed
-bool g_shimmerReset = false;                   // a fresh Campfire panel: hide every aurora widget first
+std::atomic<bool> g_shimmering { false };      // the Campfire's glow thread runs (see ShimmerFire)
+std::vector<std::string> g_shimmerShown;       // the glow widgets the last step showed
+bool g_shimmerReset = false;                   // a fresh Campfire panel: hide every glow widget first
 bool g_emptyFire = false;       // the hero screen is up with nobody at the fire, under the save slots
 bool g_travelerArrives = false; // the fire was used with a traveler waiting: portal and figure are showing
 bool g_travelerMode = false;
@@ -475,7 +475,8 @@ void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
 		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 1);
 		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 2);
 	}
-	SetVisible(context, panel.c_str(), "Exit", !asking);
+	SetVisible(context, panel.c_str(), "Exit", g_confirmSlot == 0);
+	SetVisible(context, panel.c_str(), "NoticeBack", g_slotNotice && Camp::ReadPending(g_live).deletes.empty());
 	// The answer buttons are shared by the three saves (a hidden button still takes clicks).
 	SetVisible(context, panel.c_str(), "AskYes", !g_slotNotice && g_confirmStep == 1);
 	SetVisible(context, panel.c_str(), "AskNo", !g_slotNotice && g_confirmStep == 1);
@@ -854,70 +855,30 @@ auto Allowed() -> std::vector<int> {
 	return g_travelerMode ? g_camp.offer : Camp::Creatable(g_camp, g_rng);
 }
 
-// The selection aurora: soft patches of gold light (src/patches/042_campfire_glow.py) sit all
-// around the picked hero's plate and the lit Enter button, each slowly brightening and fading
-// on its own rhythm, so the glow breathes and wavers in place. The plugin can only show and
-// hide widgets, so each patch is drawn at AuraLevels brightnesses, one widget per level, and
-// AuraStep shows the right one (or none).
-constexpr int AuraLevels = 6;
+// The selection glow: one soft gold picture behind the picked hero's name and one around the lit
+// Enter button (src/patches/042_campfire_glow.py), slowly brightening and fading. The plugin can
+// only show and hide widgets, so each is drawn at GlowLevels brightnesses and ShimmerStep shows
+// one. (Until 0.20.3 this was an aurora of many patches, 288 widgets with four heroes. Part of
+// them could not be hidden and stayed lit: the last hero's and Enter's.)
+constexpr int GlowLevels = 5;
 // The name under each hero: plain text since 0.20.0 (was a framed plate, busy with neighbours).
 // The glow picture's size comes from 042_campfire_glow.py.
 constexpr int PlateW = 380, PlateH = 60, PlateY = 1440, PlateDrop = 70;
-constexpr int PlateAuraW = 250, PlateGlowW = 392, PlateGlowH = 153;
-constexpr int PlateAuras = 8;     // patches around a name plate
-constexpr int EnterAuras = 16;    // patches around the Enter button (824x162)
-constexpr int AuraOut = 14;       // how far outside the box edge a patch's centre sits
-// Picture sizes: along a top or bottom edge (H) and along a side (V).
-constexpr int AuraHW = 280, AuraHH = 98, AuraVW = 130, AuraVH = 150;  // a quarter lower since 0.20.0
+constexpr int PlateGlowW = 392, PlateGlowH = 153;
+constexpr int EnterW = 824, EnterH = 196, EnterY = 1740, EnterMargin = 40;  // FrontEnd_ButtonLarge at 1.35, measured in the game
 
-struct AuraSpot { int x; int y; bool side; };
-
-// `n` patch centres evenly around a box, clockwise from its top left corner, just outside it.
-auto AuraSpots(int x, int y, int w, int h, int n) -> std::vector<AuraSpot> {
-	std::vector<AuraSpot> out;
-	const double around = 2.0 * (w + h);
-	for (int i = 0; i < n; ++i) {
-		double d = around * (i + 0.5) / n;
-		if (d < w) {
-			out.push_back({ x + static_cast<int>(d), y - AuraOut, false });
-		} else if ((d -= w) < h) {
-			out.push_back({ x + w + AuraOut, y + static_cast<int>(d), true });
-		} else if ((d -= h) < w) {
-			out.push_back({ x + w - static_cast<int>(d), y + h + AuraOut, false });
-		} else {
-			d -= w;
-			out.push_back({ x - AuraOut, y + h - static_cast<int>(d), true });
-		}
-	}
-	return out;
+auto GlowName(const std::string& whose, int level) -> std::string {
+	return "Glow" + whose + "_" + std::to_string(level);
 }
 
-// The aurora widgets for one box: "<prefix>_<patch>_<level>", level 1..AuraLevels.
-auto AuraWidgets(const std::string& prefix, int x, int y, int w, int h, int n) -> std::string {
+// The glow widgets of one hero (or Enter), level 1..GlowLevels.
+auto GlowWidgets(const std::string& whose, const std::string& picture, int x, int y) -> std::string {
 	std::string out;
-	const auto spots = AuraSpots(x, y, w, h, n);
-	for (int i = 0; i < n; ++i) {
-		const AuraSpot& s = spots[i];
-		const int pw = s.side ? AuraVW : AuraHW;
-		const int ph = s.side ? AuraVH : AuraHH;
-		const std::string at = "{\"x\":" + std::to_string(s.x - pw / 2) + ",\"y\":" + std::to_string(s.y - ph / 2) + "}";
-		for (int k = 1; k <= AuraLevels; ++k) {
-			out += "{\"type\":\"ImageWidget\",\"name\":\"" + prefix + "_" + std::to_string(i) + "_" + std::to_string(k) + "\",\"fields\":{\"rect\":" + at +
-				",\"filename\":\"PANEL\\\\DarkestDiablo\\\\Aura" + (s.side ? "V" : "H") + std::to_string(k) + "\"}},";
-		}
+	for (int k = 1; k <= GlowLevels; ++k) {
+		out += "{\"type\":\"ImageWidget\",\"name\":\"" + GlowName(whose, k) + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y) +
+			"},\"filename\":\"PANEL\\\\DarkestDiablo\\\\" + picture + std::to_string(k) + "\"}},";
 	}
 	return out;
-}
-
-// How bright patch `i` is at time `t` (seconds): 0 (hidden) .. AuraLevels. Two slow waves
-// with periods and starts of its own, so neighbours never pulse together.
-auto AuraLevel(int i, double t) -> int {
-	constexpr double Tau = 6.283185307179586;
-	const double start = i * 2.399963;  // the golden angle spreads the starts evenly
-	const double p1 = 2.7 + 0.37 * (i % 5);
-	const double p2 = 4.1 + 0.53 * (i % 3);
-	const double v = 0.55 + 0.28 * std::sin(Tau * t / p1 + start) + 0.2 * std::sin(Tau * t / p2 + 2 * start);
-	return std::clamp(static_cast<int>(std::lround(v * AuraLevels)), 0, AuraLevels);
 }
 
 // The Fire panel's layout for the camp as it is now: each living hero as a figure in its gear
@@ -956,10 +917,7 @@ auto FireLayoutJson() -> std::string {
 		const int glowX = s.x + (s.w - PlateGlowW) / 2;
 		// The picked hero's name lies in a soft gold light, drawn at build time
 		// (src/patches/042_campfire_glow.py).
-		kids += "{\"type\":\"ImageWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(glowX) +
-			",\"y\":" + std::to_string(plateY + (PlateH - PlateGlowH) / 2) + "},\"filename\":\"PANEL\\\\DarkestDiablo\\\\HeroGlow\"}},";
-		// Its aurora, between the light and the name.
-		kids += AuraWidgets("Aura" + cls, s.x + (s.w - PlateAuraW) / 2, plateY - 6, PlateAuraW, PlateH + 12, PlateAuras);
+		kids += GlowWidgets(cls, "HeroGlow", glowX, plateY + (PlateH - PlateGlowH) / 2);
 		const auto text = [&](const std::string& name, int y, int h, const std::string& value, const char* size, const char* color) {
 			return "{\"type\":\"TextBoxWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":" + std::to_string(y) + ",\"width\":" + std::to_string(PlateW) +
 				",\"height\":" + std::to_string(h) + "},\"text\":\"" + value + "\",\"style\":{\"pointSize\":" + size +
@@ -999,20 +957,15 @@ auto FireLayoutJson() -> std::string {
 		// Enter: the game's largest button, drawn bigger. Grey until a hero is picked; then it is
 		// lit: warm stone, gold text and a soft gold glow behind it.
 		const auto enter = [&](const char* name, bool ready) {
-			std::string out = std::string("{\"type\":\"Widget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":1740}},\"children\":[";
-			if (ready) {
-				// The button's size (824x162) plus a margin of 72 left and right, 54 above and below (042_campfire_glow.py).
-				out += "{\"type\":\"ImageWidget\",\"name\":\"Glow\",\"fields\":{\"rect\":{\"x\":-484,\"y\":-54},\"filename\":\"PANEL\\\\DarkestDiablo\\\\EnterGlow\"}},";
-			}
+			std::string out = std::string("{\"type\":\"Widget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":" + std::to_string(EnterY) + "}},\"children\":[";
 			out += std::string("{\"type\":\"ButtonWidget\",\"name\":\"Button\",\"fields\":{\"rect\":{\"x\":-412,\"y\":0,\"scale\":1.35},\"filename\":\"") + Large +
 				"\",\"textString\":\"ENTER\",\"onClickMessage\":\"" + act + "enter\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"
 				"\"text/style\":\"$StyleFEButtonText\",\"pointSize\":\"$XExtraLargeFontSize\"," +
 				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.94,\"b\":0.80,\"a\":1.0},\"textColor\":\"$FontColorGoldYellow\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
 			return out;
 		};
-		// Enter's aurora, in the glow around the button and under it (an image over a button might
-		// take its clicks).
-		kids += AuraWidgets("AuraEnter", -412, 1740, 824, 162, EnterAuras);
+		// Under the button: an image over a button might take its clicks.
+		kids += GlowWidgets("Enter", "EnterGlow", -EnterW / 2 - EnterMargin, EnterY - EnterMargin);
 		kids += enter("EnterIdle", false) + "," + enter("EnterReady", true) + ",";
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
@@ -1043,7 +996,6 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 		const bool picked = hero.cls == g_chosenHero && !g_deleteMode && !traveler && !g_createMode;
 		SetVisible(context, panel.c_str(), cls.c_str(), !traveler);
 		SetVisible(context, panel.c_str(), ("Plate" + cls).c_str(), !g_deleteMode && !traveler);
-		SetVisible(context, panel.c_str(), ("Glow" + cls).c_str(), picked);
 		SetVisible(context, panel.c_str(), ("Name" + cls).c_str(), !picked);
 		SetVisible(context, panel.c_str(), ("NameLit" + cls).c_str(), picked);
 		SetVisible(context, panel.c_str(), ("Rank" + cls).c_str(), !picked);
@@ -1162,58 +1114,57 @@ void WatchFireClicks(const D2RL::PluginContext* context) {
 	}).detach();
 }
 
-// One moment of the aurora around the picked hero and Enter.
+// One moment of the glow behind the picked hero's name and around Enter.
 void __cdecl ShimmerStep(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
 	if (!g_atFire) {
 		return;
 	}
 	const std::string panel = PoolName(g_fire);
-	const auto name = [](const std::string& prefix, int i, int k) { return prefix + "_" + std::to_string(i) + "_" + std::to_string(k); };
-	if (g_shimmerReset) {
-		g_shimmerReset = false;
+	if (g_shimmerReset) {  // everything starts shown; try again next time while something can't be hidden yet
 		g_shimmerShown.clear();
-		const auto hideAll = [&](const std::string& prefix, int n) {
-			for (int i = 0; i < n; ++i) {
-				for (int k = 1; k <= AuraLevels; ++k) {
-					SetVisible(context, panel.c_str(), name(prefix, i, k).c_str(), false);
-				}
+		bool hidden = true;
+		const auto hideAll = [&](const std::string& whose) {
+			for (int k = 1; k <= GlowLevels; ++k) {
+				hidden = SetVisible(context, panel.c_str(), GlowName(whose, k).c_str(), false) && hidden;
 			}
 		};
-		for (const auto& hero : g_camp.heroes) {
-			hideAll("Aura" + std::string(Camp::ClassNames[hero.cls]), PlateAuras);
+		if (!g_travelerMode) {
+			for (const auto& hero : g_camp.heroes) {
+				if (g_spots[hero.cls].known) {
+					hideAll(Camp::ClassNames[hero.cls]);
+				}
+			}
+			if (!g_camp.heroes.empty()) {
+				hideAll("Enter");
+			}
 		}
-		hideAll("AuraEnter", EnterAuras);
+		g_shimmerReset = !hidden;
+		if (!hidden) {
+			return;
+		}
 	}
-	const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 	std::vector<std::string> show;
-	const bool lit = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr && !g_deleteMode && !g_travelerMode && !g_createMode;
-	if (lit) {
-		const auto add = [&](const std::string& prefix, int n, int seed) {
-			for (int i = 0; i < n; ++i) {
-				const int k = AuraLevel(i + seed, t);
-				if (k > 0) {
-					show.push_back(name(prefix, i, k));
-				}
-			}
-		};
-		add("Aura" + std::string(Camp::ClassNames[g_chosenHero]), PlateAuras, 0);
-		add("AuraEnter", EnterAuras, 17);
+	if (g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr && !g_deleteMode && !g_travelerMode && !g_createMode) {
+		const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		const double wave = 0.5 + 0.5 * std::sin(6.283185307179586 * std::fmod(t, 4.0) / 4.0);
+		const int k = std::clamp(1 + static_cast<int>(std::lround(wave * (GlowLevels - 1))), 1, GlowLevels);
+		show = { GlowName(Camp::ClassNames[g_chosenHero], k), GlowName("Enter", k) };
+	}
+	for (const auto& n : show) {  // the new ones first, so nothing blinks
+		if (std::find(g_shimmerShown.begin(), g_shimmerShown.end(), n) == g_shimmerShown.end()) {
+			SetVisible(context, panel.c_str(), n.c_str(), true);
+		}
 	}
 	for (const auto& n : g_shimmerShown) {
 		if (std::find(show.begin(), show.end(), n) == show.end()) {
 			SetVisible(context, panel.c_str(), n.c_str(), false);
 		}
 	}
-	for (const auto& n : show) {
-		if (std::find(g_shimmerShown.begin(), g_shimmerShown.end(), n) == g_shimmerShown.end()) {
-			SetVisible(context, panel.c_str(), n.c_str(), true);
-		}
-	}
 	g_shimmerShown = std::move(show);
 }
 
-// While the Campfire is up, moves the aurora along every 80 ms.
+// While the Campfire is up, moves the glow along every 80 ms.
 void ShimmerFire(const D2RL::PluginContext* context) {
 	if (g_shimmering.exchange(true) || g_threads == nullptr) {
 		return;
@@ -2331,7 +2282,18 @@ auto OnAction(const D2RL::PluginContext* context, const char* action) -> bool {
 			Log(context, "Camp: asking once more before deleting save %d.", g_confirmSlot);
 			ShowSlotWidgets(context);
 		}
-	} else if (g_confirmSlot != 0 && StartsWith(action, "slot-")) {
+	} else if (std::strcmp(action, "slot-notice-back") == 0) {
+		// Back from "start the game again": forget the save that was picked, unless a delete waits too.
+		Camp::Pending pending = Camp::ReadPending(g_live);
+		if (g_slotNotice && pending.deletes.empty()) {
+			std::error_code ec;
+			fs::remove(Camp::PendingFile(g_live), ec);
+			g_slotNotice = false;
+			g_slotChosen = false;
+			Log(context, "Camp: Back pressed at the restart notice; no save change waits%s.", ec ? " (camp/next.txt could not be removed)" : "");
+			ShowSlotWidgets(context);
+		}
+	} else if ((g_confirmSlot != 0 || g_slotNotice) && StartsWith(action, "slot-")) {
 		// a hidden button under the question still takes clicks: ignore it
 	} else if (StartsWith(action, "slot-delete-")) {
 		const int slot = std::atoi(action + 12);

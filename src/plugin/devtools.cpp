@@ -14,6 +14,7 @@
 
 #include "devtools.h"
 #include "gameapi.h"
+#include "gamestate.h"
 #include <D2RLPlugin/core_exports.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -500,6 +501,7 @@ void OnAction(const D2RL::PluginContext* context, const char* action) noexcept {
 		// an amount would pass that (50,000 at once left low-level heroes with 0). So give what
 		// still fits, up to 50,000; if the hero can't be read, 5,000, which fits even at level 1.
 		int amount = 5000;
+		GameState::Ready();
 		const Game::HeroDetails hero = Game::HeroInfo();
 		if (hero.level > 0 && hero.gold >= 0) {
 			amount = (std::min)(50000, hero.level * 10000 - hero.gold);

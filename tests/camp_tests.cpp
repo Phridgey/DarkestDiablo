@@ -566,7 +566,7 @@ static void WriteStashLayouts(const fs::path& dir) {
 	for (const auto& kind : Stash::Kinds()) {
 		full.mats[kind.code] = n++ % 5 == 0 ? 0 : n;
 	}
-	WriteFile(dir / "tree_fresh.json", Stash::TreeLayout(fresh));
+	WriteFile(dir / "tree_fresh.json", Stash::TreeLayout(fresh, "Hero not found yet, try again"));
 	WriteFile(dir / "tree_full.json", Stash::TreeLayout(full));
 	full.nodes = { "tab", "gem1", "rune1", "pot1" };
 	WriteFile(dir / "tree_part.json", Stash::TreeLayout(full));

@@ -17,7 +17,7 @@ checked in game. The rules themselves are in `src/plugin/camp.h` and are tested 
    selector. The save's living heroes stand at the fire in the gear they were last seen in, each
    with its name and "Lv N" as plain, dim text under it (no frame since 0.20.0; every other
    name stands lower so neighbours don't run together). Clicking a hero picks it: its name turns white
-   in a soft gold light, and Enter lights up; Enter loads it. A click on another hero counts even while the picked one
+   in a soft gold light (0.20.3: one picture that breathes slowly), and Enter lights up; Enter loads it. A click on another hero counts even while the picked one
    plays its long animation: the game ignores such clicks (it sends no Select), so the plugin
    watches the left mouse button itself, picks the hero that was under the mouse (the game's
    Hover messages say which) and asks the game to select its figure. Create brings out the name box for a new hero; on a save with no heroes yet the name box is out from the start. Options, Retire and Exit Game are
