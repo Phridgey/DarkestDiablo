@@ -9,7 +9,9 @@ are listed as too closed.
 
 Limits: walls are read from the map's wall layers. Caves (Act I caves, the Spider Cavern...) keep
 their walls in the tile sheets instead (CLAUDE.md, lessons), so they look fully open here; objects
-(trees, braziers) aren't counted either. A map that passes still needs a look in the game.
+(trees, braziers) aren't counted either. Its reading of wall pieces is a guess: it calls parts of
+the Sewers and Ancient Tunnels unreachable that are played every run (2026-11-24), so it can only
+point at maps to look at in the game, never prove one closed or open.
 """
 import sys
 from pathlib import Path
