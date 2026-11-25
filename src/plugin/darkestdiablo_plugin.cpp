@@ -100,6 +100,7 @@ static void GiveItem(const D2RL::PluginContext* context, const char* code, const
 		.seedMode        = D2RL::Items::SeedMode::Random,
 		.quantity        = D2RL::Items::DefaultValue,
 		.durability      = D2RL::Items::DefaultValue,
+		.stateFlags      = D2RL::Items::ItemStateIdentified,  // plain items: never "Unidentified"
 		.destination     = {
 			.structSize = D2RL::Items::ItemDestinationSize,
 			.container  = D2RL::Items::ItemContainer::Inventory,
@@ -1033,6 +1034,7 @@ static void __cdecl DeliverPotions(const D2RL::PluginContext* context, void*) no
 			.seedMode        = D2RL::Items::SeedMode::Random,
 			.quantity        = D2RL::Items::DefaultValue,
 			.durability      = D2RL::Items::DefaultValue,
+			.stateFlags      = D2RL::Items::ItemStateIdentified,  // plugin items start unidentified otherwise (red, "Unidentified")
 			.destination     = {
 				.structSize = D2RL::Items::ItemDestinationSize,
 				.container  = D2RL::Items::ItemContainer::PersonalStash,
