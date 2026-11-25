@@ -2130,7 +2130,11 @@ static void __cdecl RefreshRouteMap(const D2RL::PluginContext* context, void*) n
 			set(stop.node, false);  // not built yet: grey in the layout already
 		}
 	}
-	node("NodeTown", !InTown());
+	// "Return to town" goes to this page's act town: open unless the hero stands in it, or the act
+	// hasn't been reached yet (2026-11-25: from another act's town it was greyed out, so the act tabs
+	// couldn't take a hero back to an earlier act).
+	static constexpr int Towns[] = { 1, 40, 75, 103, 109 };
+	node("NodeTown", act >= 1 && act <= 5 && g_levelId.load() != Towns[act - 1] && act <= CurrentAct());
 	char message[256] {};
 	std::snprintf(message, sizeof(message), "Route map: tier %d of %d; enabled:%s%s%s", progress.CurrentTier() + 1, Route::TierCount,
 		open.empty() ? " none" : open.c_str(), failed.empty() ? "" : "; FAILED:", failed.c_str());
