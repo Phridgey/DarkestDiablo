@@ -55,7 +55,7 @@ def stop(t, a):
     if a.get("look"):
         real = levels.first("Id", a["look"])
         for col in LOOK:
-            if col in row and col in real:
+            if col in row and col in real and not (a.get("keep_name") and col == "LevelName"):
                 row[col] = real[col]
     if a.get("offset"):
         row["OffsetX"], row["OffsetY"] = (str(v) for v in a["offset"])
@@ -124,9 +124,10 @@ KSEWERS = {"id": "93", "map": "Act3/Sewer/darkest_ksewers.ds1", "size": ("18", "
 LAMESEN = {"id": "94", "map": "Act3/Temple/darkest_lamesen.ds1", "size": ("24", "24"), "template": "Act 3 - Temple 1",
            "name": "Act 3 - Darkest Diablo Ruined Temple", "waves": ["brute5", "corruptrogue5", "arach5", "vampire2"],
            "prefix": "dd_xp_a3d_", "pieces": ["temple0"], "kind": "xp"}
-SWAMPY = {"id": "90", "map": "Act3/Jungle/darkest_swampy.ds1", "size": ("40", "40"), "template": "Act 3 - Dungeon Treasure 1",
-          "name": "Act 3 - Darkest Diablo Swampy Pit", "waves": ["bonefetish4", "bonefetish5", "batdemon2", "willowisp1"],
-          "prefix": "dd_mf_a3_", "pieces": ["dungrm1a"], "kind": "mf"}
+SWAMPY = {"id": "90", "look": "80", "keep_name": True, "map": "Act3/Kurast/darkest_swampy.ds1", "size": ("32", "32"),
+          "template": "Act 3 - Slums 16x16", "name": "Act 3 - Darkest Diablo Swampy Pit",
+          "waves": ["bonefetish4", "bonefetish5", "batdemon2", "willowisp1"], "prefix": "dd_mf_a3_",
+          "pieces": ["slums16x16_2", "metro16x16_4", "slums16x16_1", "metro16x16_5"], "kind": "mf"}
 LOWERKURAST = {"id": "95", "look": "79", "map": "Act3/Kurast/darkest_lowerkurast.ds1", "size": ("16", "48"),
                "template": "Act 3 - Burbs 16x16", "name": "Act 3 - Darkest Diablo Lower Kurast",
                "waves": ["baboon4", "sandleaper4", "zealot1"], "prefix": "dd_craft_a3_",
