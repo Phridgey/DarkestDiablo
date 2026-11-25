@@ -860,14 +860,15 @@ auto Allowed() -> std::vector<int> {
 // hide widgets, so each patch is drawn at AuraLevels brightnesses, one widget per level, and
 // AuraStep shows the right one (or none).
 constexpr int AuraLevels = 6;
-// The name plate under each hero. 280x92 since 0.15.23 (was 380x128): neighbouring heroes'
-// plates overlapped (Sam). The glow picture is drawn to this size (042_campfire_glow.py).
-constexpr int PlateW = 280, PlateH = 92, PlateY = 1450, PlateGlowMargin = 56;
+// The name under each hero: plain text since 0.20.0 (was a framed plate, busy with neighbours).
+// The glow picture's size comes from 042_campfire_glow.py.
+constexpr int PlateW = 380, PlateH = 60, PlateY = 1440, PlateDrop = 70;
+constexpr int PlateAuraW = 250, PlateGlowW = 392, PlateGlowH = 153;
 constexpr int PlateAuras = 8;     // patches around a name plate
 constexpr int EnterAuras = 16;    // patches around the Enter button (824x162)
 constexpr int AuraOut = 14;       // how far outside the box edge a patch's centre sits
 // Picture sizes: along a top or bottom edge (H) and along a side (V).
-constexpr int AuraHW = 280, AuraHH = 130, AuraVW = 130, AuraVH = 200;
+constexpr int AuraHW = 280, AuraHH = 98, AuraVW = 130, AuraVH = 150;  // a quarter lower since 0.20.0
 
 struct AuraSpot { int x; int y; bool side; };
 
@@ -946,24 +947,30 @@ auto FireLayoutJson() -> std::string {
 		const std::string cls = Camp::ClassNames[hero.cls];
 		figure(hero.cls, GearFields(hero.gear));
 		const int plateX = s.x + (s.w - 300) / 2;
-		// The name plate: a dark framed plaque with the name in gold and "Level N Class" under it.
+		// The name: no frame, just the name in gold and "Level N Class" small under it. Every other
+		// hero's, from left to right, stands lower, so neighbours' names don't run together (Sam).
 		const int plaqueX = s.x + (s.w - PlateW) / 2;
-		// The picked hero's plate has a soft gold glow behind its frame, like the Enter button (Sam).
-		// The picture is drawn at build time (src/patches/042_campfire_glow.py): the plate's size
-		// plus PlateGlowMargin on each side.
-		kids += "{\"type\":\"ImageWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX - PlateGlowMargin) +
-			",\"y\":" + std::to_string(PlateY - PlateGlowMargin) + "},\"filename\":\"PANEL\\\\DarkestDiablo\\\\HeroGlow\"}},";
-		// Its aurora, between the glow and the plate.
-		kids += AuraWidgets("Aura" + cls, plaqueX, PlateY, PlateW, PlateH, PlateAuras);
-		kids += "{\"type\":\"NineTileImageWidget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\","
-			"\"backgroundColor\":[0.0,0.0,0.0,0.8],\"tileScale\":1.0,\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":" + std::to_string(PlateY) + ",\"width\":" + std::to_string(PlateW) + ",\"height\":" + std::to_string(PlateH) + "}},\"children\":["
-			"{\"type\":\"TextBoxWidget\",\"name\":\"Name" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":8,\"width\":" + std::to_string(PlateW) + ",\"height\":46},\"text\":\"" + hero.name + "\","
-			"\"style\":{\"pointSize\":\"$LargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorGoldYellow\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
+		const int rank = static_cast<int>(std::count_if(g_camp.heroes.begin(), g_camp.heroes.end(),
+			[&](const auto& other) { return g_spots[other.cls].known && g_spots[other.cls].x < s.x; }));
+		const int plateY = PlateY + (rank % 2 == 1 ? PlateDrop : 0);
+		const int glowX = s.x + (s.w - PlateGlowW) / 2;
+		// The picked hero's name lies in a soft gold light, drawn at build time
+		// (src/patches/042_campfire_glow.py).
+		kids += "{\"type\":\"ImageWidget\",\"name\":\"Glow" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(glowX) +
+			",\"y\":" + std::to_string(plateY + (PlateH - PlateGlowH) / 2) + "},\"filename\":\"PANEL\\\\DarkestDiablo\\\\HeroGlow\"}},";
+		// Its aurora, between the light and the name.
+		kids += AuraWidgets("Aura" + cls, s.x + (s.w - PlateAuraW) / 2, plateY - 6, PlateAuraW, PlateH + 12, PlateAuras);
+		const auto text = [&](const std::string& name, int y, int h, const std::string& value, const char* size, const char* color) {
+			return "{\"type\":\"TextBoxWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":" + std::to_string(y) + ",\"width\":" + std::to_string(PlateW) +
+				",\"height\":" + std::to_string(h) + "},\"text\":\"" + value + "\",\"style\":{\"pointSize\":" + size +
+				",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"" + color + "\",\"dropShadow\":\"$DefaultDropShadow\"}}}";
+		};
+		kids += "{\"type\":\"Widget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":" + std::to_string(plateY) +
+			",\"width\":" + std::to_string(PlateW) + ",\"height\":" + std::to_string(PlateH) + "}},\"children\":[" +
+			text("Name" + cls, 0, 34, hero.name, "28", "$FontColorGoldYellow") + "," +
 			// The same name in white, shown instead of the gold one while this hero is picked.
-			"{\"type\":\"TextBoxWidget\",\"name\":\"NameLit" + cls + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":8,\"width\":" + std::to_string(PlateW) + ",\"height\":46},\"text\":\"" + hero.name + "\","
-			"\"style\":{\"pointSize\":\"$LargeFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorWhite\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
-			"{\"type\":\"TextBoxWidget\",\"name\":\"Rank\",\"fields\":{\"rect\":{\"x\":0,\"y\":52,\"width\":" + std::to_string(PlateW) + ",\"height\":32},\"text\":\"Level " + std::to_string(hero.level) + " " + cls + "\","
-			"\"style\":{\"pointSize\":\"$SmallFontSize\",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"$FontColorLightGray\"}}}]},";
+			text("NameLit" + cls, 0, 34, hero.name, "28", "$FontColorWhite") + "," +
+			text("Rank", 34, 26, "Level " + std::to_string(hero.level) + " " + cls, "18", "$FontColorLightGray") + "]},";
 		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, and a waiting traveler's offer, in the game's
@@ -993,8 +1000,8 @@ auto FireLayoutJson() -> std::string {
 		const auto enter = [&](const char* name, bool ready) {
 			std::string out = std::string("{\"type\":\"Widget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":1740}},\"children\":[";
 			if (ready) {
-				// The button's size (824x162) plus a 72 margin on each side (042_campfire_glow.py).
-				out += "{\"type\":\"ImageWidget\",\"name\":\"Glow\",\"fields\":{\"rect\":{\"x\":-484,\"y\":-72},\"filename\":\"PANEL\\\\DarkestDiablo\\\\EnterGlow\"}},";
+				// The button's size (824x162) plus a margin of 72 left and right, 54 above and below (042_campfire_glow.py).
+				out += "{\"type\":\"ImageWidget\",\"name\":\"Glow\",\"fields\":{\"rect\":{\"x\":-484,\"y\":-54},\"filename\":\"PANEL\\\\DarkestDiablo\\\\EnterGlow\"}},";
 			}
 			out += std::string("{\"type\":\"ButtonWidget\",\"name\":\"Button\",\"fields\":{\"rect\":{\"x\":-412,\"y\":0,\"scale\":1.35},\"filename\":\"") + Large +
 				"\",\"textString\":\"ENTER\",\"onClickMessage\":\"" + act + "enter\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"

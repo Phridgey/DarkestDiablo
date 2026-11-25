@@ -1,12 +1,12 @@
-"""The Campfire's selection glow: a soft gold light behind the picked hero's name plate and
+"""The Campfire's selection glow: a soft gold light behind the picked hero's name and
 behind the Enter button (Sam, 2026-11-20: gold and softer instead of the flat red box).
 
-The pictures are drawn here at build time, so no art file sits in the repo. Each is a rounded
-box (the size of the plate or the button) with a warm gold halo fading out around it. The
+The pictures are drawn here at build time, so no art file sits in the repo. Enter's is a rounded
+box the size of the button with a warm gold halo fading out around it; the name's is a soft oval. The
 plugin (FireLayoutJson in src/plugin/campfire.cpp) shows them as ImageWidgets at these sizes,
 so keep the sizes below in step with the plugin.
 
-The aurora: soft patches of light all around the plate and the button, each slowly brightening
+The aurora: soft patches of light all around the name and the button, each slowly brightening
 and fading on its own (the plugin shows one brightness level of each at a time, ShimmerStep in
 campfire.cpp).
 
@@ -23,21 +23,23 @@ import struct
 TEMPLATE = "hd/global/ui/panel/inventory/background{}.sprite"
 OUT = "hd/global/ui/panel/darkestdiablo/{}{}.sprite"
 
-# name: (box width, box height, corner radius, margin around the box) in layout units.
-# HeroGlow: the 280x92 name plate (PlateW/PlateH in the plugin). EnterGlow: FrontEnd_ButtonLarge at scale 1.35.
+# name: (box width, box height, corner radius, margin left and right, margin above and below) in
+# layout units. EnterGlow: FrontEnd_ButtonLarge at scale 1.35. The halo is a quarter lower than it
+# is wide (0.20.0), just as bright.
 GLOWS = {
-    "heroglow": (280, 92, 8, 56),
-    "enterglow": (824, 162, 22, 72),
+    "enterglow": (824, 162, 22, 72, 54),
 }
+# The light behind the picked hero's name (PlateGlowW/PlateGlowH in the plugin).
+HERO_GLOW = (392, 153)
 
 PALE = (255, 232, 160)   # near the frame
 AMBER = (232, 156, 44)   # far out in the halo
 
 
-def glow_pixels(box_w, box_h, radius, margin, scale=1.0):
+def glow_pixels(box_w, box_h, radius, margin, margin_y, scale=1.0):
     """(width, height, RGBA bytes) of a gold halo around a rounded box, straight alpha."""
     w = int(round((box_w + 2 * margin) * scale))
-    h = int(round((box_h + 2 * margin) * scale))
+    h = int(round((box_h + 2 * margin_y) * scale))
     bx, by, r, m = box_w * scale / 2, box_h * scale / 2, radius * scale, margin * scale
     cx, cy = w / 2, h / 2
     out = bytearray(w * h * 4)
@@ -49,6 +51,8 @@ def glow_pixels(box_w, box_h, radius, margin, scale=1.0):
             # Signed distance to the rounded box: < 0 inside, > 0 outside.
             d = math.hypot(max(qx, 0.0), max(qy, 0.0)) + min(max(qx, qy), 0.0) - r
             if d > 0:
+                d = math.hypot(max(qx, 0.0), max(qy, 0.0) * margin / margin_y) - r  # squeezed above and below
+                d = max(d, 0.0)
                 t = d / m
                 if t >= 1:
                     i += 4
@@ -70,11 +74,26 @@ def glow_pixels(box_w, box_h, radius, margin, scale=1.0):
     return w, h, bytes(out)
 
 
+def oval_pixels(w, h, scale=1.0):
+    """(width, height, RGBA bytes) of a soft gold oval, for the picked hero's name."""
+    W, H = int(round(w * scale)), int(round(h * scale))
+    out = bytearray(W * H * 4)
+    i = 0
+    for y in range(H):
+        for x in range(W):
+            r = math.hypot((x + 0.5) / W * 2 - 1, (y + 0.5) / H * 2 - 1)
+            if r < 1:
+                a = 0.45 * math.exp(-(r / 0.6) ** 2) * (1 - r) ** 0.5
+                out[i:i + 4] = bytes((*AMBER, int(a * 255 + 0.5)))
+            i += 4
+    return W, H, bytes(out)
+
+
 # The aurora: soft patches of light along the edges, each drawn at LEVELS brightnesses (the
 # plugin, AuraStep in campfire.cpp, shows one level at a time). H runs along a top or bottom
 # edge, V along a side; sizes must match AuraHW/AuraHH/AuraVW/AuraVH in the plugin.
 LEVELS = 6
-AURA = {"aurah": (280, 130), "aurav": (130, 200)}
+AURA = {"aurah": (280, 98), "aurav": (130, 150)}
 
 
 def aura_pixels(w, h, level, side, scale=1.0):
@@ -125,11 +144,13 @@ def sprite(template, w, h, pixels):
 def patch(t):
     for suffix, scale in (("", 1.0), (".lowend", 0.5)):
         template = t.game_file(TEMPLATE.format(suffix))
-        for name, (bw, bh, r, m) in GLOWS.items():
-            w, h, px = glow_pixels(bw, bh, r, m, scale)
+        for name, (bw, bh, r, m, my) in GLOWS.items():
+            w, h, px = glow_pixels(bw, bh, r, m, my, scale)
             t.add_file(OUT.format(name, suffix), sprite(template, w, h, px))
+        w, h, px = oval_pixels(*HERO_GLOW, scale)
+        t.add_file(OUT.format("heroglow", suffix), sprite(template, w, h, px))
         for name, (aw, ah) in AURA.items():
             for level in range(1, LEVELS + 1):
                 w, h, px = aura_pixels(aw, ah, level, name == "aurav", scale)
                 t.add_file(OUT.format(f"{name}{level}", suffix), sprite(template, w, h, px))
-    print(f"  campfire glow: {len(GLOWS) + len(AURA) * LEVELS} pictures, gold")
+    print(f"  campfire glow: {len(GLOWS) + 1 + len(AURA) * LEVELS} pictures, gold")
