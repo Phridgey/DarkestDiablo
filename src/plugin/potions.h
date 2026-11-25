@@ -372,7 +372,7 @@ inline auto Effect(int kind, const State& s, const Owner& o) -> std::string {
 	case Antidote: return "ends poison and keeps it off for 30 seconds";
 	case Thawing:  return "ends cold and freezing and keeps them off for 30 seconds";
 	case Stamina:  return "fills stamina and keeps it full for 30 seconds";
-	default:       return "thrown at the nearest enemy";
+	default:       return "thrown toward the cursor, with its key";
 	}
 }
 

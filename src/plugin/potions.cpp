@@ -311,6 +311,182 @@ void StartWard(int kind, double strength) {
 	g_wards.push_back({ kind, end });
 }
 
+std::vector<uintptr_t> g_copies;      // with g_copiesMutex
+Clock::time_point      g_scanned {};
+std::atomic<int>       g_failedWrites { 0 };
+std::mutex             g_copiesMutex;
+
+// Not on the UI thread. The hero's copies, looked for again when the hero is elsewhere in memory (slow).
+auto HeroCopies(const D2RL::PluginContext* context) -> std::vector<uintptr_t> {
+	const std::lock_guard<std::mutex> guard(g_copiesMutex);
+	const Game::Unit hero = Game::Hero();
+	std::erase_if(g_copies, [&](uintptr_t copy) { return !GameWrite::SameUnit(copy, hero); });
+	const bool missing = g_copies.size() < 2 || g_failedWrites >= 5 || std::find(g_copies.begin(), g_copies.end(), hero.address) == g_copies.end();
+	if (hero && missing && Clock::now() - g_scanned >= std::chrono::milliseconds(RescanMs)) {
+		g_copies = GameWrite::Copies(hero);
+		g_scanned = Clock::now();
+		g_failedWrites = 0;
+		Log(context, "Potions: the hero has %d copies in memory.", static_cast<int>(g_copies.size()));
+	}
+	return g_copies;
+}
+
+// ---- Throwing -----------------------------------------------------------------------------------
+// The hero casts a skill of ours at the cursor: the skill is put on the right mouse button, the button
+// is pressed for the player, and the skill that was there comes back. Only a cast that is seen takes a
+// charge. If the skill can't be selected, an invisible helper throws at the nearest enemy instead
+// (994a_throwers.py).
+std::map<std::string, int> g_throwSkills;       // filled while the plugin loads
+std::atomic<bool>          g_throwing { false };
+std::atomic<int>           g_bag { 0 };         // the inventory is open: a right click there would use an item
+constexpr uint32_t         CastMode = 10;
+
+struct Message { std::string text; bool console; };
+
+void __cdecl OnUi(const D2RL::PluginContext* context, void* data) noexcept {
+	auto* message = static_cast<Message*>(data);
+	try {
+		if (message->console) {
+			RunConsole(message->text.c_str());
+		} else {
+			context->WriteConsoleMessage(message->text.c_str());
+		}
+	} catch (...) {
+	}
+	delete message;
+}
+
+void ToUi(const D2RL::PluginContext* context, const std::string& text, bool console) {
+	auto* message = new Message { text, console };
+	if (g_threads->runOnUiThread(context, OnUi, message) != D2RL::Threads::Result::Success) {
+		delete message;
+	}
+}
+
+// The game window in front, with the cursor over the world: not over the HUD.
+auto CursorOverWorld() noexcept -> bool {
+	const HWND window = GetForegroundWindow();
+	DWORD process = 0;
+	GetWindowThreadProcessId(window, &process);
+	POINT at {};
+	RECT client {};
+	if (process != GetCurrentProcessId() || !GetCursorPos(&at) || !ScreenToClient(window, &at) || !GetClientRect(window, &client)) {
+		return false;
+	}
+	return at.x >= 0 && at.y >= 0 && at.x < client.right && at.y < client.bottom * 88 / 100;
+}
+
+void PressRight(bool down) noexcept {
+	const bool swapped = GetSystemMetrics(SM_SWAPBUTTON) != 0;  // the button that counts as right
+	INPUT input {};
+	input.type = INPUT_MOUSE;
+	input.mi.dwFlags = swapped ? (down ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP) : (down ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP);
+	SendInput(1, &input, sizeof(input));
+}
+
+// Whatever happens, the button comes up and the player's skill comes back.
+struct ThrowInHand {
+	std::vector<GameWrite::RightSkill> saved {};
+	bool held = false;  // the player holds the button: theirs to let go
+	bool pressed = false;
+	~ThrowInHand() {
+		if (pressed && !held) {
+			PressRight(false);
+		}
+		if (!saved.empty()) {
+			try {
+				std::this_thread::sleep_for(std::chrono::milliseconds(120));  // the game rules have taken the cast
+				GameWrite::RestoreRight(saved);
+			} catch (...) {
+			}
+		}
+	}
+};
+
+auto HelperThrows(const D2RL::PluginContext* context, const std::string& code) -> bool {
+	const Game::HeroDetails hero = Game::HeroInfo();
+	const auto enemies = Game::Enemies(Potions::ThrowReach);
+	if (!hero.unit || enemies.empty()) {
+		ToUi(context, "No enemy in reach.", false);
+		return false;
+	}
+	// A step toward the enemy: the hero's own tile is taken.
+	const auto step = [](int from, int to) { return to > from + 1 ? 2 : to < from - 1 ? -2 : 0; };
+	char command[96] {};
+	std::snprintf(command, sizeof(command), "cheat mspawn dd_pot_%s,1 @ %d,%d", code.c_str(),
+		hero.unit.x + step(hero.unit.x, enemies.front().unit.x), hero.unit.y + step(hero.unit.y, enemies.front().unit.y));
+	ToUi(context, command, true);
+	Log(context, "Potions: %s", command);
+	return true;
+}
+
+auto HaveSkill(const std::vector<uintptr_t>& copies, int skill) -> bool {
+	return copies.size() >= 2 && std::all_of(copies.begin(), copies.end(), [&](uintptr_t copy) {
+		const auto places = Game::SkillsOf(copy);
+		return places && places->Find(skill) != 0;
+	});
+}
+
+// Returns true when a potion left the hand.
+auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) -> bool {
+	const int area = Game::World().area;
+	if (area == 1 || area == 40 || area == 75 || area == 103 || area == 109) {
+		return false;  // a town
+	}
+	if (g_bag.load() != 0 || !CursorOverWorld()) {
+		return false;
+	}
+	const auto found = g_throwSkills.find(code);
+	const auto copies = HeroCopies(context);
+	const int skill = found == g_throwSkills.end() ? 0 : found->second;
+	if (skill > 0 && copies.size() >= 2 && !HaveSkill(copies, skill)) {
+		ToUi(context, "cheat skadd ddthrow" + code + ",1", true);
+		for (int i = 0; i < 40 && !HaveSkill(copies, skill); ++i) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+		}
+	}
+	ThrowInHand hand;
+	if (skill <= 0 || !g_inGame.load() || !GameWrite::SelectRight(copies, skill, hand.saved)) {
+		Log(context, "Potions: the throw skill %d could not be selected (%d copies, %s); the helper throws.", skill, static_cast<int>(copies.size()),
+			HaveSkill(copies, skill) ? "the hero has it" : "the hero does not have it");
+		return HelperThrows(context, code);
+	}
+	hand.held = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	if (g_bag.load() != 0 || !CursorOverWorld()) {
+		return false;
+	}
+	bool wasOther = Game::Hero().mode != CastMode;  // an earlier cast still going on is not ours
+	if (hand.held) {
+		PressRight(false);
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+	hand.pressed = true;
+	PressRight(true);
+	bool cast = false;
+	for (int i = 0; i < 60 && !cast; ++i) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		const uint32_t mode = Game::Hero().mode;
+		cast = wasOther && mode == CastMode;
+		wasOther = wasOther || mode != CastMode;
+	}
+	Log(context, "Potions: %s thrown at the cursor: %s.", code.c_str(), cast ? "cast seen" : "no cast seen, no charge taken");
+	return cast;
+}
+
+void Throw(const D2RL::PluginContext* context, int kind, std::string code) noexcept {
+	try {
+		if (ThrowAtCursor(context, code)) {
+			const Lock lock(g_mutex);
+			g_state.Use(kind, g_owner);
+			QueueHud(context);
+		}
+	} catch (...) {
+		context->LogWarn("Potions: a throw failed.");
+	}
+	g_throwing = false;
+}
+
 void Drink(const D2RL::PluginContext* context, int slot) noexcept {
 	try {
 		const Game::HeroDetails hero = Game::HeroInfo();
@@ -322,21 +498,15 @@ void Drink(const D2RL::PluginContext* context, int slot) noexcept {
 		if (Potions::State::Pointless(kind, hero.life, hero.maxLife, hero.mana, hero.maxMana)) {
 			return;
 		}
-		if (Potions::Thrown(kind) && !g_toBag.load() && g_state.Ready(kind, g_owner)) {
-			const auto enemies = Game::Enemies(Potions::ThrowReach);
-			if (enemies.empty()) {
-				context->WriteConsoleMessage("No enemy in reach.");
-				return;
+		if (Potions::Thrown(kind) && !g_toBag.load()) {
+			if (g_state.Ready(kind, g_owner) && !g_throwing.exchange(true)) {
+				try {
+					std::thread(Throw, context, kind, std::string(Potions::PotFor(kind, g_owner).code)).detach();
+				} catch (...) {
+					g_throwing = false;
+				}
 			}
-			// A step toward the enemy: the hero's own tile is taken.
-			const auto step = [](int from, int to) { return to > from + 1 ? 2 : to < from - 1 ? -2 : 0; };
-			char command[96] {};
-			std::snprintf(command, sizeof(command), "cheat mspawn dd_pot_%s,1 @ %d,%d", Potions::PotFor(kind, g_owner).code,
-				hero.unit.x + step(hero.unit.x, enemies.front().unit.x), hero.unit.y + step(hero.unit.y, enemies.front().unit.y));
-			if (!RunConsole(command)) {
-				return;
-			}
-			Log(context, "Potions: %s", command);
+			return;
 		}
 		if (!g_state.Use(kind, g_owner)) {
 			return;
@@ -365,24 +535,6 @@ void Drink(const D2RL::PluginContext* context, int slot) noexcept {
 	}
 }
 
-std::vector<uintptr_t> g_copies;      // ticker thread only
-Clock::time_point      g_scanned {};
-int                    g_failedWrites = 0;
-
-// Ticker thread. The hero's copies, looked for again when the hero is elsewhere in memory (slow).
-auto HeroCopies(const D2RL::PluginContext* context) -> const std::vector<uintptr_t>& {
-	const Game::Unit hero = Game::Hero();
-	std::erase_if(g_copies, [&](uintptr_t copy) { return !GameWrite::SameUnit(copy, hero); });
-	const bool missing = g_copies.size() < 2 || g_failedWrites >= 5 || std::find(g_copies.begin(), g_copies.end(), hero.address) == g_copies.end();
-	if (hero && missing && Clock::now() - g_scanned >= std::chrono::milliseconds(RescanMs)) {
-		g_copies = GameWrite::Copies(hero);
-		g_scanned = Clock::now();
-		g_failedWrites = 0;
-		Log(context, "Potions: the hero has %d copies in memory.", static_cast<int>(g_copies.size()));
-	}
-	return g_copies;
-}
-
 // Ticker thread: what works over time.
 void Work(const D2RL::PluginContext* context, double seconds) {
 	struct Gain { uint16_t stat, max; double points; };
@@ -399,7 +551,7 @@ void Work(const D2RL::PluginContext* context, double seconds) {
 	if (!hero.unit || hero.dead || hero.life <= 0) {
 		return;
 	}
-	const auto& copies = HeroCopies(context);  // before anything is poured out: it can be slow
+	const auto copies = HeroCopies(context);  // before anything is poured out: it can be slow
 	{
 		const Lock lock(g_mutex);
 		for (auto& restore : g_restores) {
@@ -439,7 +591,7 @@ void Work(const D2RL::PluginContext* context, double seconds) {
 		}
 	}
 	if (!gains.empty() || rejuvenate > 0) {
-		g_failedWrites = written > 0 ? 0 : g_failedWrites + 1;
+		g_failedWrites = written > 0 ? 0 : g_failedWrites.load() + 1;
 		if (g_failedWrites == 5) {
 			Log(context, "Potions: the hero's life and mana could not be changed (%d copies).", static_cast<int>(copies.size()));
 		}
@@ -701,7 +853,23 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 }
 
 auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const char* command, const char* text) noexcept -> bool {
-	if (g_threads == nullptr || std::strcmp(target, "PanelManager") != 0 || std::strcmp(command, "OpenPanel") != 0) {
+	if (g_threads == nullptr) {
+		return false;
+	}
+	if (std::strncmp(target, "PlayerInventoryPanel", 20) == 0 && std::strcmp(command, "Close") == 0) {
+		g_bag = 0;
+	}
+	if (std::strcmp(target, "PanelManager") != 0) {
+		return false;
+	}
+	if (std::strncmp(text, "PlayerInventory", 15) == 0) {
+		if (std::strcmp(command, "OpenPanel") == 0) {
+			g_bag = 1;
+		} else if (std::strcmp(command, "ClosePanel") == 0 || std::strcmp(command, "UnloadPanel") == 0) {
+			g_bag = 0;
+		}
+	}
+	if (std::strcmp(command, "OpenPanel") != 0) {
 		return false;
 	}
 	if (std::strcmp(text, "NpcDialogPanel") == 0 && g_inGame.load()) {
@@ -727,6 +895,7 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 	try {
 		if (event->kind == Kind::LocalPlayerReady) {
 			g_picking = -1;
+			g_bag = 0;
 			LoadHero(context);
 			g_inGame = !g_file.empty();
 			QueueHud(context);
@@ -769,6 +938,10 @@ void OnMonsterDeath(const D2RL::Lifecycle::MonsterDeathEvent* event) noexcept {
 		g_state.Kill(rank, level, g_owner);
 	} catch (...) {
 	}
+}
+
+void SetThrowSkill(const std::string& code, int row) {
+	g_throwSkills[code] = row;
 }
 
 void OnStopCleared(const D2RL::PluginContext* context, const char* stop) noexcept {

@@ -13,7 +13,7 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 | Thawing | 20 | an Act III stop | ends cold and freezing, and keeps them off for 30 s |
 | Rejuvenation | 75% of the healing potion's | an Act IV stop | 35% life and mana at once |
 | Full Rejuvenation | 50% | an Act V stop, 5% of heroes | 100% life and mana at once |
-| Fire pots, gas pots | 30 | caravan tree | thrown from the slot at the nearest enemy in reach |
+| Fire pots, gas pots | 30 | caravan tree | thrown from the slot toward the cursor |
 
 - A use takes 10 charges. Healing can't be used with full life, mana with full mana, Rejuvenation with
   both full.
@@ -35,11 +35,15 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   are drawn over the belt's place in three spare panels, and the plugin works their effects by
   changing life, mana and stamina (`gamewrite.h`). Antidote and Thawing don't give the resistance the
   game's own do: a stat the hero doesn't have can't be added.
-- **Throwing.** The plugin has no way to launch a missile, so a use spawns an invisible helper at the
-  hero, on the heroes' side, that throws the potion's own missile (`994a_throwers.py`). It picks the
-  nearest enemy itself, not the cursor, and its kills give no experience (they do fill potions, drop
-  loot and clear stops). It stays where it was, unseen, until the area is left. `dd-potions bag` (until
-  the game closes) puts 5 throwing potions in the bag instead.
+- **Throwing.** The hero gets a skill per throwing potion (`131a_throw_skills.py`), which only the plugin
+  can use: it puts the skill on the right mouse button, presses that button, and puts the old skill
+  back. So it flies from the hero toward the cursor, bursts on the first thing it hits (or at the end of
+  its reach, not on the spot under the cursor), and kills give experience. A charge is taken only when
+  the cast is seen. Not in town, not with the bag open, not with the cursor over the HUD (so by key, not
+  by clicking the slot). Right-click must be the game's right-skill button.
+- If the skill can't be selected, an invisible helper on the heroes' side throws at the nearest enemy
+  instead (`994a_throwers.py`; its kills give no experience). `dd-potions bag` (until the game closes)
+  puts 5 throwing potions in the bag instead.
 - **The game's belt is off the screen**, not gone, and its size is unchanged, so saved heroes load.
   Potions an older hero left in it can't be clicked.
 - Keys: "Use potion 1-4" under Darkest Diablo in the Controls menu, 1-4 by default.
@@ -52,7 +56,8 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 3. Do healing and mana really fill, at the right pace? Log: "the hero has N copies in memory" (2 or more).
 4. Do Antidote and Thawing end poison, cold and freezing?
 5. Seen: the belt line shows the right number.
-6. Does the helper throw, once, at a monster, and stay unseen? Do arenas still clear?
+6. Throwing: does it fly to the cursor, and does the old right skill come back? Log: "thrown at the
+   cursor: cast seen", or why not.
 7. Does the route map show the affixes, and change after they are won?
 
 Console: `dd-potions` (what the hero has); for tests `dd-potions fill`, `give <antidote|thawing|stamina>`,

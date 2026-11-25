@@ -282,6 +282,9 @@ GameWrite::AddStat(copies, Game::StatId::Life, Game::StatId::MaxLife, 256, 0.0);
 GameWrite::SetStateEnd(copies, 60, endFrame);              // a shorter or longer state
 ```
 
+`GameWrite::SelectRight` / `RestoreRight` change the right-button skill for a moment (throwing a potion;
+mapped, built on `Game::SkillsOf(copy)`).
+
 What it can and can't do (status: mapped, being tested with `dd-set`):
 
 - **Only existing values.** A write changes a stat the unit has now. It can't give a stat the

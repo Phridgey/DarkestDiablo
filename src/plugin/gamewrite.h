@@ -42,6 +42,13 @@ auto SameUnit(uintptr_t copy, const Game::Unit& unit) -> bool;
 auto SetStateEnd(const std::vector<uintptr_t>& copies, int state, uint32_t endFrame) -> int;
 auto SetStateStat(const std::vector<uintptr_t>& copies, int state, uint16_t stat, int value) -> int;
 
+// The skill on the right mouse button (agreed 2026-11-25, CLAUDE.md), for throwing a potion: points every
+// copy at a skill it already has. All copies (two at least) or none. Restore puts the earlier skill
+// back where ours is still selected; a skill the player picked meanwhile stays.
+struct RightSkill { uintptr_t copy = 0; int before = -1, ours = -1; };  // skills.txt rows
+auto SelectRight(const std::vector<uintptr_t>& copies, int skill, std::vector<RightSkill>& saved) -> bool;
+void RestoreRight(const std::vector<RightSkill>& saved);
+
 // One line per copy for the log: where it is, its stat list, life (to tell the copies apart).
 auto CopiesReport(const Game::Unit& unit, const std::vector<uintptr_t>& copies) -> std::string;
 

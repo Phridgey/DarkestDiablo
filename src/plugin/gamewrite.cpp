@@ -240,6 +240,48 @@ auto SetStateStat(const std::vector<uintptr_t>& copies, int state, uint16_t stat
 	return changed;
 }
 
+auto SelectRight(const std::vector<uintptr_t>& copies, int skill, std::vector<RightSkill>& saved) -> bool {
+	struct Change { uintptr_t at, to; RightSkill undo; };
+	std::vector<Change> changes;
+	for (const uintptr_t copy : copies) {
+		const auto places = Game::SkillsOf(copy);
+		const uintptr_t to = places ? places->Find(skill) : 0;
+		int before = -1;
+		if (to != 0) {
+			for (const auto& [id, node] : places->skills) {
+				before = node == places->right ? id : before;
+			}
+		}
+		if (to == 0 || before < 0) {
+			return false;
+		}
+		changes.push_back({ places->rightAt, to, { copy, before, skill } });
+	}
+	if (changes.size() < 2) {
+		return false;
+	}
+	saved.clear();
+	for (const auto& change : changes) {
+		if (!Put<uint64_t>(change.at, change.to)) {
+			RestoreRight(saved);
+			saved.clear();
+			return false;
+		}
+		saved.push_back(change.undo);
+	}
+	return true;
+}
+
+void RestoreRight(const std::vector<RightSkill>& saved) {
+	for (const auto& s : saved) {
+		const auto places = Game::SkillsOf(s.copy);
+		const uintptr_t to = places ? places->Find(s.before) : 0;
+		if (to != 0 && places->right == places->Find(s.ours)) {
+			Put<uint64_t>(places->rightAt, to);
+		}
+	}
+}
+
 auto CopiesReport(const Game::Unit& unit, const std::vector<uintptr_t>& copies) -> std::string {
 	std::string text = std::to_string(copies.size()) + " copies of unit #" + std::to_string(unit.id);
 	for (const uintptr_t at : copies) {

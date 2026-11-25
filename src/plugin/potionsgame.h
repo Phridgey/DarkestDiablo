@@ -20,6 +20,9 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 // Server thread: a monster died.
 void OnMonsterDeath(const D2RL::Lifecycle::MonsterDeathEvent* event) noexcept;
 
+// The skills.txt row that throws this potion ("throwskill" in loot_data.txt).
+void SetThrowSkill(const std::string& code, int row);
+
 // A stop was cleared and counted.
 void OnStopCleared(const D2RL::PluginContext* context, const char* stop) noexcept;
 

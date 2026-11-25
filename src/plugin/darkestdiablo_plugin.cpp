@@ -209,6 +209,12 @@ static void ReadLootData(const D2RL::PluginContext* context) noexcept {
 							Game::NotAnEnemy(cls);
 						}
 					}
+				} else if (kind == "throwskill") {  // 131a_throw_skills.py
+					std::string code;
+					int row = 0;
+					if (words >> code >> row && row > 0) {
+						PotionsGame::SetThrowSkill(code, row);
+					}
 				} else if (kind == "merctype") {
 					int number = -1;
 					if (words >> number) {
