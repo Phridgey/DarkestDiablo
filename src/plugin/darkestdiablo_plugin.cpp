@@ -1039,6 +1039,7 @@ static void __cdecl DeliverPotions(const D2RL::PluginContext* context, void*) no
 				// the first shared page: heroes have no personal page (docs/stash.md)
 				.container  = StashGame::CanPutOnSharedPages() ? D2RL::Items::ItemContainer::SharedStash : D2RL::Items::ItemContainer::Inventory,
 				.placement  = D2RL::Items::Placement::Automatic,
+				.sharedStashPage = StashGame::CanPutOnSharedPages() ? StashGame::FirstSharedPage() : 0,
 			},
 		};
 		D2RL::ItemHandle item = D2RL::InvalidItemHandle;
@@ -2415,7 +2416,7 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	const char* text = event->text != nullptr ? event->text : "";
 	char message[256] {};
 	// Log UI messages for finding new ones, but not mouse and keys or the per-frame monster bar.
-	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0) {
+	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0 && !StashGame::TurningPages()) {
 		std::snprintf(message, sizeof(message), "UI message: %s:%s:%s", target, command, text);
 		context->LogInfo(message);
 		Trace(context, message);

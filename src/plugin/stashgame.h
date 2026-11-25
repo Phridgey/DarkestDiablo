@@ -21,4 +21,10 @@ void OnStopCleared(const D2RL::PluginContext* context) noexcept;
 // True when items can be put straight on the shared stash pages.
 auto CanPutOnSharedPages() noexcept -> bool;
 
+// The save's first page in the stash file (from 0). Right once a game's save file was looked at.
+auto FirstSharedPage() noexcept -> uint32_t;
+
+// True while the plugin itself turns stash pages (its messages are not worth logging).
+auto TurningPages() noexcept -> bool;
+
 }

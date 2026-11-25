@@ -12,6 +12,7 @@
 #include "stash.h"
 #include "stashgame.h"
 #include "journal.h"
+#include "stashfile.h"
 #include "campfire.h"
 #include "gameapi.h"
 #include "gamestate.h"
@@ -40,7 +41,8 @@ using Container = D2RL::Items::ItemContainer;
 constexpr char ActionPrefix[] = "darkestdiablo/stash-";  // buttons send PanelManager:OpenPanel:darkestdiablo/stash-<action>
 constexpr char BankPanel[]    = "BankExpansionLayout";
 constexpr int  SweepMs        = 700;
-constexpr int  PayCheckMs     = 700;
+constexpr int  PayPollMs      = 40;    // how often a payment looks whether the gold moved
+constexpr int  PayLimitMs     = 1500;
 
 const D2RL::ThreadService*    g_threads   = nullptr;
 const D2RL::PanelService*     g_panels    = nullptr;
@@ -57,8 +59,10 @@ fs::path     g_file;           // the stash.txt g_state came from
 
 std::atomic<bool>      g_bankOpen { false };
 std::atomic<uintptr_t> g_visit { 0 };       // counts stash openings, so an old sweeper stops
-std::atomic<int>       g_page { 1 };        // the shared page we believe is showing (from 1)
-std::atomic<bool>      g_autoTab { false }; // dd-stash autotab: try to open the stash on the shared pages
+std::atomic<int>       g_page { 1 };        // the save's page we believe is showing (from 1)
+std::atomic<int>       g_base { 0 };        // the save's first page in the stash file (from 0): stashfile.h
+std::atomic<bool>      g_wipe { false };    // the save's pages still hold a deleted save's items
+std::atomic<bool>      g_autoTab { true };  // open the stash on the shared pages (dd-stash autotab: off)
 std::atomic<bool>      g_treeWanted { false }, g_tabWanted { false };
 std::atomic<bool>      g_journalWanted { false };  // starts minimized; stays as it is between visits
 std::atomic<int>       g_journalRune { -1 }, g_journalPage { 0 };
@@ -67,7 +71,8 @@ std::atomic<bool>      g_refresh { false };
 std::atomic<bool>      g_paying { false };
 
 // A payment on its way: what the hero had, and what should be left.
-struct Payment { long long total = 0; int gold = 0, bank = 0, goldAfter = 0, bankAfter = 0; };
+enum class Moving { Pay, Deposit, Take };
+struct Payment { Moving kind = Moving::Pay; long long total = 0, purse = 0; int gold = 0, bank = 0, goldAfter = 0, bankAfter = 0; ULONGLONG started = 0; };
 Payment g_payment;
 std::string g_payNote;  // under the Pay buttons
 
@@ -104,6 +109,17 @@ auto Current(const fs::path& progress) -> bool {
 		std::error_code ec;
 		g_state = fs::exists(file, ec) ? Stash::Parse(Camp::ReadFile(file)) : Stash::State {};
 		g_file = file;
+		// camp/slot<N>/stash.txt: which save this is, and so which pages of the stash file are its own.
+		const fs::path live = file.parent_path().parent_path().parent_path();
+		const int slot = std::clamp(std::atoi(file.parent_path().filename().string().c_str() + 4), 1, Camp::SlotCount);
+		const bool joined = Camp::StashJoined(live);
+		g_base = joined ? (slot - 1) * StashFile::PagesPerSave : 0;
+		g_wipe = joined && StashFile::Wipes(live).count(slot) != 0;
+		if (joined && !g_state.purseMoved) {  // the gold its own stash file held
+			g_state.purse += StashFile::JoinedGold(live, slot);
+			g_state.purseMoved = true;
+			Camp::WriteFile(g_file, Stash::Serialize(g_state));
+		}
 	}
 	return true;
 }
@@ -146,9 +162,11 @@ struct Row {
 	std::string content {};
 };
 // A plugin may register 64 panels in all; the whole plugin uses 63 now.
-Row g_tree { "StashTree", 3 };
-Row g_tab  { "StashTab", 4 };
-Row g_journal { "StashJournal", 3 };
+Row g_tree { "StashTree", 2 };
+Row g_wall { "StashWall", 2 };
+Row g_tab  { "StashTab", 2 };
+Row g_journal { "StashJournal", 2 };
+Row g_pageRow { "StashPage", 2 };
 D2RL::Panels::RegistrationHandle g_side = D2RL::Panels::InvalidHandle;
 
 auto RowName(const Row& row, int i) -> std::string {
@@ -233,9 +251,9 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 		const fs::path progress = Campfire::RouteProgressFile();
 		const Lock lock(g_mutex);
 		if (!g_bankOpen.load() || !Current(progress)) {
-			CloseRow(context, g_tree);
-			CloseRow(context, g_tab);
-			CloseRow(context, g_journal);
+			for (const Row* row : { &g_tree, &g_wall, &g_tab, &g_journal, &g_pageRow }) {
+				CloseRow(context, *row);
+			}
 			if (IsOpen(context, g_side)) {
 				g_panels->closePanel(context, g_side);
 			}
@@ -250,9 +268,16 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 			CloseRow(context, g_tab);
 		}
 		if (g_treeWanted.load()) {
-			ShowRow(context, g_tree, Stash::TreeLayout(g_state, g_payNote));
+			ShowRow(context, g_tree, Stash::TreeLayout(g_state));
+			ShowRow(context, g_wall, Stash::WallLayout(g_state, g_payNote));
 		} else {
 			CloseRow(context, g_tree);
+			CloseRow(context, g_wall);
+		}
+		if (!g_treeWanted.load() && !g_tabWanted.load()) {
+			ShowRow(context, g_pageRow, Stash::PageLayout(g_page.load(), g_state.legacyDone ? g_state.LastPage() : Stash::PageCount, g_state.purse));
+		} else {
+			CloseRow(context, g_pageRow);
 		}
 		if (g_journalWanted.load() && !g_treeWanted.load()) {  // the caravan window lies over its place
 			ShowRow(context, g_journal, Journal::Layout(g_journalRune.load(), g_journalPage.load()));
@@ -434,7 +459,7 @@ auto MoveTo(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2RL:
 	operation.move.destination.structSize       = D2RL::Items::ItemDestinationSize;
 	operation.move.destination.container        = Container::SharedStash;
 	operation.move.destination.placement        = D2RL::Items::Placement::Automatic;
-	operation.move.destination.sharedStashPage  = static_cast<uint32_t>(page);
+	operation.move.destination.sharedStashPage  = static_cast<uint32_t>(g_base.load() + page);
 	const D2RL::Items::ExistingItemTransaction transaction {
 		.structSize     = D2RL::Items::ExistingItemTransactionSize,
 		.player         = player,
@@ -448,6 +473,32 @@ auto MoveTo(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2RL:
 size_t g_stuck = 0;     // items the last sweep found no room for; game thread only
 int    g_restSweeps = 0;
 
+// The save's own page (from 0) of an item on the shared pages; -1 when it is another save's.
+auto LocalPage(uint32_t page) noexcept -> int {
+	const long long local = static_cast<long long>(page) - g_base.load();
+	return local >= 0 && local < Stash::PageCount ? static_cast<int>(local) : -1;
+}
+
+// Game thread, locked. This save was made where another was deleted while the game held the stash:
+// what still lies on its pages belongs to the deleted save (a copy is in camp/trash).
+void WipePages(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::vector<D2RL::Items::ItemInfo>& items) {
+	int gone = 0, left = 0;
+	for (const auto& item : items) {
+		if (item.container == Container::SharedStash && LocalPage(item.sharedStashPage) >= 0) {
+			g_items->destroyItem(context, player, item.handle, D2RL::Items::SocketedItemPolicy::DestroyContents) == D2RL::Items::Result::Success ? ++gone : ++left;
+		}
+	}
+	Log(context, "Stash: emptied the deleted save's pages (%d items, %d left).", gone, left);
+	if (left == 0) {
+		const fs::path live = g_file.parent_path().parent_path().parent_path();
+		auto wipes = StashFile::Wipes(live);
+		wipes.erase(g_base.load() / StashFile::PagesPerSave + 1);
+		if (StashFile::SetWipes(live, wipes)) {
+			g_wipe = false;
+		}
+	}
+}
+
 // Game thread, while the stash is open.
 void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 	try {
@@ -459,10 +510,14 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 			!ItemsIn(context, D2RL::Items::ContainerBit(Container::PersonalStash) | D2RL::Items::ContainerBit(Container::SharedStash), player, items)) {
 			return;
 		}
+		if (g_wipe.load()) {
+			WipePages(context, player, items);
+			return;
+		}
 		std::set<int> used;
 		for (const auto& item : items) {
-			if (item.container == Container::SharedStash && item.sharedStashPage < static_cast<uint32_t>(Stash::PageCount)) {
-				used.insert(static_cast<int>(item.sharedStashPage));
+			if (item.container == Container::SharedStash && LocalPage(item.sharedStashPage) >= 0) {
+				used.insert(LocalPage(item.sharedStashPage));
 			}
 		}
 		// The first look at a save's stash: pages that already hold items stay open until emptied.
@@ -488,8 +543,7 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 		std::vector<const D2RL::Items::ItemInfo*> out;
 		for (const auto& item : items) {
 			if (item.container == Container::PersonalStash ||
-				(item.container == Container::SharedStash && item.sharedStashPage < static_cast<uint32_t>(Stash::PageCount) &&
-					!g_state.PageOpen(static_cast<int>(item.sharedStashPage)))) {
+				(item.container == Container::SharedStash && LocalPage(item.sharedStashPage) >= 0 && !g_state.PageOpen(LocalPage(item.sharedStashPage)))) {
 				out.push_back(&item);
 			}
 		}
@@ -517,6 +571,7 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 
 void StartSweeping(const D2RL::PluginContext* context) noexcept {
 	const uintptr_t visit = g_visit.fetch_add(1) + 1;
+	g_threads->runOnGameThread(context, Sweep, nullptr);
 	try {
 		std::thread([context, visit] {
 			while (g_bankOpen.load() && g_visit.load() == visit) {
@@ -552,7 +607,7 @@ void SyncActs(const D2RL::PluginContext* context) noexcept {
 	}
 }
 
-// UI thread, a moment after the gold was taken: only gold that is really gone counts.
+// UI thread, again and again until the gold has moved: only gold that really moved counts.
 void __cdecl FinishPayment(const D2RL::PluginContext* context, void*) noexcept {
 	try {
 		const fs::path progress = Campfire::RouteProgressFile();
@@ -560,15 +615,37 @@ void __cdecl FinishPayment(const D2RL::PluginContext* context, void*) noexcept {
 		const Game::Unit hero = Game::Hero();
 		const int gold = hero ? Game::Stat(hero, Game::StatId::Gold, 0, false).value_or(0) : g_payment.gold;
 		const int bank = hero ? Game::Stat(hero, Game::StatId::StashGold, 0, false).value_or(0) : g_payment.bank;
+		if (hero && (gold != g_payment.goldAfter || bank != g_payment.bankAfter) && GetTickCount64() - g_payment.started < PayLimitMs) {
+			Later(context, PayPollMs, FinishPayment);
+			return;
+		}
 		const long long taken = static_cast<long long>(g_payment.gold) - gold + g_payment.bank - bank;
-		if (taken > 0 && Current(progress)) {
-			const bool unlocked = g_state.Pay((std::min)(taken, g_payment.total));
+		if (!Current(progress)) {
+			g_payNote.clear();
+		} else if (g_payment.kind == Moving::Take) {
+			const long long back = std::clamp(g_payment.total + taken, 0LL, g_payment.total);  // what did not reach the hero
+			g_state.purse += back;
 			Save(context);
-			g_payNote = unlocked ? "Page unlocked" : "Paid " + Stash::Commas((std::min)(taken, g_payment.total)) + " gold";
-			Log(context, "Stash: %lld gold paid in%s; %d page(s), %lld toward the next.", taken, unlocked ? " and a page unlocked" : "", g_state.Pages(), g_state.fund);
+			Log(context, "Stash: %lld gold taken out, %lld in the purse.", g_payment.total - back, g_state.purse);
+		} else if (g_payment.kind == Moving::Deposit) {
+			if (taken > 0) {
+				g_state.purse += (std::min)(taken, g_payment.total);
+				Save(context);
+			}
+			Log(context, "Stash: %lld gold put in, %lld in the purse.", (std::max)(0LL, taken), g_state.purse);
 		} else {
-			Log(context, "Stash: the gold did not change (%d and %d); nothing was paid.", gold, bank);
-			g_payNote = "Gold did not change, not paid";
+			const long long fromPurse = (std::min)(g_payment.purse, g_state.purse);
+			const long long paid = std::clamp(taken, 0LL, g_payment.total - g_payment.purse) + fromPurse;
+			if (paid > 0) {
+				g_state.purse -= fromPurse;
+				const bool unlocked = g_state.Pay(paid);
+				Save(context);
+				g_payNote = unlocked ? "Page unlocked" : "Paid " + Stash::Commas(paid) + " gold";
+				Log(context, "Stash: %lld gold paid in%s; %d page(s), %lld toward the next.", paid, unlocked ? " and a page unlocked" : "", g_state.Pages(), g_state.fund);
+			} else {
+				Log(context, "Stash: the gold did not change (%d and %d); nothing was paid.", gold, bank);
+				g_payNote = "Gold did not change, not paid";
+			}
 		}
 	} catch (...) {
 		context->LogWarn("Stash: the payment failed.");
@@ -577,47 +654,90 @@ void __cdecl FinishPayment(const D2RL::PluginContext* context, void*) noexcept {
 	QueueRefresh(context);
 }
 
-// UI thread. Pays up to `wanted` gold (negative: all) toward the next page: first what lies in
-// the hero's old stash purse, then what it carries.
-void Pay(const D2RL::PluginContext* context, long long wanted) {
+// The hero to pay from; not found: says so and returns nothing.
+auto PayingHero(const D2RL::PluginContext* context) -> Game::HeroDetails {
 	GameState::Ready();
 	const Game::HeroDetails hero = Game::HeroInfo();
-	const long long owing = g_state.Owing();
 	if (!hero.unit) {
 		g_payNote = "Hero not found yet, try again";
-		Log(context, "Stash: nothing paid, the hero can't be read (%s).", GameState::Status().c_str());
-		return;
+		Log(context, "Stash: the hero can't be read (%s).", GameState::Status().c_str());
 	}
-	if (owing <= 0 || g_paying.exchange(true)) {
-		Log(context, "Stash: nothing paid (%lld owing).", owing);
+	return hero;
+}
+
+void StartPayment(const D2RL::PluginContext* context, Payment pay) {
+	pay.started = GetTickCount64();
+	g_payment = pay;
+	char command[64] {};
+	if (pay.bankAfter != pay.bank) {
+		std::snprintf(command, sizeof(command), "cheat stat goldbank,%d", pay.bankAfter);
+		RunConsole(context, command);
+	}
+	if (pay.goldAfter != pay.gold) {
+		std::snprintf(command, sizeof(command), "cheat stat gold,%d", pay.goldAfter);
+		RunConsole(context, command);
+	}
+	Later(context, pay.bankAfter == pay.bank && pay.goldAfter == pay.gold ? 0 : PayPollMs, FinishPayment);
+}
+
+// UI thread. Pays up to `wanted` gold (negative: all) toward the next page: what the hero carries,
+// then what lies in its old stash purse, then the save's purse.
+void Pay(const D2RL::PluginContext* context, long long wanted) {
+	const Game::HeroDetails hero = PayingHero(context);
+	const long long owing = g_state.Owing();
+	if (!hero.unit || owing <= 0 || g_paying.exchange(true)) {
 		return;
 	}
 	Payment pay;
 	pay.gold = (std::max)(0, hero.gold);
 	pay.bank = (std::max)(0, hero.stashGold);
-	pay.total = (std::min)({ owing, wanted < 0 ? owing : wanted, static_cast<long long>(pay.gold) + pay.bank });
+	pay.total = (std::min)({ owing, wanted < 0 ? owing : wanted, pay.gold + pay.bank + g_state.purse });
 	if (pay.total <= 0) {
 		g_paying = false;
-		g_payNote = "This hero carries no gold";
-		Log(context, "Stash: nothing paid, the hero carries no gold.");
+		g_payNote = "No gold to pay with";
+		Log(context, "Stash: nothing paid, there is no gold.");
 		return;
 	}
-	Log(context, "Stash: paying %lld of %lld (the hero has %d and %d).", pay.total, owing, pay.gold, pay.bank);
-	const int fromBank = static_cast<int>((std::min)(pay.total, static_cast<long long>(pay.bank)));
-	const int fromGold = static_cast<int>(pay.total - fromBank);
-	pay.bankAfter = pay.bank - fromBank;
+	const int fromGold = static_cast<int>((std::min)(pay.total, static_cast<long long>(pay.gold)));
+	const int fromBank = static_cast<int>((std::min)(pay.total - fromGold, static_cast<long long>(pay.bank)));
+	pay.purse = pay.total - fromGold - fromBank;
 	pay.goldAfter = pay.gold - fromGold;
-	g_payment = pay;
-	char command[64] {};
-	if (fromBank > 0) {
-		std::snprintf(command, sizeof(command), "cheat stat goldbank,%d", pay.bankAfter);
-		RunConsole(context, command);
+	pay.bankAfter = pay.bank - fromBank;
+	Log(context, "Stash: paying %lld of %lld (carried %d, old purse %d, stash %lld).", pay.total, owing, fromGold, fromBank, pay.purse);
+	StartPayment(context, pay);
+}
+
+// UI thread. All the hero's gold into the save's purse, or out of it as much as the hero may carry.
+void MoveGold(const D2RL::PluginContext* context, Moving kind) {
+	const Game::HeroDetails hero = PayingHero(context);
+	if (!hero.unit || g_paying.exchange(true)) {
+		return;
 	}
-	if (fromGold > 0) {
-		std::snprintf(command, sizeof(command), "cheat stat gold,%d", pay.goldAfter);
-		RunConsole(context, command);
+	Payment pay;
+	pay.kind = kind;
+	pay.gold = (std::max)(0, hero.gold);
+	pay.bank = (std::max)(0, hero.stashGold);
+	pay.bankAfter = pay.bank;
+	if (kind == Moving::Deposit) {
+		pay.total = static_cast<long long>(pay.gold) + pay.bank;
+		pay.goldAfter = pay.bankAfter = 0;
+	} else {
+		pay.total = (std::min)(g_state.purse, (std::max)(0LL, static_cast<long long>(hero.level) * 10000 - pay.gold));
+		pay.goldAfter = pay.gold + static_cast<int>((std::max)(0LL, pay.total));
 	}
-	Later(context, PayCheckMs, FinishPayment);
+	if (pay.total <= 0) {
+		g_paying = false;
+		return;
+	}
+	if (kind == Moving::Take) {  // taken off first: if the game stops here, gold is lost rather than doubled
+		g_state.purse -= pay.total;
+		if (!Save(context)) {
+			g_state.purse += pay.total;
+			g_paying = false;
+			return;
+		}
+	}
+	StartPayment(context, pay);
 }
 
 // ---- Buttons ---------------------------------------------------------------------------------
@@ -656,6 +776,10 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 		if (g_state.Has("quick")) {
 			g_threads->runOnGameThread(context, StoreFromBag, reinterpret_cast<void*>(StoreAll));
 		}
+	} else if (std::strcmp(action, "goldin") == 0) {
+		MoveGold(context, Moving::Deposit);
+	} else if (std::strcmp(action, "goldout") == 0) {
+		MoveGold(context, Moving::Take);
 	} else if (std::strcmp(action, "journal") == 0) {
 		g_journalWanted = !g_journalWanted.load();
 	} else if (StartsWith(action, "jrune-")) {
@@ -692,6 +816,26 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 	QueueRefresh(context);
 }
 
+// UI thread. Shows the save's first page. The game can't be asked which page shows, so it goes all
+// the way back and then forward to the save's own pages.
+void __cdecl HomePage(const D2RL::PluginContext* context, void*) noexcept {
+	if (!g_bankOpen.load() || g_widgets == nullptr) {
+		return;
+	}
+	const auto send = [&](const char* command, int times) {
+		const D2RL::Widgets::UiAction action { .structSize = D2RL::Widgets::UiActionSize, .target = "BankPanelMessage", .command = command, .text = "" };
+		for (int i = 0; i < times; ++i) {
+			g_widgets->dispatchUiAction(context, &action);
+		}
+	};
+	g_jumping = true;
+	send("SharedStashLeft", StashFile::AllPages - 1);
+	send("SharedStashRight", g_base.load());
+	g_jumping = false;
+	g_page = 1;
+	QueueRefresh(context);
+}
+
 // UI thread. Ctrl+click on a bag item while the Upgrades tab is up stores it. A click on a shared
 // page tells which page is really showing. A rune clicked in either is looked up in the journal;
 // Alt+click does only that (and opens the journal).
@@ -719,8 +863,16 @@ auto __cdecl OnItemClick(const D2RL::PluginContext* context, const D2RL::ItemInt
 				return Decision::Consume;
 			}
 		}
-		if (event->container == Container::SharedStash && info.sharedStashPage < static_cast<uint32_t>(Stash::PageCount)) {
-			g_page = static_cast<int>(info.sharedStashPage) + 1;
+		if (event->container == Container::SharedStash) {
+			const int page = LocalPage(info.sharedStashPage);
+			if (page < 0 || g_wipe.load()) {  // another save's page shows: never let it be taken, go back to our own
+				Log(context, "Stash: page %u of the file is not this save's; going back.", info.sharedStashPage + 1);
+				g_threads->runOnUiThread(context, HomePage, nullptr);
+				return Decision::Consume;
+			}
+			if (g_page.exchange(page + 1) != page + 1) {
+				QueueRefresh(context);
+			}
 			return Decision::Continue;
 		}
 		if (event->container == Container::Inventory && (event->modifiers & D2RL::ItemInteractions::ModifierBit(D2RL::ItemInteractions::Modifier::Control)) != 0 &&
@@ -853,7 +1005,9 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		}
 		g_sharedWrite = D2RL::HasItemServiceCapability(g_items, D2RL::Items::ItemServiceCapability::SharedStashWrite);
 		RegisterRow(context, g_tree, D2RL::Panels::PanelFlags::CloseOnEscape);
+		RegisterRow(context, g_wall, D2RL::Panels::PanelFlags::CloseOnEscape);
 		RegisterRow(context, g_tab, D2RL::Panels::PanelFlags::CloseOnEscape);
+		RegisterRow(context, g_pageRow, D2RL::Panels::PanelFlags::None);
 		RegisterRow(context, g_journal, D2RL::Panels::PanelFlags::None);  // Escape is for the stash
 		const D2RL::Panels::PanelRegistration side {
 			.structSize = D2RL::Panels::PanelRegistrationSize,
@@ -904,9 +1058,17 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			if (std::strcmp(command, "ClosePanel") == 0 && StartsWith(text, "darkestdiablo/Stash")) {
 				const Lock lock(g_mutex);
 				if (g_tree.current >= 0 && RowName(g_tree, g_tree.current) == text) {
-					g_treeWanted = false;
+					if (g_treeWanted.exchange(false)) {
+						QueueRefresh(context);
+					}
+				} else if (g_wall.current >= 0 && RowName(g_wall, g_wall.current) == text) {
+					if (g_treeWanted.exchange(false)) {
+						QueueRefresh(context);
+					}
 				} else if (g_tab.current >= 0 && RowName(g_tab, g_tab.current) == text) {
-					g_tabWanted = false;
+					if (g_tabWanted.exchange(false)) {
+						QueueRefresh(context);
+					}
 				}
 				return false;
 			}
@@ -923,25 +1085,41 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 					if (g_autoTab.load()) {
 						Later(context, 100, SelectShared);
 					}
+					Later(context, 180, HomePage);
 				} else if (std::strcmp(command, "ClosePanel") == 0 || std::strcmp(command, "UnloadPanel") == 0) {
 					BankClosed(context);
 				}
 			}
+		} else if (g_bankOpen.load() && std::strcmp(target, "PlayerInventoryPanelMessage") == 0 && std::strcmp(command, "DropGold") == 0) {
+			OnAction(context, "goldin");  // the bag's gold button at the stash: into the save's purse
+			return true;
 		} else if (std::strcmp(target, "BankPanelMessage") == 0) {
 			if (std::strcmp(command, "Close") == 0) {
 				BankClosed(context);
+			} else if (g_jumping.load()) {
+				return false;
 			} else if (std::strcmp(command, "SelectTab") == 0) {
-				g_page = 1;
+				Later(context, 40, HomePage);
+			} else if (std::strcmp(command, "Withdraw") == 0) {
+				return true;  // the game's purse is one for all saves; gold is in the save's own
 			} else if (std::strcmp(command, "SharedStashLeft") == 0) {
-				g_page = (std::max)(1, g_page.load() - 1);
+				if (g_page.load() <= 1) {
+					return true;
+				}
+				--g_page;
+				QueueRefresh(context);
 			} else if (std::strcmp(command, "SharedStashRight") == 0) {
 				const fs::path progress = Campfire::RouteProgressFile();
 				const Lock lock(g_mutex);
-				if (!g_jumping.load() && Current(progress) && g_state.legacyDone && g_page.load() >= g_state.LastPage()) {
+				if (Current(progress) && g_state.legacyDone && g_page.load() >= g_state.LastPage()) {
 					Log(context, "Stash: page %d is still locked.", g_page.load() + 1);
 					return true;
 				}
-				g_page = (std::min)(Stash::PageCount, g_page.load() + 1);
+				if (g_page.load() >= Stash::PageCount) {
+					return true;
+				}
+				++g_page;
+				QueueRefresh(context);
 			}
 		}
 	} catch (...) {
@@ -975,7 +1153,15 @@ void OnStopCleared(const D2RL::PluginContext* context) noexcept {
 }
 
 auto CanPutOnSharedPages() noexcept -> bool {
-	return g_sharedWrite;
+	return g_sharedWrite && !g_wipe.load();
+}
+
+auto TurningPages() noexcept -> bool {
+	return g_jumping.load();
+}
+
+auto FirstSharedPage() noexcept -> uint32_t {
+	return static_cast<uint32_t>(g_base.load());
 }
 
 }

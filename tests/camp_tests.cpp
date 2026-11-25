@@ -5,6 +5,7 @@
 #include "route.h"
 #include "stash.h"
 #include "journal.h"
+#include "stashfile.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -565,7 +566,7 @@ static void WriteStashLayouts(const fs::path& dir) {
 	for (const auto& kind : Stash::Kinds()) {
 		full.mats[kind.code] = n++ % 5 == 0 ? 0 : n;
 	}
-	WriteFile(dir / "tree_fresh.json", Stash::TreeLayout(fresh, "Hero not found yet, try again"));
+	WriteFile(dir / "tree_fresh.json", Stash::TreeLayout(fresh));
 	WriteFile(dir / "tree_full.json", Stash::TreeLayout(full));
 	full.nodes = { "tab", "gem1", "rune1", "pot1" };
 	WriteFile(dir / "tree_part.json", Stash::TreeLayout(full));
@@ -575,12 +576,79 @@ static void WriteStashLayouts(const fs::path& dir) {
 	}
 	WriteFile(dir / "tab_fresh.json", Stash::UpgradesLayout(fresh));
 	WriteFile(dir / "tab_full.json", Stash::UpgradesLayout(full));
+	WriteFile(dir / "wall_part.json", Stash::WallLayout(full, "Hero not found yet, try again"));
+	WriteFile(dir / "wall_fresh.json", Stash::WallLayout(fresh));
+	WriteFile(dir / "page.json", Stash::PageLayout(10, 10, 1234567));
 	WriteFile(dir / "side.json", Stash::SideLayout());
 	for (int rune = 0; rune < Journal::RuneCount; ++rune) {
 		for (int page = 0; page < Journal::PageCount(rune); ++page) {
 			WriteFile(dir / ("journal_" + std::to_string(rune) + "_" + std::to_string(page) + ".json"), Journal::Layout(rune, page));
 		}
 	}
+}
+
+static auto StashPage(int items, uint32_t gold, const std::string& body) -> std::string {
+	std::string page = StashFile::BlankPage() + body;
+	page[StashFile::HeaderSize + 2] = static_cast<char>(items);
+	StashFile::SetNumber(page, 12, gold);
+	StashFile::SetNumber(page, 16, static_cast<uint32_t>(page.size()));
+	return page;
+}
+
+static void StashesJoinIntoOneFile() {
+	const fs::path live = TempDir("stash-join");
+	const auto save = [&](const std::string& a, uint32_t gold) {
+		std::vector<std::string> pages(10, StashFile::BlankPage());
+		pages[0] = StashPage(1, gold, a);
+		pages[3] = StashPage(2, 0, a + " fourth \x55\xAA\x55\xAA inside");  // a page mark inside an item must not matter
+		return StashFile::JoinPages(pages);
+	};
+	const std::string one = save("one", 500), three = save("three", 7);
+	CHECK(WriteFile(live / "camp" / "active.txt", "3\n"));
+	CHECK(WriteFile(live / StashName, three));
+	CHECK(WriteFile(SlotDir(live, 1) / "files" / StashName, one));  // save 2 has none
+	std::string log;
+	CHECK(StashFile::Join(live, "t", log));
+	CHECK(StashJoined(live) && StashFile::Join(live, "t2", log) && !fs::exists(live / "camp" / "stash-backup-t2"));
+	const auto pages = StashFile::Pages(ReadFile(live / StashName));
+	CHECK(pages && pages->size() == 30);
+	CHECK(StashFile::ItemCount((*pages)[0]) == 1 && StashFile::ItemCount((*pages)[3]) == 2 && StashFile::ItemCount((*pages)[20]) == 1);
+	CHECK((*pages)[0].find("one") != std::string::npos && (*pages)[23].find("three fourth") != std::string::npos);
+	CHECK(StashFile::ItemCount((*pages)[10]) == 0 && StashFile::Gold((*pages)[0]) == 0 && StashFile::Gold((*pages)[20]) == 0);
+	CHECK(StashFile::JoinedGold(live, 1) == 500 && StashFile::JoinedGold(live, 2) == 0 && StashFile::JoinedGold(live, 3) == 7);
+	CHECK(ReadFile(live / "camp" / "stash-backup-t" / "slot1.d2i") == one && ReadFile(live / "camp" / "stash-backup-t" / "slot3.d2i") == three);
+	// Changing saves leaves the stash where it is.
+	const std::string file = ReadFile(live / StashName);
+	std::string error;
+	CHECK(SwitchSlot(live, 1, error) && ReadFile(live / StashName) == file);
+	CHECK(SwitchSlot(live, 2, error) && ReadFile(live / StashName) == file);
+	// Deleting: a copy, then blank pages, and only its own.
+	CHECK(StashFile::CopyPages(live, 1, live / "copy.d2i") && StashFile::Pages(ReadFile(live / "copy.d2i"))->size() == 10);
+	CHECK(StashFile::SetWipes(live, { 1, 3 }) && StashFile::Wipes(live) == std::set<int>({ 1, 3 }));
+	CHECK(StashFile::SetWipes(live, {}) && StashFile::Wipes(live).empty());
+	CHECK(StashFile::BlankPages(live, 1));
+	StashFile::ForgetJoinedGold(live, 1);
+	const auto after = StashFile::Pages(ReadFile(live / StashName));
+	CHECK(after && after->size() == 30 && StashFile::ItemCount((*after)[0]) == 0 && (*after)[20] == (*pages)[20]);
+	CHECK(StashJoined(live) && StashFile::JoinedGold(live, 1) == 0 && StashFile::JoinedGold(live, 3) == 7);
+}
+
+static void AStashThatCantBeReadIsLeftAlone() {
+	const fs::path live = TempDir("stash-join-bad");
+	const std::string good = StashFile::JoinPages(std::vector<std::string>(10, StashFile::BlankPage()));
+	for (const std::string& bad : { std::string("nonsense"), good + "x", good.substr(0, good.size() - 1) }) {
+		CHECK(WriteFile(live / StashName, bad));
+		CHECK(WriteFile(SlotDir(live, 2) / "files" / StashName, good));
+		std::string log;
+		CHECK(!StashFile::Join(live, "t", log) && !log.empty() && !StashJoined(live));
+		CHECK(ReadFile(live / StashName) == bad && ReadFile(SlotDir(live, 2) / "files" / StashName) == good);
+	}
+	// Stopped after the file was replaced: the next start finishes and does not join twice.
+	const std::string whole = StashFile::JoinPages(std::vector<std::string>(30, StashPage(1, 0, "x")));
+	CHECK(WriteFile(live / StashName, whole) && WriteFile(JoinedFile(live), "joining\ngold 1 9\n"));
+	std::string log;
+	CHECK(StashFile::Join(live, "t", log) && StashJoined(live) && ReadFile(live / StashName) == whole && StashFile::JoinedGold(live, 1) == 9);
+	CHECK(SwitchSlot(live, 2, log) && ReadFile(live / StashName) == whole);  // a parked file left behind is not in the way
 }
 
 static void JournalListsARunesWordsByLevel() {
@@ -596,6 +664,12 @@ static void JournalListsARunesWordsByLevel() {
 }
 
 int main(int argc, char** argv) {
+	if (argc == 3 && std::string(argv[1]) == "join") {  // joins the stashes of a COPY of a save folder
+		std::string log;
+		const bool ok = StashFile::Join(argv[2], "dry-run", log);
+		std::cout << log << "\n";
+		return ok ? 0 : 1;
+	}
 	if (argc == 3 && std::string(argv[1]) == "layouts") {
 		WriteStashLayouts(argv[2]);
 		return 0;
@@ -605,6 +679,8 @@ int main(int argc, char** argv) {
 	StashTreeNeedsParentsAndPoints();
 	StashSlotsTakeWhatIsUnlocked();
 	StashFileRoundTripAndBadLines();
+	StashesJoinIntoOneFile();
+	AStashThatCantBeReadIsLeftAlone();
 	JournalListsARunesWordsByLevel();
 	RouteUnlocksTierByTier();
 	ForkGivesTwoPicksSameOneAllowed();
