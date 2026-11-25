@@ -26,6 +26,15 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   a "Store bag" button and the Porter (stores gems and runes on coming back to town). Click a slot
   to take one out or to store what is in the hand; Ctrl+click a bag item stores it.
 
+- **The safe.** Heroes with the Warlock rules have three tabs of the game's own (Gems, Materials, Runes).
+  They are hidden. What they hold when the stash is opened goes to the safe, a tab after Upgrades that
+  shows only what is in it. Click to take one out; nothing can be put in; the tab is gone once it is
+  empty. It is one safe for all saves (the game has one such stash for all of them): `camp/safe.txt`.
+  Ctrl+click on a gem or rune, which the game would send to the hidden tabs, sends it to the page that
+  shows; anything that gets there all the same goes back to the bag or an open page (to the safe only
+  if there is no room at all). The Warlock rules' stash file is copied to `camp/stash-backup-safe-<time>`
+  before anything in it is moved.
+
 ## Choices the engine forced
 - **Not the game's own gem and rune tabs.** They exist only for heroes made with the Warlock
   rules: our heroes' stash file (`SharedStashSoftCoreV2.d2i`) and tables (`excel/base`) have none of it.
@@ -54,6 +63,15 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
 6. Are personal items and items on locked pages moved?
 
 Console: `dd-stash` (what this save has); for tests `dd-stash points <n>`, `dd-stash gold <n>`.
+
+The safe (0.28.0) is not tried in the game. To try it with a Warlock hero: put gems and runes in the old
+tabs with a version before 0.28.0, then open the stash with this one. `dd-stash old` writes to the log
+how the loader lists the shared items. To be seen: whether it lists those in the old tabs at all (if
+not they stay in their tab, hidden), and whether `quantity` is the stack's size (the log gives each as
+"old tabs: <code> x<n>"; if not, put the copy of the file back).
+Also seen while building it: Warlock heroes use a stash file of their own
+(`ModernSharedStashSoftCoreV2.d2i`), so they don't share pages with a save's other heroes, and joining,
+deleting a save and `split_stash.py` don't touch it.
 
 ## One stash file for all saves (0.22.1)
 The game reads `SharedStashSoftCoreV2.d2i` once, **when it starts** (not at the first game, as thought

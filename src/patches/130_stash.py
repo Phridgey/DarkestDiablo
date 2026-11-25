@@ -6,6 +6,9 @@ picture, no text) outside the window, under a click catcher. (Frame -1 does not 
 drew it as a black box, 0.20.5.) The plugin moves anything left in a hero's
 personal page to the shared pages (src/plugin/stash.cpp).
 
+The Warlock rules' own Gems, Materials and Runes tabs are hidden the same way (the Upgrades tab lies over
+Gems); the plugin moves what they hold to the safe (docs/stash.md).
+
 The Upgrades tab is an ordinary button in the second tab's place; the plugin catches its message.
 Not changed: the old (legacy, "G" key) graphics and the controller layouts.
 """
@@ -43,9 +46,13 @@ def patch(t):
         raise RuntimeError("The stash's tabs are not the ones this patch knows; has the game changed?")
     x, y = fields["rect"]["x"], fields["rect"]["y"]
     fields["rect"] = dict(fields["rect"], x=x - TAB)
-    fields["textStrings"][0] = ""
-    for frames in ("inactiveFrames", "activeFrames"):
-        fields[frames][0] = BLANK
+    hidden = (0, 2, 3, 4)  # personal; gems, materials, runes
+    if fields["tabCount"] != 5 or fields["textStrings"][2:] != ["@gems", "@materials", "@runes"]:
+        raise RuntimeError("The stash's Warlock tabs are not the ones this patch knows; has the game changed?")
+    for i in hidden:
+        fields["textStrings"][i] = ""
+        for frames in ("inactiveFrames", "activeFrames", "disabledFrames"):
+            fields[frames][i] = BLANK
     fields["filename"] = "PANEL\\DarkestDiablo\\StashTabs"
     for suffix in ("", ".lowend"):
         t.add_file(OURS.format(suffix), with_blank_frame(t.game_file(PICTURE.format(suffix))))
@@ -60,6 +67,8 @@ def patch(t):
     bank["children"][at + 1:at + 1] = [
         {"type": "ClickCatcherWidget", "name": "PersonalTabCover",
          "fields": {"rect": {"x": x - TAB, "y": y, "width": TAB, "height": fields["tabSize"]["y"]}}},
+        {"type": "ClickCatcherWidget", "name": "WarlockTabsCover",
+         "fields": {"rect": {"x": x + TAB, "y": y, "width": 3 * TAB, "height": fields["tabSize"]["y"]}}},
         {"type": "ButtonWidget", "name": "UpgradesTab", "fields": {
             "rect": {"x": x + TAB, "y": y}, "filename": fields["filename"],
             "normalFrame": 0, "pressedFrame": 1, "hoveredFrame": 1, "disabledFrame": 0,

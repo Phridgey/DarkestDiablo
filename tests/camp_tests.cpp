@@ -534,6 +534,14 @@ static void StashSlotsTakeWhatIsUnlocked() {
 	CHECK(s.Room(chipped) == 0);
 	s.nodes = { "tab", "gem1" };
 	CHECK(s.Room(chipped) == Stash::SmallCap && s.Room(skull) == 0);
+	{  // the safe
+		const Stash::Safe safe = Stash::ParseSafe("item r01 3\nitem pk1 2\nitem cap 1\nitem gcv 0\n");
+		CHECK(safe.size() == 2 && safe.at("r01") == 3 && safe.at("pk1") == 2);
+		CHECK(Stash::ParseSafe(Stash::SerializeSafe(safe)) == safe && Stash::SerializeSafe({}).empty());
+		CHECK(Stash::SafeKinds().size() == 35 + 33 + 23);
+		CHECK(Stash::InWarlockTabs(true, 0xFFFFFFFFu, 42, "r01") && Stash::InWarlockTabs(true, 42, 42, "pk1"));
+		CHECK(!Stash::InWarlockTabs(true, 41, 42, "r01") && !Stash::InWarlockTabs(false, 0xFFFFFFFFu, 42, "r01") && !Stash::InWarlockTabs(true, 0xFFFFFFFFu, 42, "cap"));
+	}
 	s.nodes.insert("gemskull");
 	CHECK(s.Room(skull) == Stash::SmallCap);
 	s.Add("gcw", 20);
@@ -586,6 +594,14 @@ static void WriteStashLayouts(const fs::path& dir) {
 	WriteFile(dir / "wall_part.json", Stash::WallLayout(full, "Hero not found yet, try again"));
 	WriteFile(dir / "wall_fresh.json", Stash::WallLayout(fresh));
 	WriteFile(dir / "page.json", Stash::PageLayout(10, 10, 1234567, 6));
+	Stash::Safe safe;
+	for (const auto& kind : Stash::SafeKinds()) {
+		safe[kind.code] = 99;
+	}
+	WriteFile(dir / "safe_full.json", Stash::SafeLayout(safe, true));
+	WriteFile(dir / "safe_one.json", Stash::SafeLayout({ { "pk1", 1 } }, false));
+	WriteFile(dir / "tabs_safe.json", Stash::TabsLayout({}, -1, true, true));
+	WriteFile(dir / "tabs_safe_full.json", Stash::TabsLayout({ { 0, "A" }, { 1, "B" }, { 2, "Abcdefghijklmno" } }, 0, true, false));
 	WriteFile(dir / "tabs.json", Stash::TabsLayout({ { 0, "Shiftaced" }, { 2, "Abcdefghijklmno" } }, 0));
 	WriteFile(dir / "side.json", Stash::SideLayout());
 	Potions::State potions;
