@@ -205,6 +205,9 @@ static void ReadLootData(const D2RL::PluginContext* context) noexcept {
 					uint32_t cls = 0;
 					if (words >> id >> cls) {
 						g_monsterClasses[id] = cls;
+						if (id.rfind("dd_pot_", 0) == 0) {  // 994a_throwers.py
+							Game::NotAnEnemy(cls);
+						}
 					}
 				} else if (kind == "merctype") {
 					int number = -1;

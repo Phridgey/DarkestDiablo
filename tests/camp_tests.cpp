@@ -618,7 +618,7 @@ static void PotionChargesFillAndAreSpent() {
 	s.Fill(o);
 	CHECK(Near(s.Charge(Heal), 50) && s.Uses(Mana) == 5 && s.Charge(Antidote) == 0);
 	CHECK(s.Use(Heal, o) && Near(s.Charge(Heal), 40) && !s.Use(Antidote, o) && !s.Use(None, o));
-	s.Tick(100, o);  // 0.1% of 50 a second
+	s.Tick(50, o);  // 0.2% of 50 a second
 	CHECK(Near(s.Charge(Heal), 45) && Near(s.Charge(Mana), 50));
 	s.Give(Antidote, o);
 	CHECK(s.slots[2] == Antidote && Near(s.Charge(Antidote), 20));
@@ -635,12 +635,21 @@ static void PotionChargesFillAndAreSpent() {
 	o.belt = 12;
 	CHECK(Near(s.Capacity(Heal, o), 62) && Near(s.Capacity(Stamina, o), 32));
 	o.nodes = { "potregen", "potregen2", "potheal" };
-	CHECK(Near(s.Capacity(Heal, o), 74.5) && Near(s.Regen(o), 0.003));
+	CHECK(Near(s.Capacity(Heal, o), 74.5) && Near(s.Regen(o), 0.006));
 	o.belt = 0;
 	s.charge[Heal] = 74;  // a smaller belt: what no longer fits is lost at the next gain
 	s.Tick(0, o);
 	CHECK(Near(s.Charge(Heal), 62.5));
 	CHECK(BeltCharges("lbl") == 4 && BeltCharges("tbl") == 8 && BeltCharges("uhc") == 12 && BeltCharges("rin") == 0);
+}
+
+static void FullHeroesKeepTheirPotions() {
+	using namespace Potions;
+	using S = Potions::State;
+	CHECK(S::Pointless(Heal, 240, 240, 10, 171) && !S::Pointless(Heal, 239, 240, 171, 171) && !S::Pointless(Heal, -1, -1, 0, 0));
+	CHECK(S::Pointless(Mana, 1, 240, 171, 171) && !S::Pointless(Mana, 240, 240, 170, 171));
+	CHECK(S::Pointless(Rejuv, 240, 240, 171, 171) && !S::Pointless(Rejuv, 240, 240, 1, 171) && !S::Pointless(Rejuv, 1, 240, 171, 171));
+	CHECK(!S::Pointless(Antidote, 240, 240, 171, 171) && !S::Pointless(None, 240, 240, 171, 171));
 }
 
 static void PotionLoadoutSwapsAndGrades() {
@@ -833,6 +842,7 @@ int main(int argc, char** argv) {
 	AStashThatCantBeReadIsLeftAlone();
 	JournalListsARunesWordsByLevel();
 	PotionChargesFillAndAreSpent();
+	FullHeroesKeepTheirPotions();
 	PotionLoadoutSwapsAndGrades();
 	PotionsConcoctIntoOne();
 	PotionAffixesLandOnOpenStopsOnce();

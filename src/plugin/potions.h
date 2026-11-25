@@ -46,8 +46,9 @@ inline constexpr double SupportCapacity = 20;
 inline constexpr double ThrownCapacity  = 30;
 inline constexpr double KillCharge      = 0.5;    // a normal monster of the hero's level
 inline constexpr double SupportKillRate = 0.75;
-inline constexpr double RegenPerSecond  = 0.001;  // of the capacity
-inline constexpr int    ThrownPerUse    = 5;      // throwing potions one use makes
+inline constexpr double RegenPerSecond  = 0.002;  // of the capacity
+inline constexpr int    ThrowReach      = 25;     // sub-tiles (994a_throwers.py: REACH)
+inline constexpr int    ThrownPerUse    = 5;      // dd-potions bag: throwing potions one use makes
 inline constexpr int    ThrownCarried   = 25;     // the most the hero may own of one kind for a use to make more
 inline constexpr double EchoStrength    = 0.5;    // a support potion set off by a healing or mana potion
 inline constexpr int    SupportSeconds  = 30;
@@ -213,6 +214,12 @@ struct State {
 		return out;
 	}
 
+	// Nothing to restore: healing with full life, mana with full mana, Rejuvenation with both. Unknown (-1) counts as not full.
+	static auto Pointless(int kind, int life, int maxLife, int mana, int maxMana) -> bool {
+		const bool lifeFull = life > 0 && maxLife > 0 && life >= maxLife, manaFull = mana >= 0 && maxMana > 0 && mana >= maxMana;
+		return kind == Heal ? lifeFull : kind == Mana ? manaFull : kind == Rejuv && lifeFull && manaFull;
+	}
+
 	// Puts an owned potion in a slot; one already in another slot swaps places. None empties it.
 	auto Equip(int slot, int kind, const Owner& o) -> bool {
 		if (slot < 0 || slot >= SlotCount || (kind != None && !Owns(kind, o))) {
@@ -365,7 +372,7 @@ inline auto Effect(int kind, const State& s, const Owner& o) -> std::string {
 	case Antidote: return "ends poison and keeps it off for 30 seconds";
 	case Thawing:  return "ends cold and freezing and keeps them off for 30 seconds";
 	case Stamina:  return "fills stamina and keeps it full for 30 seconds";
-	default:       return "puts " + std::to_string(ThrownPerUse) + " throwing potions in the bag (level " + std::to_string(PotFor(kind, o).level) + ")";
+	default:       return "thrown at the nearest enemy";
 	}
 }
 
@@ -433,7 +440,18 @@ inline auto Parse(const std::string& text) -> State {
 // ---- On screen --------------------------------------------------------------------------------
 inline constexpr char HudMessage[] = "PanelManager:OpenPanel:darkestdiablo/potion-";
 inline constexpr int  CellPitch = 125, CellSize = 98, PickPitch = 108;
-inline constexpr int  BarSteps = 20;  // the fill bars move in steps, so the panel isn't redrawn on every kill
+inline constexpr auto BarColor(int kind) -> const char* {
+	switch (kind) {
+	case Heal:     return "[0.70,0.10,0.08,1.0]";
+	case Mana:     return "[0.15,0.25,0.80,1.0]";
+	case Rejuv:    return "[0.55,0.20,0.65,1.0]";
+	case Antidote: return "[0.60,0.60,0.60,1.0]";
+	case Thawing:  return "[0.80,0.70,0.30,1.0]";
+	case Stamina:  return "[0.75,0.75,0.70,1.0]";
+	case Fire:     return "[0.85,0.40,0.08,1.0]";
+	default:       return "[0.25,0.60,0.15,1.0]";
+	}
+}
 
 // The four slots over the game's belt. `picking`: the slot whose list of potions is open (-1 none).
 inline auto HudLayout(const State& s, const Owner& o, int picking) -> std::string {
@@ -455,13 +473,16 @@ inline auto HudLayout(const State& s, const Owner& o, int picking) -> std::strin
 			"\",\"normalFrame\":0,\"pressedFrame\":0,\"hoveredFrame\":0,\"disabledFrame\":0" + (bright ? "" : ",\"tint\":{\"r\":0.35,\"g\":0.35,\"b\":0.35,\"a\":0.7}") +
 			",\"tooltipString\":\"" + Name(kind, s, o) + ": " + Effect(kind, s, o) + ". Holds " + std::to_string(static_cast<int>(cap)) + " charges, a use takes " +
 			std::to_string(static_cast<int>(UseCost)) + ".\",\"onClickMessage\":\"" + HudMessage + action + "\"}}");
-		const int steps = std::clamp(static_cast<int>(s.Charge(kind) / cap * BarSteps + 1e-6), 0, BarSteps);
-		const int bar = (CellSize - 4) * steps / BarSteps;
-		add(Box(name + "Back", { x + CellSize + 2, y, 12, CellSize }, Dark));
+		const int barW = CellSize - 8;
+		const int bar = std::clamp(static_cast<int>(s.Charge(kind) / cap * barW + 1e-6), 0, barW);
+		add(Box(name + "Back", { x + 2, y + CellSize - 16, CellSize - 4, 16 }, Dark));
 		if (bar > 0) {
-			add(Box(name + "Bar", { x + CellSize + 4, y + 2 + (CellSize - 4) - bar, 8, bar }, bright ? Gold : Dim));
+			add(Box(name + "Bar", { x + 4, y + CellSize - 14, bar, 12 }, BarColor(kind)));
 		}
-		add(Text(name + "Uses", { x + 50, y, 46, 28 }, std::to_string(s.Uses(kind)), bright ? TextWhite : "$FontColorRed", "$SmallFontSize", "right"));
+		for (int use = 1; use * UseCost < cap - 1e-6; ++use) {
+			add(Box(name + "Notch" + std::to_string(use), { x + 4 + static_cast<int>(use * UseCost / cap * barW), y + CellSize - 14, 2, 12 }, Dark));
+		}
+		add(Text(name + "Charges", { x + 34, y + 44, 62, 38 }, std::to_string(static_cast<int>(s.Charge(kind) + 1e-6)), bright ? TextWhite : TextGrey, "$MediumLargeFontSize", "right"));
 	};
 	if (picking >= 0) {
 		const int x = picking * CellPitch;
@@ -479,13 +500,13 @@ inline auto HudLayout(const State& s, const Owner& o, int picking) -> std::strin
 	for (int i = 0; i < SlotCount; ++i) {
 		const int x = i * CellPitch + 4, kind = s.slots[static_cast<size_t>(i)];
 		const std::string n = std::to_string(i + 1);
-		add("{\"type\":\"ButtonWidget\",\"name\":\"Swap" + n + "\",\"fields\":{\"rect\":" + RectJson({ x + 31, list, 36, 36 }) +
-			",\"filename\":\"PANEL\\\\HUD_02\\\\Belt_UpArrow\",\"normalFrame\":0,\"pressedFrame\":0,\"hoveredFrame\":0,\"disabledFrame\":0,\"tooltipString\":\"Choose the potion for this slot\",\"onClickMessage\":\"" +
+		add("{\"type\":\"ButtonWidget\",\"name\":\"Swap" + n + "\",\"fields\":{\"rect\":" + RectJson({ x + 31, list, 36, 33 }) +
+			",\"filename\":\"PANEL\\\\Modals\\\\Modal_Up_Arrow\",\"normalFrame\":0,\"pressedFrame\":1,\"hoveredFrame\":0,\"disabledFrame\":0,\"tooltipString\":\"Choose the potion for this slot\",\"onClickMessage\":\"" +
 			HudMessage + "pick-" + n + "\"}}");
 		if (s.Owns(kind, o)) {
 			icon("Slot" + n, x, top, kind, s.Ready(kind, o), "use-" + n);
 		}
-		add(Text("Key" + n, { x + 2, top + 66, 40, 32 }, n, TextGold, "$MediumFontSize", "left"));
+		add(Text("Key" + n, { x + 4, top, 40, 32 }, n, TextGold, "$MediumFontSize", "left"));
 	}
 	// The game's belt starts 250 right of the middle and its cells 128 above the bottom (hudpanelhd).
 	return std::string("{\"type\":\"Panel\",\"name\":\"") + Stash::PanelMark + "\",\"fields\":{\"rect\":" + RectJson({ 259, -128 - top, w, h }) +

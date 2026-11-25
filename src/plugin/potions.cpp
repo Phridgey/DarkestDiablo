@@ -64,6 +64,7 @@ std::atomic<bool> g_inGame { false };
 std::atomic<int>  g_belt { 0 };
 std::atomic<int>  g_picking { -1 };
 std::atomic<bool> g_hudQueued { false };
+std::atomic<bool> g_toBag { false };  // dd-potions bag: throwing potions go to the bag instead
 std::mt19937      g_rng { std::random_device {}() };  // UI thread
 
 // What is working on the hero now.
@@ -237,7 +238,7 @@ void __cdecl LookAtBelt(const D2RL::PluginContext* context, void*) noexcept {
 	}
 }
 
-// Game thread. A throwing potion's use: a small stack in the bag. `data` is the kind; the charge was
+// Game thread. A throwing potion's use after "dd-potions bag": a small stack in the bag. `data` is the kind; the charge was
 // taken already and comes back if nothing could be made.
 void __cdecl MakePots(const D2RL::PluginContext* context, void* data) noexcept {
 	try {
@@ -291,6 +292,13 @@ void __cdecl MakePots(const D2RL::PluginContext* context, void* data) noexcept {
 }
 
 // ---- Drinking ---------------------------------------------------------------------------------
+auto RunConsole(const char* command) noexcept -> bool {
+	namespace CE = D2RL::CoreExports;
+	const HMODULE core = GetModuleHandleA(CE::CoreDllName);
+	const auto execute = core == nullptr ? nullptr : reinterpret_cast<CE::ExecuteConsoleCommandFn>(GetProcAddress(core, CE::ExecuteConsoleCommandInfo.name));
+	return execute != nullptr && execute(command);
+}
+
 // Locked.
 void StartWard(int kind, double strength) {
 	const auto end = Clock::now() + std::chrono::milliseconds(static_cast<int>(Potions::SupportSeconds * 1000 * strength));
@@ -311,6 +319,25 @@ void Drink(const D2RL::PluginContext* context, int slot) noexcept {
 		}
 		const Lock lock(g_mutex);
 		const int kind = g_state.slots[static_cast<size_t>(slot)];
+		if (Potions::State::Pointless(kind, hero.life, hero.maxLife, hero.mana, hero.maxMana)) {
+			return;
+		}
+		if (Potions::Thrown(kind) && !g_toBag.load() && g_state.Ready(kind, g_owner)) {
+			const auto enemies = Game::Enemies(Potions::ThrowReach);
+			if (enemies.empty()) {
+				context->WriteConsoleMessage("No enemy in reach.");
+				return;
+			}
+			// A step toward the enemy: the hero's own tile is taken.
+			const auto step = [](int from, int to) { return to > from + 1 ? 2 : to < from - 1 ? -2 : 0; };
+			char command[96] {};
+			std::snprintf(command, sizeof(command), "cheat mspawn dd_pot_%s,1 @ %d,%d", Potions::PotFor(kind, g_owner).code,
+				hero.unit.x + step(hero.unit.x, enemies.front().unit.x), hero.unit.y + step(hero.unit.y, enemies.front().unit.y));
+			if (!RunConsole(command)) {
+				return;
+			}
+			Log(context, "Potions: %s", command);
+		}
 		if (!g_state.Use(kind, g_owner)) {
 			return;
 		}
@@ -325,7 +352,7 @@ void Drink(const D2RL::PluginContext* context, int slot) noexcept {
 			g_rejuvenate = (std::max)(g_rejuvenate, g_state.blend == 2 ? 1.0 : 0.35);
 		} else if (Potions::Support(kind)) {
 			StartWard(kind, 1);
-		} else {
+		} else if (g_toBag.load()) {
 			g_threads->runOnGameThread(context, MakePots, reinterpret_cast<void*>(static_cast<intptr_t>(kind)));
 		}
 		for (const int echo : g_state.Echoes(kind, g_owner)) {
@@ -534,7 +561,10 @@ auto PotionsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* comma
 		}
 		const Lock lock(g_mutex);
 		const int kind = Potions::KindFromId(value);
-		if (what == "fill") {
+		if (what == "bag") {
+			g_toBag = !g_toBag.load();
+			context->WriteConsoleMessage(g_toBag.load() ? "Throwing potions go to the bag." : "Throwing potions are thrown from the slot.");
+		} else if (what == "fill") {
 			g_state.Fill(g_owner);
 		} else if (what == "give" && Potions::Support(kind)) {
 			g_state.Give(kind, g_owner);
@@ -585,6 +615,26 @@ void LoadHero(const D2RL::PluginContext* context) {
 	g_rejuvenate = 0;
 	Save(context, true);
 	Log(context, "Potions: %s (%s), %d affix(es) to win.", g_file.filename().string().c_str(), known ? "read" : "new", static_cast<int>(g_state.affixes.size()));
+}
+
+// UI thread, when a conversation opens: the healers who restore life and mana fill the potions too.
+void FillAtHealer(const D2RL::PluginContext* context) noexcept {
+	static constexpr uint32_t Healers[] = { 148, 178, 255, 405, 513 };  // monstats: Akara, Fara, Ormus, Jamella, Malah
+	constexpr int Reach = 12;  // sub-tiles, as for Meshif (darkestdiablo_plugin.cpp)
+	try {
+		for (const Game::MonsterDetails& m : Game::Monsters(Reach, true)) {
+			if (Game::ClassOf(m.unit.row) != Game::MonsterClass::Npc) {
+				continue;
+			}
+			// Nearest first: the one being talked to.
+			if (std::find(std::begin(Healers), std::end(Healers), m.unit.row) != std::end(Healers)) {
+				Refill(context);
+				Log(context, "Potions: filled by a healer (%u).", m.unit.row);
+			}
+			return;
+		}
+	} catch (...) {
+	}
 }
 
 }  // namespace
@@ -642,7 +692,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		}
 		std::thread(Ticker, context).detach();
 		Log(context, "Potions: ready (%d panels).", g_hudCount);
-		return context->RegisterConsoleCommand("dd-potions", PotionsCommand, "Show the hero's potions. Tests: dd-potions fill, give <antidote|thawing|stamina>, concoct, full, use <1-4>.");
+		return context->RegisterConsoleCommand("dd-potions", PotionsCommand, "Show the hero's potions. Tests: dd-potions fill, give <antidote|thawing|stamina>, concoct, full, bag, use <1-4>.");
 	} catch (...) {
 		g_threads = nullptr;
 		context->LogWarn("Potions: setting up failed; no potions.");
@@ -651,8 +701,14 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 }
 
 auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const char* command, const char* text) noexcept -> bool {
-	if (g_threads == nullptr || std::strcmp(target, "PanelManager") != 0 || std::strcmp(command, "OpenPanel") != 0 ||
-		std::strncmp(text, ActionPrefix, sizeof(ActionPrefix) - 1) != 0) {
+	if (g_threads == nullptr || std::strcmp(target, "PanelManager") != 0 || std::strcmp(command, "OpenPanel") != 0) {
+		return false;
+	}
+	if (std::strcmp(text, "NpcDialogPanel") == 0 && g_inGame.load()) {
+		FillAtHealer(context);
+		return false;
+	}
+	if (std::strncmp(text, ActionPrefix, sizeof(ActionPrefix) - 1) != 0) {
 		return false;
 	}
 	try {

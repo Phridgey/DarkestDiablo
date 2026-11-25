@@ -153,6 +153,8 @@ auto World() -> WorldDetails;
 // From monstats.txt (gametables.h): Enemy, Npc (town people, guards), Mercenary (hired
 // fighters), Summon (golems, skeletons, wolves, valkyrie...), Critter (rats, birds, cows).
 auto ClassOf(uint32_t monsterRow) -> MonsterClass;
+// A row the mod added that is nobody's enemy (the invisible throwers): ClassOf says Critter.
+void NotAnEnemy(uint32_t monsterRow);
 auto ClassName(MonsterClass c) -> const char*;
 
 struct MonsterDetails {
