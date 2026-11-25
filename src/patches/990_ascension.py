@@ -44,11 +44,14 @@ ARENAS = {
         "map": "Expansion/baalLair/darkest_ascend5.ds1", "boss": "baalcrab", "title": "Baal"},
 }
 TINT = {1: "14", 2: "9", 3: "19", 4: "21", 5: "12"}  # superuniques.txt Utrans
-# Affixes the game gives (monumod.txt ids): extra strong, cursed, fire, lightning, cold, mana burn, spectral hit.
-MODS = [5, 7, 9, 17, 18, 25, 27]
+# Affixes the game gives (monumod.txt ids): extra strong, cursed, mana burn, spectral hit, aura.
+# The boss must never be immune to anything (decided 2026-11-24): fire, lightning and cold
+# enchanted (9, 17, 18) add 75 to their resistance, so they stay out; check_immunity() makes sure.
+MODS = [5, 7, 25, 27, 30]
+MOD_RESIST = 20      # the most any of MODS adds to a resistance (spectral hit: elements; mana burn: magic)
 # The 4th affix, built into the copy's numbers, so it must not repeat one of the three.
 BUILT_IN = ["Stone Skin", "Magic Resistant", "Extra Fast", "Berserker"]
-COMBOS = 3           # superunique rows per built-in affix
+COMBOS = 6           # superunique rows per built-in affix
 # Item levels and base items: act-appropriate bases, affixes from an act further.
 TARGET = {1: 18, 2: 36, 3: 54, 4: 72, 5: 90}
 STRING_ID = 91400
@@ -64,6 +67,13 @@ def scale(row, cols, factor):
         v = num(row, c)
         if v:
             row[c] = str(max(1, round(v * factor)))
+
+
+def check_immunity(row):
+    for res in ("ResDm", "ResMa", "ResFi", "ResLi", "ResCo", "ResPo"):
+        worst = (num(row, res) or 0) + (0 if res in ("ResDm", "ResPo") else MOD_RESIST)
+        if worst >= 100:
+            raise RuntimeError(f"{row['Id']}: {res} could reach {worst}, an immunity")
 
 
 def patch(t):
@@ -96,6 +106,7 @@ def patch(t):
                 elif affix == "Berserker":
                     scale(row, [f"{p}TH{tag}" for p in ("A1", "A2", "S1")], 1.5)
                     row["Crit" + tag] = str((num(row, "Crit" + tag) or 0) + 25)
+            check_immunity(row)
             scale(row, [f"Sk{n}lvl" for n in range(1, 9)], DAMAGE)  # spells grow by skill level
             scale(row, ["Velocity", "Run"], MOVE * (1.25 if affix == "Extra Fast" else 1.0))
             t.loot_lines.append(f"ascendclass {act} {cls}")

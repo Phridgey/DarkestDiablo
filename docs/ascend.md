@@ -10,7 +10,8 @@ A hero's last fight. Rules decided 2026-11-24. Code: `src/plugin/ascension.cpp` 
   gear does not come home.
 - The hero goes to the boss room of the act its route is in, with only the Ascended boss there:
   40% more life, 35% more damage, 10% more movement, 50% more attack speed, 35% more cast speed,
-  4 random elite affixes, tinted.
+  4 random elite affixes, tinted. Never immune to anything: no fire, lightning or cold enchanted, and
+  the build stops if any affixes could add up to an immunity.
 - **No way out.** Dying, quitting or crashing before the boss is dead is a death. A Town Portal
   leads straight back.
 - The boss drops 3 sets or uniques and 3 of its own; the plugin adds 9 rares, 2 rings, 2 amulets,
