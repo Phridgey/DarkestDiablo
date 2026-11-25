@@ -27,14 +27,13 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   to take one out or to store what is in the hand; Ctrl+click a bag item stores it, from any page of the stash.
 
 - **The safe.** Heroes with the Warlock rules have three tabs of the game's own (Gems, Materials, Runes).
-  They are off (no tabs, their slots outside the window). What they hold when the stash is opened goes to the safe, a tab after Upgrades that
+  They are off (no tabs, their slots outside the window). What they hold goes to the safe, a tab after Upgrades that
   shows only what is in it. Click to take one out; nothing can be put in; the tab is gone once it is
   empty. It is one safe for all saves (the game has one such stash for all of them): `camp/safe.txt`.
   Ctrl+click on a gem or rune, which the game would send to the hidden tabs, stores it in the Upgrades
-  tab, whichever page shows (to that page if its slot is locked or full); anything that gets there all the same
-  goes to the Upgrades tab too, else back to the bag or an open page (to the safe only
-  if there is no room at all). The Warlock rules' stash file is copied to `camp/stash-backup-safe-<time>`
-  before anything in it is moved.
+  tab, whichever page shows (to that page if its slot is locked or full). The moving is done in the stash
+  file while the game starts (`modernstash.h`), after copying it to `camp/stash-backup-<time>-safe`; anything
+  that gets into the old tabs during a game goes to the safe at the next start.
 
 ## Choices the engine forced
 - **Not the game's own gem and rune tabs.** They exist only for heroes made with the Warlock
@@ -65,14 +64,28 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
 
 Console: `dd-stash` (what this save has); for tests `dd-stash points <n>`, `dd-stash gold <n>`.
 
-The safe (0.28.0) is not tried in the game. To try it with a Warlock hero: put gems and runes in the old
-tabs with a version before 0.28.0, then open the stash with this one. `dd-stash old` writes to the log
-how the loader lists the shared items. To be seen: whether it lists those in the old tabs at all (if
-not they stay in their tab, hidden), and whether `quantity` is the stack's size (the log gives each as
-"old tabs: <code> x<n>"; if not, put the copy of the file back).
-Also seen while building it: Warlock heroes use a stash file of their own
-(`ModernSharedStashSoftCoreV2.d2i`), so they don't share pages with a save's other heroes, and joining,
-deleting a save and `split_stash.py` don't touch it.
+## The second stash file: heroes with the Warlock rules (0.28.3)
+DLC owners' heroes may have the Warlock rules, whatever their class (byte 0xF8 of the save: 2 Lord of
+Destruction, 3 Reign of the Warlock). The game gives those a stash file of their own,
+`ModernSharedStashSoftCoreV2.d2i`: 5 pages of its own instead of 3, then a section for the Gems, Materials
+and Runes tabs (type 1) and one for the Chronicle (type 2). Before 0.28.3 it was never joined, was moved
+about with the saves while the game kept the first one in memory, and so pages 11-20 and 21-30 didn't
+hold what the plugin thought. Now (`modernstash.h`) it is laid out like the other: the same pages for each
+save, the same 4 for ascended heroes, two unused pages at the end; joined once while the game starts
+(old files in `camp/stash-backup-<time>-modern`, marker `camp/stash-joined-modern.txt`), kept in place when
+saves change, emptied with a deleted save (`camp/wipe-modern.txt`). Its gold goes to each save's purse.
+- Pages that lie right stay. Pages of a parked save's file go to that save's pages, or an empty one of them.
+- **Joined without doubles (0.28.4).** The sections are told apart by type, not place (a real DLC file has the
+  tabs' section after 12 pages). Pages of one save found unchanged in a later save's file are kept once, for the
+  earlier save. An old-rules file of another version without items counts as blank; one with items is left alone
+  (then only the old-rules stashes stay separate, and changing saves needs a restart).
+- **Still two stashes.** Heroes with and without the Warlock rules of one save don't share items: the
+  game loads one file or the other. The purse, the Upgrades tab, the safe and the page tiers are shared.
+- `split_stash.py` doesn't touch this file.
+- Checked against a real file of the DLC (from the D2SSharp project's tests; not in this repo), both the
+  layout and the stack sizes. Not yet tried in the game with a DLC hero. `dd-stash old` logs which rules
+  the hero has and every shared item's page.
+- Sources: github.com/ResurrectedTrader/D2SSharp (file format), theamazonbasin.com/wiki (5 pages, separate stash).
 
 ## One stash file for all saves (0.22.1)
 The game reads `SharedStashSoftCoreV2.d2i` once, **when it starts** (not at the first game, as thought

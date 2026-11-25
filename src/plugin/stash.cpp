@@ -13,6 +13,7 @@
 #include "stashgame.h"
 #include "journal.h"
 #include "stashfile.h"
+#include "modernstash.h"
 #include "campfire.h"
 #include "legacy.h"
 #include "gameapi.h"
@@ -27,7 +28,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <ctime>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -69,15 +69,12 @@ std::atomic<bool>      g_delivering { false };
 
 Stash::Safe g_safe;            // what the Warlock rules' own tabs held (camp/safe.txt); read with g_state
 std::atomic<bool> g_safeTab { false };   // the safe shows in the Upgrades tab's place
-std::atomic<bool> g_warlock { false };   // a hero with the Warlock rules was played: their stash file exists
-bool              g_tabsSeen = false;    // the Warlock tabs were looked at since the stash opened; game thread only
-std::atomic<bool> g_safeFailed { false }; // no copy of their stash file could be made: nothing is moved
+std::atomic<bool> g_modern { false };    // this hero has the Warlock rules, and so the other stash file (modernstash.h)
 
 // live folder and slot from camp/slot<N>/progress/<hero>.txt
 auto LiveOf(const fs::path& progress) -> fs::path { return progress.parent_path().parent_path().parent_path().parent_path(); }
 auto SlotOf(const fs::path& progress) -> int { return std::atoi(progress.parent_path().parent_path().filename().string().c_str() + 4); }
 auto SafeFile(const fs::path& live) -> fs::path { return live / "camp" / "safe.txt"; }
-auto WarlockFile(const fs::path& live) -> fs::path { return live / "ModernSharedStashSoftCoreV2.d2i"; }
 
 std::atomic<bool>      g_bankOpen { false };
 std::atomic<uintptr_t> g_visit { 0 };       // counts stash openings, so an old sweeper stops
@@ -136,18 +133,26 @@ auto Current(const fs::path& progress) -> bool {
 		// camp/slot<N>/stash.txt: which save this is, and so which pages of the stash file are its own.
 		const fs::path live = file.parent_path().parent_path().parent_path();
 		const int slot = std::clamp(std::atoi(file.parent_path().filename().string().c_str() + 4), 1, Camp::SlotCount);
-		const bool joined = Camp::StashJoined(live);
+		g_modern = ModernStash::HasWarlockRules(Camp::ReadFile(live / (progress.stem().string() + ".d2s")));
+		const bool joined = g_modern.load() ? Camp::ModernStashJoined(live) : Camp::StashJoined(live);
 		g_base = joined ? (slot - 1) * StashFile::PagesPerSave : 0;
 		g_tabBase = joined ? StashFile::AllPages + (slot - 1) * StashFile::TabsPerSave : Stash::PageCount;
-		g_wipe = joined && StashFile::Wipes(live).count(slot) != 0;
-		if (joined && !g_state.purseMoved) {  // the gold its own stash file held
+		g_wipe = joined && StashFile::Wipes(live, g_modern.load()).count(slot) != 0;
+		if (const long long gold = Camp::ModernStashJoined(live) ? ModernStash::JoinedGold(live, slot) : 0; gold > 0) {
+			g_state.purse += gold;
+			if (Camp::WriteFile(g_file, Stash::Serialize(g_state))) {
+				ModernStash::ForgetGold(live, slot);
+			} else {
+				g_state.purse -= gold;
+			}
+		}
+		if (Camp::StashJoined(live) && !g_state.purseMoved) {  // the gold its own stash file held
 			g_state.purse += StashFile::JoinedGold(live, slot);
 			g_state.purseMoved = true;
 			Camp::WriteFile(g_file, Stash::Serialize(g_state));
 		}
 		g_legacy = Legacy::Load(LiveOf(progress), SlotOf(progress));
 		g_safe = Stash::ParseSafe(Camp::ReadFile(SafeFile(live)));
-		g_warlock = fs::exists(WarlockFile(live), ec);
 	}
 	return true;
 }
@@ -511,8 +516,8 @@ auto SaveSafe(const D2RL::PluginContext* context) -> bool {
 	return false;
 }
 
-// Game thread. Makes one new item, in the hand, the bag or an open page, in the order asked for.
-auto MakeItem(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::string& code, bool intoHand, bool intoPages) -> bool {
+// Game thread. Makes one new item, in the hand, else the bag.
+auto MakeItem(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::string& code) -> bool {
 	D2RL::Items::ItemCreateSpec spec {
 		.structSize      = D2RL::Items::ItemCreateSpecSize,
 		.code            = CodeNumber(code),
@@ -529,21 +534,11 @@ auto MakeItem(const D2RL::PluginContext* context, D2RL::PlayerHandle player, con
 		},
 	};
 	D2RL::ItemHandle made = D2RL::InvalidItemHandle;
-	if (intoHand && g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success) {
-		return true;
-	}
-	spec.destination.container = Container::Inventory;
 	if (g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success) {
 		return true;
 	}
-	for (int page = 0; intoPages && g_sharedWrite && page < g_state.Pages(); ++page) {
-		spec.destination.container = Container::SharedStash;
-		spec.destination.sharedStashPage = static_cast<uint32_t>(g_base.load() + page);
-		if (g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success) {
-			return true;
-		}
-	}
-	return false;
+	spec.destination.container = Container::Inventory;
+	return g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success;
 }
 
 // Game thread. One of a kind is taken out of the safe, into the hand or the bag. Nothing goes in here.
@@ -570,7 +565,7 @@ void __cdecl TakeFromSafe(const D2RL::PluginContext* context, void* data) noexce
 			g_safe = before;
 			return;
 		}
-		if (!MakeItem(context, player, code, true, false)) {
+		if (!MakeItem(context, player, code)) {
 			g_safe = before;
 			SaveSafe(context);
 			Log(context, "Stash: taking %s out of the safe failed; it stays there.", code.c_str());
@@ -581,76 +576,6 @@ void __cdecl TakeFromSafe(const D2RL::PluginContext* context, void* data) noexce
 	} catch (...) {
 		context->LogWarn("Stash: taking from the safe failed.");
 	}
-}
-
-// The Warlock rules' stash file as it was, kept before the first move of a day (once per second at
-// most: the name is the time).
-auto KeepWarlockFile(const D2RL::PluginContext* context) -> bool {
-	const fs::path live = g_file.parent_path().parent_path().parent_path();
-	const fs::path folder = live / "camp" / ("stash-backup-safe-" + std::to_string(std::time(nullptr)));
-	std::error_code ec;
-	fs::create_directories(folder, ec);
-	const fs::path copy = folder / WarlockFile(live).filename();
-	fs::copy_file(WarlockFile(live), copy, fs::copy_options::overwrite_existing, ec);
-	if (ec || Camp::ReadFile(copy).empty() || Camp::ReadFile(copy) != Camp::ReadFile(WarlockFile(live))) {
-		context->LogWarn("Stash: could not copy the Warlock rules' stash file; its gems and runes stay where they are.");
-		return false;
-	}
-	Log(context, "Stash: the Warlock rules' stash file is kept in camp/%s.", folder.filename().string().c_str());
-	return true;
-}
-
-// Game thread, locked. Empties the Warlock rules' own tabs: what they held when the stash was opened
-// goes to the safe. Anything that gets in while it is open goes to the Upgrades tab, else back to the bag or an open page (the
-// safe can't be filled); only if there is no room at all the safe keeps it, so nothing is lost.
-void EmptyWarlockTabs(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::vector<D2RL::Items::ItemInfo>& items) {
-	const bool first = !std::exchange(g_tabsSeen, true);
-	if (!g_warlock.load() || g_safeFailed.load()) {
-		return;
-	}
-	std::vector<const D2RL::Items::ItemInfo*> out;
-	for (const auto& item : items) {
-		if (Stash::InWarlockTabs(item.container == Container::SharedStash, item.sharedStashPage, StashFile::FilePages, CodeText(item.code))) {
-			out.push_back(&item);
-		}
-	}
-	if (out.empty()) {
-		return;
-	}
-	if (first && !KeepWarlockFile(context)) {
-		g_safeFailed = true;
-		return;
-	}
-	int kept = 0, returned = 0, stored = 0;
-	for (const auto* item : out) {
-		const std::string code = CodeText(item->code);
-		const int n = (std::max)(1, item->quantity);
-		const auto result = g_items->destroyItem(context, player, item->handle, D2RL::Items::SocketedItemPolicy::RejectIfNotEmpty);
-		Log(context, "Stash: old tabs: %s x%d (page %u, %d,%d) -> code %d.", code.c_str(), n, item->sharedStashPage, item->x, item->y, static_cast<int>(result));
-		if (result != D2RL::Items::Result::Success) {
-			continue;
-		}
-		for (int i = 0; i < n; ++i) {
-			const Stash::Kind* kind = first ? nullptr : Stash::KindOf(code);
-			if (kind != nullptr && g_state.Room(*kind) > 0) {
-				g_state.Add(code, 1);
-				++stored;
-			} else if (!first && MakeItem(context, player, code, false, true)) {
-				++returned;
-			} else {
-				++g_safe[code];
-				++kept;
-			}
-		}
-	}
-	if (stored > 0) {
-		Save(context);
-	}
-	if (kept > 0) {
-		SaveSafe(context);
-	}
-	QueueRefresh(context);
-	Log(context, "Stash: old tabs: %d item(s) to the safe, %d to the Upgrades tab, %d back to the hero.", kept, stored, returned);
 }
 
 // Game thread. Ctrl+click would send the bag's gems and runes to the Warlock rules' hidden tabs:
@@ -906,9 +831,9 @@ void WipePages(const D2RL::PluginContext* context, D2RL::PlayerHandle player, co
 	Log(context, "Stash: emptied the deleted save's pages (%d items, %d left).", gone, left);
 	if (left == 0) {
 		const fs::path live = g_file.parent_path().parent_path().parent_path();
-		auto wipes = StashFile::Wipes(live);
+		auto wipes = StashFile::Wipes(live, g_modern.load());
 		wipes.erase(g_base.load() / StashFile::PagesPerSave + 1);
-		if (StashFile::SetWipes(live, wipes)) {
+		if (StashFile::SetWipes(live, wipes, g_modern.load())) {
 			g_wipe = false;
 		}
 	}
@@ -929,7 +854,6 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 			WipePages(context, player, items);
 			return;
 		}
-		EmptyWarlockTabs(context, player, items);
 		GuardTabs(context, player, items, progress);
 		const bool carrying = g_legacy.CarriedBy(progress.stem().string()) != nullptr;  // not ours to move (Deliver)
 		std::set<int> used;
@@ -984,16 +908,6 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 		}
 	} catch (...) {
 		context->LogWarn("Stash: checking the pages failed.");
-	}
-}
-
-void __cdecl NewVisit(const D2RL::PluginContext*, void*) noexcept {
-	g_tabsSeen = false;
-	g_safeFailed = false;
-	const Lock lock(g_mutex);
-	if (!g_file.empty()) {  // a first Warlock hero's stash file appears while it plays
-		std::error_code ec;
-		g_warlock = fs::exists(WarlockFile(g_file.parent_path().parent_path().parent_path()), ec);
 	}
 }
 
@@ -1323,7 +1237,7 @@ void __cdecl HomePage(const D2RL::PluginContext* context, void*) noexcept {
 		}
 	};
 	g_jumping = true;
-	send("SharedStashLeft", StashFile::FilePages - 1);
+	send("SharedStashLeft", ModernStash::OrdinaryPages + 2);  // past the first page of either file; more does nothing
 	send("SharedStashRight", g_base.load());
 	g_jumping = false;
 	g_page = 1;
@@ -1565,7 +1479,7 @@ void __cdecl LogShared(const D2RL::PluginContext* context, void*) noexcept {
 		D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 		std::vector<D2RL::Items::ItemInfo> items;
 		const bool ok = ItemsIn(context, D2RL::Items::AllItemContainers, player, items);
-		Log(context, "Stash: all items (%s, Warlock file %s):", ok ? "read" : "failed", g_warlock.load() ? "yes" : "no");
+		Log(context, "Stash: all items (%s, %s rules, first page %d):", ok ? "read" : "failed", g_modern.load() ? "Warlock" : "older", g_base.load() + 1);
 		for (const auto& item : items) {
 			if (item.container == Container::SharedStash || item.container == Container::Unknown) {
 				Log(context, "Stash:   %s x%d, container %d, page %d, shared page %u, body %d, at %d,%d", CodeText(item.code).c_str(), item.quantity,
@@ -1746,7 +1660,6 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 							const Lock lock(g_mutex);
 							g_known.clear();
 						}
-						g_threads->runOnGameThread(context, NewVisit, nullptr);
 						StartSweeping(context);
 					}
 					SyncActs(context);

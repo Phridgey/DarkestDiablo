@@ -10,7 +10,7 @@
 // error leaves every file as it was.
 //
 // Save version 105, checked on 64 real saves and 400 stash pages (2026-11-24). Not seen yet, so
-// refused: ears, and items whose last bit is set. Not yet seen in a real save: runewords,
+// refused: ears. Not yet seen in a real save: runewords,
 // sets, personalized items.
 #pragma once
 
@@ -63,6 +63,7 @@ struct Item {
 	std::string code;
 	int loc = 0, slot = 0, x = 0, y = 0, page = 0;  // loc: 0 stored, 1 worn, 2 belt, 4 hand
 	int w = 1, h = 1;
+	int count = 1;      // of a stack in the Gems, Materials and Runes tabs
 };
 
 class Reader {
@@ -159,12 +160,11 @@ inline auto ReadItem(const Bytes& b, size_t at, const Shapes& shapes, Item& out,
 	}
 	out.w = shape->second.w, out.h = shape->second.h;
 	uint32_t children = 0;
-	bool last = false;
 	if ((flags & 0x200000U) != 0) {  // a simple item
 		if (r.Get(1) != 0) {
 			r.Skip(128);
 		}
-		if (r.Get(1) != 0) { r.Skip(8); }  // a stack count (belt potions, seen 2026-11-24)
+		if (r.Get(1) != 0) { out.count = static_cast<int>(r.Get(8)); }  // a stack count (belt potions, seen 2026-11-24)
 	} else {
 		children = r.Get(3);
 		r.Skip(32 + 7);
@@ -212,10 +212,10 @@ inline auto ReadItem(const Bytes& b, size_t at, const Shapes& shapes, Item& out,
 			error = "unreadable properties on " + out.code;
 			return 0;
 		}
-		last = r.Get(1) != 0;
+		if (r.Get(1) != 0) { out.count = static_cast<int>(r.Get(8)); }  // the same for an item that is not simple (gems, 2026-11-25)
 	}
-	if (!r.Ok() || last) {
-		error = (last ? "an unknown ending on " : "the file ends inside ") + out.code + " (byte " + std::to_string(at) + ")";
+	if (!r.Ok()) {
+		error = "the file ends inside " + out.code + " (byte " + std::to_string(at) + ")";
 		return 0;
 	}
 	size_t end = r.End();
