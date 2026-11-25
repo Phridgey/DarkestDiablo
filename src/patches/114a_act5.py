@@ -68,6 +68,9 @@ THRONE = {"id": "131", "map": "Expansion/BaalLair/darkest_throne.ds1", "size": (
 
 BAAL_LEVEL = "90"     # his normal monster level, so his item level reaches every elite unique and set
 CHISEL = ("zsk", "Socket Chisel", "key")  # code, name, the item whose look it borrows
+# Its tooltip. Item text lines show bottom line first, so the first line is written last.
+CHISEL_TEXT = ("Sockets: unique or set 1, rare or crafted 2, magic 3, others as many as fit\n"
+               "Cube it with an item that has no sockets to add sockets")
 # What the Chisel gives, by quality: as many sockets as the item can hold, up to this many.
 CHISEL_SOCKETS = (("uni", 1, "a unique"), ("set", 1, "a set"), ("rar", 2, "a rare"), ("crf", 2, "a crafted"),
                   ("mag", 3, "a magic"), ("", 6, "any other"))
@@ -133,7 +136,10 @@ def chisel(t):
         raise RuntimeError(f"item code {code} is taken")
     row = misc.add_copy("code", look, code=code, name=name, namestr=f"dd{code}", spawnable="0", quest="0", questdiffcheck="0",
                         level="1", levelreq="0", type="ques", useable="0", stackable="0", minstack="0", maxstack="0",
-                        spawnstack="0", PermStoreItem="", multibuy="", UICatOverride="")
+                        spawnstack="0", PermStoreItem="", multibuy="", UICatOverride="",
+                        # What it does, under its name (the way Malah's Potion shows its line).
+                        spelldesc="1", spelldescstr=f"dd{code}Desc", spelldescstr2="", spelldesccalc="",
+                        spelldesccolor="4")
     # The look is a key's: not a key (it would open chests and be used up), and no shop sells it.
     for col in list(row):
         if col.endswith(("Min", "Max", "MagicMin", "MagicMax")) and any(col.startswith(n) for n in (
@@ -160,6 +166,8 @@ def chisel(t):
     langs = [k for k in strings[0] if k not in ("id", "Key")]
     if not any(e.get("Key") == f"dd{code}" for e in strings):
         strings.append({"id": STRING_ID, "Key": f"dd{code}", **{lang: name for lang in langs}})
+    if not any(e.get("Key") == f"dd{code}Desc" for e in strings):
+        strings.append({"id": STRING_ID + 1, "Key": f"dd{code}Desc", **{lang: CHISEL_TEXT for lang in langs}})
 
 
 def patch(t):
