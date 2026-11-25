@@ -6,8 +6,10 @@ picture, no text) outside the window, under a click catcher. (Frame -1 does not 
 drew it as a black box, 0.20.5.) The plugin moves anything left in a hero's
 personal page to the shared pages (src/plugin/stash.cpp).
 
-The Warlock rules' own Gems, Materials and Runes tabs are hidden the same way (the Upgrades tab lies over
-Gems); the plugin moves what they hold to the safe (docs/stash.md).
+The Warlock rules' own Gems, Materials and Runes tabs are off: the bar has two tabs (as in the game's old
+graphics), the lists of the other three stay, blank and covered, in case the game counts five all the
+same, and their slots lie outside the window, with the controller too. The plugin moves what they hold
+to the safe (docs/stash.md).
 
 The Upgrades tab is an ordinary button in the second tab's place; the plugin catches its message.
 Not changed: the old (legacy, "G" key) graphics and the controller layouts.
@@ -38,7 +40,20 @@ def with_blank_frame(data):
     return bytes(out)
 
 
+def no_warlock_tabs(t, bank):
+    fields = t.widget(bank, "BankTabs")["fields"]
+    if fields["tabCount"] != 5 or fields["textStrings"][2:] != ["@gems", "@materials", "@runes"]:
+        raise RuntimeError("The stash's Warlock tabs are not the ones this patch knows; has the game changed?")
+    fields["tabCount"] = 2
+    fields["textStrings"][2:] = ["", "", ""]
+    for name in ("gems", "materials", "runes", "horadriccube"):
+        widget = t.widget(bank, "advancedstash_" + name)
+        fields = widget.setdefault("fields", {})
+        fields["rect"] = dict(fields.get("rect", {}), x=-9000, y=-9000)
+
+
 def patch(t):
+    no_warlock_tabs(t, t.layout("controller/bankexpansionlayouthd"))
     bank = t.layout("bankexpansionlayouthd")
     tabs = t.widget(bank, "BankTabs")
     fields = tabs["fields"]
@@ -46,9 +61,8 @@ def patch(t):
         raise RuntimeError("The stash's tabs are not the ones this patch knows; has the game changed?")
     x, y = fields["rect"]["x"], fields["rect"]["y"]
     fields["rect"] = dict(fields["rect"], x=x - TAB)
+    no_warlock_tabs(t, bank)
     hidden = (0, 2, 3, 4)  # personal; gems, materials, runes
-    if fields["tabCount"] != 5 or fields["textStrings"][2:] != ["@gems", "@materials", "@runes"]:
-        raise RuntimeError("The stash's Warlock tabs are not the ones this patch knows; has the game changed?")
     for i in hidden:
         fields["textStrings"][i] = ""
         for frames in ("inactiveFrames", "activeFrames", "disabledFrames"):

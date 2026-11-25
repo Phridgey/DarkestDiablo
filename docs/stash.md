@@ -27,7 +27,7 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   to take one out or to store what is in the hand; Ctrl+click a bag item stores it.
 
 - **The safe.** Heroes with the Warlock rules have three tabs of the game's own (Gems, Materials, Runes).
-  They are hidden. What they hold when the stash is opened goes to the safe, a tab after Upgrades that
+  They are off (no tabs, their slots outside the window). What they hold when the stash is opened goes to the safe, a tab after Upgrades that
   shows only what is in it. Click to take one out; nothing can be put in; the tab is gone once it is
   empty. It is one safe for all saves (the game has one such stash for all of them): `camp/safe.txt`.
   Ctrl+click on a gem or rune, which the game would send to the hidden tabs, sends it to the page that
@@ -93,5 +93,5 @@ another). Changing saves needs no restart.
 - **Going back** to a version before this: `python tools/split_stash.py "<save folder>"` first.
 - **Not for the controller layout:** it still shows the game's page number and gold.
 - **Opening on Shared.** The game opens the stash on the hero's own page and plugins can't choose a tab.
-  Where the player clicks Shared is remembered (`camp/stash-tab.txt`, for that window size) and clicked
+  Where the player clicks Shared is remembered (`camp/stash-spot.txt`, for that window size) and clicked
   for them from then on; `dd-stash autotab` turns it off.

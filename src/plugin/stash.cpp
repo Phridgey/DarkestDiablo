@@ -1363,7 +1363,7 @@ auto __cdecl OnItemClick(const D2RL::PluginContext* context, const D2RL::ItemInt
 			}
 			return Decision::Consume;  // never into the page hidden behind the tab
 		}
-		if (g_warlock.load() && event->container == Container::Inventory && info.runtimeId != 0 && Stash::SafeKindOf(CodeText(info.code)) != nullptr &&
+		if (event->container == Container::Inventory && info.runtimeId != 0 && Stash::SafeKindOf(CodeText(info.code)) != nullptr &&
 			(event->modifiers & D2RL::ItemInteractions::ModifierBit(D2RL::ItemInteractions::Modifier::Control)) != 0) {
 			g_threads->runOnGameThread(context, MoveToShownPage, reinterpret_cast<void*>(static_cast<uintptr_t>(info.runtimeId)));
 			return Decision::Consume;
@@ -1390,7 +1390,7 @@ auto GameWindow(RECT& area) noexcept -> HWND {
 }
 
 auto SpotFile() -> fs::path {
-	return g_file.empty() ? fs::path() : g_file.parent_path().parent_path() / "stash-tab.txt";  // camp/
+	return g_file.empty() ? fs::path() : g_file.parent_path().parent_path() / "stash-spot.txt";  // camp/ (stash-tab.txt, before 0.28.1, could hold the place of a Warlock tab)
 }
 
 // UI thread: the player chose the Shared tab with the mouse.
@@ -1434,39 +1434,46 @@ void ClickShared(const D2RL::PluginContext* context) noexcept {
 			const auto wait = [](int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); };
 			const auto mine = [&] { return g_bankOpen.load() && g_visit.load() == visit; };
 			wait(120);  // the window is up
-			for (int i = 0; i < 100 && mine() && ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0; ++i) {
-				wait(20);  // the player still holds the mouse
-			}
-			RECT area {};
-			POINT before {}, spot { g_spotX.load(), g_spotY.load() };
-			const HWND window = GameWindow(area);
-			if (mine() && !g_tabChosen.load() && window != nullptr && area.right == g_spotW.load() && area.bottom == g_spotH.load() && GetCursorPos(&before) &&
-				ClientToScreen(window, &spot)) {
-				const auto button = [](DWORD flags) {
-					INPUT input {};
-					input.type = INPUT_MOUSE;
-					input.mi.dwFlags = flags;
-					SendInput(1, &input, sizeof(input));
-				};
-				SetCursorPos(spot.x, spot.y);
-				wait(40);
-				if (mine()) {
-					button(MOUSEEVENTF_LEFTDOWN);
-					wait(30);
-					button(MOUSEEVENTF_LEFTUP);
-					wait(40);
+			// A slow stash misses a click, so there are three tries before the place counts as wrong.
+			bool clicked = false;
+			for (int attempt = 0; attempt < 3 && mine() && !g_tabChosen.load(); ++attempt) {
+				for (int i = 0; i < 100 && mine() && ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0; ++i) {
+					wait(20);  // the player still holds the mouse
 				}
-				SetCursorPos(before.x, before.y);
-				wait(250);
-				if (mine() && !g_tabChosen.load()) {
-					g_spotX = -1;
-					context->LogInfo("Stash: the Shared tab was not where it was before; the next click on it is remembered.");
-					try {
-						const Lock lock(g_mutex);
-						std::error_code ec;
-						fs::remove(SpotFile(), ec);
-					} catch (...) {
+				RECT area {};
+				POINT before {}, spot { g_spotX.load(), g_spotY.load() };
+				const HWND window = GameWindow(area);
+				if (mine() && !g_tabChosen.load() && window != nullptr && area.right == g_spotW.load() && area.bottom == g_spotH.load() && GetCursorPos(&before) &&
+					ClientToScreen(window, &spot)) {
+					const auto button = [](DWORD flags) {
+						INPUT input {};
+						input.type = INPUT_MOUSE;
+						input.mi.dwFlags = flags;
+						SendInput(1, &input, sizeof(input));
+					};
+					SetCursorPos(spot.x, spot.y);
+					wait(40);
+					if (mine()) {
+						button(MOUSEEVENTF_LEFTDOWN);
+						wait(30);
+						button(MOUSEEVENTF_LEFTUP);
+						wait(40);
 					}
+					SetCursorPos(before.x, before.y);
+					clicked = true;
+					for (int i = 0; i < 6 + 6 * attempt && mine() && !g_tabChosen.load(); ++i) {
+						wait(50);
+					}
+				}
+			}
+			if (clicked && mine() && !g_tabChosen.load()) {
+				g_spotX = -1;
+				context->LogInfo("Stash: the Shared tab was not where it was before; the next click on it is remembered.");
+				try {
+					const Lock lock(g_mutex);
+					std::error_code ec;
+					fs::remove(SpotFile(), ec);
+				} catch (...) {
 				}
 			}
 			g_clicking = false;

@@ -82,7 +82,7 @@ def patch(t):
 
 
 def crafting_loot(t, arena, arena_id=ARENA_ID, wave_types=WAVE_TYPES, craft=CRAFT, name="DD Craft",
-                  id_prefix="dd_craft_"):
+                  id_prefix="dd_craft_", gem_to_rune=False):
     """The hunt's loot, all from the game's own loot tables, so it drops on the ground like any
     loot. (The plugin can't make items on the ground: the loader's ground drops crash the game.)
 
@@ -95,6 +95,9 @@ def crafting_loot(t, arena, arena_id=ARENA_ID, wave_types=WAVE_TYPES, craft=CRAF
     - Runes: each monster type comes in one copy per magic find step ("dd_craft_<id>_r<k>"),
       whose loot table drops a rune at that step's chance. The plugin reads the hero's magic find
       when a wave spawns and spawns the matching copies ("craftmf" lines in loot_data.txt).
+
+    With gem_to_rune, the lower gem's share of the gems-and-gold pick drops a rune instead, on top of
+    the magic-find rune (Lower Kurast: about 7 runes a run instead of 2, 2026-11-25).
 
     Other crafting hunts (the Stony Tomb, 130_stony_tomb.py) call this with their own level,
     monsters, loot (`craft`), table names and monster Id prefix; the white copies are made once
@@ -125,13 +128,15 @@ def crafting_loot(t, arena, arena_id=ARENA_ID, wave_types=WAVE_TYPES, craft=CRAF
     hunt = {}  # difficulty tag -> {step: (normal table, champion table)}
     for d, (diff, (runes, gems, potion)) in enumerate(craft.items()):
         tag = f" {diff}" if diff else ""
+        if not isinstance(runes, str):  # our own rune table
+            runes = table(f"{name} Runes{tag}", 1, 0, runes)
         entries = [(gems[0], 10), (gems[1], 4), (potion, 8), ("gld", 12)]
+        if gem_to_rune:  # the lower gem's share drops a rune instead (Lower Kurast, 2026-11-25)
+            entries[0] = (runes, 10)
         base = table(f"{name} Hunt{tag}", 1, 40, entries)
         base_champ = table(f"{name} Hunt Champ{tag}", 2, 10, entries)
         white = table(f"{name} White{tag}", 1, 100 - WHITE_CHANCE,
                       [(nested(f"{name} White Bases{tag}", whites[d]), WHITE_CHANCE)])
-        if not isinstance(runes, str):  # our own rune table
-            runes = table(f"{name} Runes{tag}", 1, 0, runes)
         hunt[diff] = {}
         for k, (_, chance) in enumerate(steps):
             rune = table(f"{name} Rune {k}{tag}", 1, round((100 - chance) * 2), [(runes, round(chance * 2))])
