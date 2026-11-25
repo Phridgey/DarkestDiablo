@@ -2410,7 +2410,7 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	const char* text = event->text != nullptr ? event->text : "";
 	char message[256] {};
 	// Log UI messages for finding new ones, but not mouse and keys or the per-frame monster bar.
-	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0 && std::strstr(text, "darkestdiablo/PotionHud") == nullptr) {
+	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0 && std::strstr(text, "darkestdiablo/PotionHud") == nullptr && !StashGame::TurningPages()) {
 		std::snprintf(message, sizeof(message), "UI message: %s:%s:%s", target, command, text);
 		context->LogInfo(message);
 		Trace(context, message);

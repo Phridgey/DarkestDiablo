@@ -9,7 +9,7 @@
 // - Upgrades tab: gems and runes kept as counts, one slot per kind. Nodes decide which
 //   kinds may be put in and how many of each. What is in a slot can always be taken out again.
 // On disk: camp/slot<N>/stash.txt, one fact per line:
-//   "tier <n>", "fund <gold>", "act <Class> <1-5>", "node <id>", "mat <code> <count>",
+//   "tier <n>", "fund <gold>", "purse <gold>", "pursemoved 1", "act <Class> <1-5>", "node <id>", "mat <code> <count>",
 //   "legacy <page>" (a locked page that held items when this was added), "legacydone 1".
 #pragma once
 
@@ -154,6 +154,8 @@ enum class Buy { Bought, AlreadyOwned, Locked, NotEnoughPoints, Unknown };
 struct State {
 	int       tier = 0;   // tiers bought
 	long long fund = 0;   // gold paid toward the next tier
+	long long purse = 0;  // gold kept in the stash
+	bool      purseMoved = false;  // what the save's own stash file held is in the purse (stashfile.h)
 	std::set<std::pair<int, int>> acts;     // (class, act) finished: a point each
 	std::set<std::string>         nodes;
 	std::map<std::string, int>    mats;
@@ -278,7 +280,7 @@ inline auto CountActs(State& state, int cls, const Route::Progress& progress) ->
 // ---- stash.txt ----------------------------------------------------------------------------
 inline auto Serialize(const State& state) -> std::string {
 	std::ostringstream out;
-	out << "version 1\ntier " << state.tier << "\nfund " << state.fund << "\n";
+	out << "version 1\ntier " << state.tier << "\nfund " << state.fund << "\npurse " << state.purse << "\npursemoved " << (state.purseMoved ? 1 : 0) << "\n";
 	for (const auto& [cls, act] : state.acts) { out << "act " << Camp::ClassNames[cls] << " " << act << "\n"; }
 	for (const auto& node : state.nodes)      { out << "node " << node << "\n"; }
 	for (const auto& [code, n] : state.mats)  { out << "mat " << code << " " << n << "\n"; }
@@ -300,6 +302,10 @@ inline auto Parse(const std::string& text) -> State {
 			state.tier = static_cast<int>(std::clamp(number, 0LL, static_cast<long long>(TierCount)));
 		} else if (key == "fund") {
 			state.fund = (std::max)(0LL, number);
+		} else if (key == "purse") {
+			state.purse = (std::max)(0LL, number);
+		} else if (key == "pursemoved") {
+			state.purseMoved = number == 1;
 		} else if (key == "act") {
 			int act = 0;
 			words >> act;
@@ -383,17 +389,19 @@ inline auto Panel(const Rect& r, const char* anchor, int priority, const std::st
 
 }  // namespace Ui
 
-inline constexpr int    TreeW = 1900, TreeH = 1507, TreeX = 420, TreeColumnW = 245, TreeRowY = 170, TreeRowH = 160;
+inline constexpr int    TreeW = 1900, TreeH = 1507, TreeColumnW = 245, TreeRowY = 170, TreeRowH = 160;
 inline constexpr double NodeScale = 0.65;
 inline constexpr int    SideW = 275, SideH = 70, SideY = 151, SidePitch = 76;  // the Caravan / Stash button at a window's right edge
 
-// The caravan window, in the stash's place (the inventory stays beside it): the page tiers down its left side, the passive tree beside them.
+// The caravan window, in the stash's place (the inventory stays beside it): the page tiers down its
+// left side, the passive tree beside them. Two panels, so paying redraws only the small one.
+inline constexpr int WallW = 411;
+
 // `note`: what became of the last payment, under the Pay buttons.
-inline auto TreeLayout(const State& state, const std::string& note = {}) -> std::string {
+inline auto WallLayout(const State& state, const std::string& note = {}) -> std::string {
 	using namespace Ui;
-	std::string out = Catcher(TreeW, TreeH) + "," + Box("Edge", { 0, 0, TreeW, TreeH }, Bronze) + "," +
-		Box("Sheet", { 4, 4, TreeW - 8, TreeH - 8 }, "[0.035,0.03,0.028,1.0]") + "," + CloseButton(TreeW - 90, "closebank") + "," +
-		Button("Stash", TreeW + 2, SideY, 0.75, "Stash", TextGold, "tree", "Back to the stash");
+	std::string out = Catcher(WallW, TreeH) + "," + Box("Edge", { 0, 0, WallW, TreeH }, Bronze) + "," +
+		Box("Sheet", { 4, 4, WallW - 7, TreeH - 8 }, "[0.035,0.03,0.028,1.0]");
 	const auto add = [&](const std::string& widget) { out += "," + widget; };
 
 	add(Text("PagesTitle", { 30, 50, 360, 50 }, "Caravan Stash", TextGold, "$LargeFontSize"));
@@ -414,8 +422,8 @@ inline auto TreeLayout(const State& state, const std::string& note = {}) -> std:
 			owned ? TextGreen : next ? TextBeige : TextGrey, "$MediumFontSize"));
 	}
 	if (state.tier < TierCount) {
-		add(Button("PaySome", 44, 1290, 0.9, "Pay 10,000 gold", TextWhite, "pay-10000", "Pay gold toward the next page. Any hero of this save can add to it."));
-		add(Button("PayAll", 44, 1384, 0.9, "Pay all gold", TextWhite, "pay-all", "Pay all the gold this hero carries, up to what is still missing."));
+		add(Button("PaySome", 44, 1290, 0.9, "Pay 10,000 gold", TextWhite, "pay-10000", "Pay gold toward the next page, what the hero carries first, then the stash's gold."));
+		add(Button("PayAll", 44, 1384, 0.9, "Pay all gold", TextWhite, "pay-all", "Pay all the gold this hero carries and the stash holds, up to what is still missing."));
 	} else {
 		add(Text("PagesDone", { 40, 1320, 340, 60 }, "Every page is unlocked", TextGreen, "$MediumFontSize"));
 	}
@@ -423,13 +431,23 @@ inline auto TreeLayout(const State& state, const std::string& note = {}) -> std:
 	if (!note.empty()) {
 		add(Text("PayNote", { 14, 1470, 390, 28 }, note, TextBeige, "18"));
 	}
-	add(Box("Divider", { 408, 40, 3, TreeH - 80 }, Bronze));
-	add(Text("TreeTitle", { TreeX, 50, 1470, 50 }, "Caravan Passives", TextGold, "$LargeFontSize"));
-	add(Text("Points", { TreeX, 100, 1470, 40 }, std::to_string(state.Points()) + (state.Points() == 1 ? " point" : " points") + " to spend  (" +
+	add(Box("Divider", { WallW - 3, 40, 3, TreeH - 80 }, Bronze));
+	return Panel({ 236, -651, WallW, TreeH }, "$LeftPanelAnchor", 8700, out);  // over the Upgrades tab (8600) too
+}
+
+inline auto TreeLayout(const State& state) -> std::string {
+	using namespace Ui;
+	constexpr int W = TreeW - WallW, X = 9;
+	std::string out = Catcher(W, TreeH) + "," + Box("Edge", { 0, 0, W, TreeH }, Bronze) + "," +
+		Box("Sheet", { 0, 4, W - 4, TreeH - 8 }, "[0.035,0.03,0.028,1.0]") + "," + CloseButton(W - 90, "closebank") + "," +
+		Button("Stash", W + 2, SideY, 0.75, "Stash", TextGold, "tree", "Back to the stash");
+	const auto add = [&](const std::string& widget) { out += "," + widget; };
+	add(Text("TreeTitle", { X, 50, 1470, 50 }, "Caravan Passives", TextGold, "$LargeFontSize"));
+	add(Text("Points", { X, 100, 1470, 40 }, std::to_string(state.Points()) + (state.Points() == 1 ? " point" : " points") + " to spend  (" +
 		std::to_string(state.Earned()) + " of " + std::to_string(Camp::ClassCount * 5) + " earned)", state.Points() > 0 ? TextGreen : TextBeige, "$MediumFontSize"));
 	const int bw = static_cast<int>(ButtonW * NodeScale), bh = static_cast<int>(ButtonH * NodeScale);
 	const auto at = [&](const Node& node) -> std::pair<int, int> {  // a node's button: top left
-		return { TreeX + static_cast<int>(node.column * TreeColumnW) + (TreeColumnW - bw) / 2, TreeRowY + node.row * TreeRowH };
+		return { X + static_cast<int>(node.column * TreeColumnW) + (TreeColumnW - bw) / 2, TreeRowY + node.row * TreeRowH };
 	};
 	// Lines first, so the buttons lie over them: down from the parent, across, down to the child.
 	for (const bool lit : { false, true }) {
@@ -457,8 +475,8 @@ inline auto TreeLayout(const State& state, const std::string& note = {}) -> std:
 		add(Text("Cost" + id, { x, y + bh + 2, bw, 32 }, owned ? "Owned" : std::to_string(node.cost) + (node.cost == 1 ? " point" : " points"),
 			owned ? TextGreen : now ? TextBeige : TextGrey, "$SmallFontSize"));
 	}
-	add(Text("Hint", { TreeX, TreeH - 62, 1470, 36 }, "A point is earned each time a class finishes an act for the first time in this save.", "$FontColorDarkGrayGold", "$MediumFontSize"));
-	return Panel({ 236, -651, TreeW + 2 + SideW, TreeH }, "$LeftPanelAnchor", 8700, out);  // over the Upgrades tab (8600) too
+	add(Text("Hint", { X, TreeH - 62, 1470, 36 }, "A point is earned each time a class finishes an act for the first time in this save.", "$FontColorDarkGrayGold", "$MediumFontSize"));
+	return Panel({ 236 + WallW, -651, W + 2 + SideW, TreeH }, "$LeftPanelAnchor", 8700, out);
 }
 
 // The Upgrades tab: lies over the stash, the same size, on the stash's own picture. Only unlocked
@@ -536,6 +554,19 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 	add(Text("Help3", { 84, 1356, 730, 36 }, "Runes: first click looks up, next takes out.", "$FontColorDarkGrayGold", "18", "left"));
 	add(Text("Help2", { 84, 1320, 730, 36 }, "Ctrl + click a bag item to store it.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
+}
+
+// On the open stash, over the place of the game's own page number and gold (130_stash.py moves those
+// away): which of the save's pages shows (always from 1) and the save's own gold.
+inline auto PageLayout(int page, int pages, long long purse) -> std::string {
+	using namespace Ui;
+	constexpr int X = 100, Y = 1200;
+	std::string out = Text("Page", { 464 - X, 1224 - Y, 230, 64 }, "Page " + std::to_string(page) + " of " + std::to_string(pages), "$PanelTitleColor", "$MediumFontSize") + "," +
+		Text("GoldLabel", { 424 - X, 1330 - Y, 310, 28 }, "Caravan gold", TextBeige, "18") + "," +
+		Text("Gold", { 424 - X, 1358 - Y, 310, 44 }, Commas(purse), TextWhite, "$MediumLargeFontSize") + "," +
+		Button("GoldIn", 190 - X, 1352 - Y, 0.6, "Deposit", TextWhite, "goldin", "Put all the gold this hero carries in the stash.") + "," +
+		Button("GoldOut", 754 - X, 1352 - Y, 0.6, "Take", TextWhite, "goldout", "Take out as much gold as this hero can carry.");
+	return Panel({ 236 + X, -651 + Y, 1162 - 2 * X, 220 }, "$LeftPanelAnchor", 8540, out);
 }
 
 // The Journal button (journal.h), and the button attached to the stash's right side that shows the caravan window in its place.

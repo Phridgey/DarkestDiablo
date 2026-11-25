@@ -20,6 +20,7 @@
 // Console (Ctrl + `): dd-camp, dd-slot <1-3>, dd-traveler.
 
 #include "campfire.h"
+#include "stashfile.h"
 #include "camp.h"
 #include "gamememory.h"
 #include "gamestate.h"
@@ -85,7 +86,7 @@ struct LivePanel {
 // 16 spares (was 24, 2026-11-22): a plugin may register at most 64 panels, and the wave counter
 // (waveoverlay.cpp) and the later acts' route pages need room. After 16 changes in one session the
 // row starts over, asking the game to forget the oldest panel first (PoolSet).
-LivePanel g_fire  { "Fire", 15 };  // one given to the potion slots (potions.cpp)
+LivePanel g_fire  { "Fire", 14 };  // two given to the potion slots (potions.cpp)
 LivePanel g_slots { "SaveSlots", 6 };  // was 14: the caravan stash (stash.cpp) needs 11 panels
 constexpr char PanelNameMark[] = "@PANEL@";
 D2RL::Panels::RegistrationHandle g_travelerPanel = D2RL::Panels::InvalidHandle;
@@ -688,7 +689,7 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 	Camp::Unbench(g_live, g_slot);
 	const bool fire = g_fireOn && g_fireReady && g_threads != nullptr;
 	std::string said = "Save " + std::to_string(slot) + " is already loaded.";
-	if (slot != g_slot && g_stashSlot != 0) {  // the game holds this save's stash: restart (camp.h, Pending)
+	if (slot != g_slot && g_stashSlot != 0 && !Camp::StashJoined(g_live)) {  // the game holds this save's stash: restart (camp.h, Pending)
 		Camp::Pending change;
 		change.open = slot;
 		return RestartWith(context, change);
@@ -2234,7 +2235,11 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 	}
 	Camp::Unbench(g_live, g_slot);
 	const std::string stamp = std::to_string(static_cast<long long>(std::time(nullptr)));
-	if (slot == g_stashSlot) {  // the game holds this save's stash: it would follow into a new save here
+	const bool joined = Camp::StashJoined(g_live);
+	if (joined) {  // its pages are kept beside the trash
+		StashFile::CopyPages(g_live, slot, g_live / "camp" / "trash" / ("slot" + std::to_string(slot) + "-" + stamp + "-stash.d2i"));
+	}
+	if (slot == g_stashSlot && !joined) {  // the game holds this save's stash: it would follow into a new save here
 		g_confirmSlot = 0;
 		g_confirmStep = 0;
 		Camp::Pending change;
@@ -2245,6 +2250,15 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 	std::string error;
 	if (Camp::DeleteSlot(g_live, slot, stamp, error)) {
 		Log(context, "Camp: save %d was deleted (its files are kept in camp/trash).", slot);
+		if (joined) {
+			StashFile::ForgetJoinedGold(g_live, slot);
+			// While the game holds the stash, its pages are emptied when they are next opened (stash.cpp).
+			auto wipes = StashFile::Wipes(g_live);
+			wipes.insert(slot);
+			if (g_stashSlot != 0 || !StashFile::BlankPages(g_live, slot)) {
+				StashFile::SetWipes(g_live, wipes);
+			}
+		}
 	} else {
 		Log(context, "Camp: could not delete save %d: %s", slot, error.c_str());
 	}
@@ -2398,6 +2412,24 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 				Log(context, "Camp: at start, %s", line.c_str());
 			}
 			g_openedAtStart = pending.open != 0 && Camp::ActiveSlot(g_live) == pending.open;
+		}
+		// All three stashes in one file (stashfile.h), and the pages of saves deleted last session.
+		if (Camp::StashJoined(g_live)) {
+			auto wipes = StashFile::Wipes(g_live);
+			for (const int slot : std::set<int>(wipes)) {
+				if (StashFile::BlankPages(g_live, slot)) {
+					wipes.erase(slot);
+					Log(context, "Camp: emptied the stash pages of the deleted save %d.", slot);
+				}
+			}
+			StashFile::SetWipes(g_live, wipes);
+		} else {
+			std::string said;
+			if (StashFile::Join(g_live, std::to_string(static_cast<long long>(std::time(nullptr))), said)) {
+				Log(context, "Camp: %s", said.c_str());
+			} else {
+				Log(context, "Camp: the stashes stay separate, so changing saves needs a restart: %s.", said.c_str());
+			}
 		}
 		g_slot = Camp::ActiveSlot(g_live);
 		g_camp = Camp::LoadState(g_live, g_slot);

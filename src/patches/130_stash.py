@@ -49,6 +49,13 @@ def patch(t):
     fields["filename"] = "PANEL\\DarkestDiablo\\StashTabs"
     for suffix in ("", ".lowend"):
         t.add_file(OURS.format(suffix), with_blank_frame(t.game_file(PICTURE.format(suffix))))
+    # The page number would count through all three saves' pages, and the gold is one purse for all of
+    # them: the plugin draws the save's own (src/plugin/stash.h, PageLayout) over these places.
+    number = t.widget(bank, "CurrentSharedStashText")["fields"]
+    number["rect"] = dict(number["rect"], x=-9000)
+    for name in ("gold_amount", "gold_withdraw"):
+        widget = t.widget(t.widget(bank, "basicstash_container"), name)["fields"]
+        widget["rect"] = dict(widget["rect"], x=-9000)
     at = bank["children"].index(tabs)
     bank["children"][at + 1:at + 1] = [
         {"type": "ClickCatcherWidget", "name": "PersonalTabCover",
