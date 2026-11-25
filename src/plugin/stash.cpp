@@ -145,9 +145,9 @@ struct Row {
 	int         current = -1;
 	std::string content {};
 };
-// A plugin may register 64 panels in all; the whole plugin uses 63 now.
+// A plugin may register 64 panels in all; the whole plugin uses all of them now.
 Row g_tree { "StashTree", 3 };
-Row g_tab  { "StashTab", 4 };
+Row g_tab  { "StashTab", 3 };
 Row g_journal { "StashJournal", 3 };
 D2RL::Panels::RegistrationHandle g_side = D2RL::Panels::InvalidHandle;
 
@@ -325,7 +325,7 @@ auto Store(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const 
 }
 
 // Game thread. Stores from the bag: one item by its number (`data`), or everything (0), or
-// everything but potions (Porter).
+// everything because the hero came to town (Porter).
 constexpr uintptr_t StoreAll = 0, StorePorter = static_cast<uintptr_t>(-1);
 
 void __cdecl StoreFromBag(const D2RL::PluginContext* context, void* data) noexcept {
@@ -342,7 +342,7 @@ void __cdecl StoreFromBag(const D2RL::PluginContext* context, void* data) noexce
 		int stored = 0;
 		for (const auto& item : items) {
 			const Stash::Kind* kind = Stash::KindOf(CodeText(item.code));
-			if (kind == nullptr || (what == StorePorter && kind->section == Stash::Section::Potions) ||
+			if (kind == nullptr ||
 				(what != StoreAll && what != StorePorter && item.runtimeId != static_cast<uint32_t>(what))) {
 				continue;
 			}
@@ -972,6 +972,12 @@ void OnStopCleared(const D2RL::PluginContext* context) noexcept {
 	if (g_panels != nullptr) {
 		SyncActs(context);
 	}
+}
+
+auto Nodes() -> std::set<std::string> {
+	const fs::path progress = Campfire::RouteProgressFile();
+	const Lock lock(g_mutex);
+	return Current(progress) ? g_state.nodes : std::set<std::string> {};
 }
 
 auto CanPutOnSharedPages() noexcept -> bool {

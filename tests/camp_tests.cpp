@@ -4,6 +4,8 @@
 #include "camp.h"
 #include "route.h"
 #include "stash.h"
+#include "potions.h"
+#include "routepages.h"
 #include "journal.h"
 
 #include <cstdlib>
@@ -500,6 +502,9 @@ static void StashTreeNeedsParentsAndPoints() {
 		CHECK(ids.insert(node.id).second);
 		CHECK(node.parent[0] == '\0' || ids.count(node.parent) == 1);  // listed after its parent
 		total += node.cost;
+		for (const auto& other : Stash::Nodes) {  // none lies over another
+			CHECK(&other == &node || other.row != node.row || other.column >= node.column + 1 || node.column >= other.column + 1);
+		}
 	}
 	CHECK(total > 5 && total <= ClassCount * 5);  // one class is never enough, all classes always are
 	Stash::State s;
@@ -519,7 +524,7 @@ static void StashSlotsTakeWhatIsUnlocked() {
 			CHECK(Stash::FindNode(need) != nullptr);
 		}
 	}
-	CHECK(codes.size() == 35 + 33 + 12);
+	CHECK(codes.size() == 35 + 33);
 	Stash::State s;
 	const auto& chipped = *Stash::KindOf("gcw");
 	const auto& skull = *Stash::KindOf("skc");
@@ -567,7 +572,7 @@ static void WriteStashLayouts(const fs::path& dir) {
 	}
 	WriteFile(dir / "tree_fresh.json", Stash::TreeLayout(fresh, "Hero not found yet, try again"));
 	WriteFile(dir / "tree_full.json", Stash::TreeLayout(full));
-	full.nodes = { "tab", "gem1", "rune1", "pot1" };
+	full.nodes = { "tab", "gem1", "rune1", "potregen" };
 	WriteFile(dir / "tree_part.json", Stash::TreeLayout(full));
 	full.nodes.clear();
 	for (const auto& node : Stash::Nodes) {
@@ -576,11 +581,156 @@ static void WriteStashLayouts(const fs::path& dir) {
 	WriteFile(dir / "tab_fresh.json", Stash::UpgradesLayout(fresh));
 	WriteFile(dir / "tab_full.json", Stash::UpgradesLayout(full));
 	WriteFile(dir / "side.json", Stash::SideLayout());
+	Potions::State potions;
+	Potions::Owner owner;
+	WriteFile(dir / "hud_new.json", Potions::HudLayout(potions, owner, -1));
+	owner.nodes = full.nodes;
+	owner.level = 40;
+	for (const int kind : { Potions::Antidote, Potions::Thawing, Potions::Stamina }) {
+		potions.Give(kind, owner);
+	}
+	potions.Fill(owner);
+	for (int slot = 0; slot < Potions::SlotCount; ++slot) {
+		WriteFile(dir / ("hud_pick" + std::to_string(slot) + ".json"), Potions::HudLayout(potions, owner, slot));
+	}
+	potions.Concoct(2, owner);
+	WriteFile(dir / "hud_full.json", Potions::HudLayout(potions, owner, 3));
+	potions.affixes = { { "antidote", "crypt" }, { "stamina", "pit" } };
+	WriteFile(dir / "route1.json", Potions::WithAffixes(RouteMapLayout, 1, potions, { { "Fork1Crypt", "Crypt" } }));
 	for (int rune = 0; rune < Journal::RuneCount; ++rune) {
 		for (int page = 0; page < Journal::PageCount(rune); ++page) {
 			WriteFile(dir / ("journal_" + std::to_string(rune) + "_" + std::to_string(page) + ".json"), Journal::Layout(rune, page));
 		}
 	}
+}
+
+static bool Near(double a, double b) { return a - b < 1e-6 && b - a < 1e-6; }
+
+static void PotionChargesFillAndAreSpent() {
+	using namespace Potions;
+	Potions::State s;
+	Owner o;
+	CHECK(s.slots[0] == Heal && s.slots[1] == Mana && s.slots[2] == None && !s.Use(Heal, o));
+	s.Fill(o);
+	CHECK(Near(s.Charge(Heal), 50) && s.Uses(Mana) == 5 && s.Charge(Antidote) == 0);
+	CHECK(s.Use(Heal, o) && Near(s.Charge(Heal), 40) && !s.Use(Antidote, o) && !s.Use(None, o));
+	s.Tick(100, o);  // 0.1% of 50 a second
+	CHECK(Near(s.Charge(Heal), 45) && Near(s.Charge(Mana), 50));
+	s.Give(Antidote, o);
+	CHECK(s.slots[2] == Antidote && Near(s.Charge(Antidote), 20));
+	s.Use(Antidote, o);
+	s.charge[Heal] = 0;
+	s.Kill(Rank::Normal, 1, o);
+	CHECK(Near(s.Charge(Heal), 0.5) && Near(s.Charge(Antidote), 10.375));
+	s.Kill(Rank::Unique, 1, o);
+	CHECK(Near(s.Charge(Heal), 3));
+	o.level = 24;
+	s.Kill(Rank::Champion, 1, o);  // far below the hero: 5%
+	CHECK(Near(s.Charge(Heal), 3.075));
+	CHECK(Near(LevelFactor(10, 15), 1) && Near(LevelFactor(10, 16), 0.81) && Near(LevelFactor(50, 100), 0.5) && Near(LevelFactor(50, 41), 0.24) && Near(LevelFactor(50, -1), 1));
+	o.belt = 12;
+	CHECK(Near(s.Capacity(Heal, o), 62) && Near(s.Capacity(Stamina, o), 32));
+	o.nodes = { "potregen", "potregen2", "potheal" };
+	CHECK(Near(s.Capacity(Heal, o), 74.5) && Near(s.Regen(o), 0.003));
+	o.belt = 0;
+	s.charge[Heal] = 74;  // a smaller belt: what no longer fits is lost at the next gain
+	s.Tick(0, o);
+	CHECK(Near(s.Charge(Heal), 62.5));
+	CHECK(BeltCharges("lbl") == 4 && BeltCharges("tbl") == 8 && BeltCharges("uhc") == 12 && BeltCharges("rin") == 0);
+}
+
+static void PotionLoadoutSwapsAndGrades() {
+	using namespace Potions;
+	Potions::State s;
+	Owner o;
+	CHECK(s.Equip(3, Heal, o) && s.slots[3] == Heal && s.slots[0] == None);
+	CHECK(s.Equip(1, Heal, o) && s.slots[1] == Heal && s.slots[3] == Mana);
+	CHECK(s.Equip(1, Heal, o) && s.slots[1] == Heal);
+	CHECK(!s.Equip(0, Thawing, o) && !s.Equip(4, Heal, o) && !s.Equip(0, Fire, o) && s.Equip(1, None, o) && s.slots[1] == None);
+	CHECK(Name(Heal, s, o) == "Minor Healing Potion" && Name(Mana, s, o) == "Light Mana Potion");
+	o.level = 54;
+	CHECK(Name(Heal, s, o) == "Super Healing Potion" && Name(Mana, s, o) == "Super Mana Potion");
+	o.nodes = { "potfire", "potgas" };
+	CHECK(s.Equip(0, Fire, o) && std::string(PotFor(Fire, o).code) == "opl");
+	o.nodes.insert({ "potstrong", "potmaster" });
+	CHECK(std::string(PotFor(Fire, o).code) == "ops" && std::string(PotFor(Gas, o).code) == "gps");
+	o.level = 13;
+	CHECK(std::string(PotFor(Fire, o).code) == "opm" && std::string(PotFor(Gas, o).code) == "gpl");
+	o.nodes = { "potanti", "potstam", "potthaw" };
+	CHECK(s.Echoes(Heal, o).empty());  // only potions the hero has
+	s.Give(Antidote, o); s.Give(Thawing, o); s.Give(Stamina, o);
+	CHECK(s.Echoes(Heal, o) == std::vector<int>({ Antidote, Stamina }) && s.Echoes(Mana, o) == std::vector<int>({ Thawing }));
+	CHECK(s.Echoes(Rejuv, o).size() == 3 && s.Echoes(Antidote, o).empty());
+}
+
+static void PotionsConcoctIntoOne() {
+	using namespace Potions;
+	Potions::State s;
+	Owner o;
+	o.belt = 10;
+	s.Fill(o);
+	s.charge[Mana] = 0;
+	s.Concoct(1, o);
+	CHECK(!s.Owns(Heal, o) && !s.Owns(Mana, o) && s.slots[0] == Rejuv && s.slots[1] == None);
+	CHECK(Near(s.Capacity(Rejuv, o), 45) && Near(s.Charge(Rejuv), 22.5));  // 75% of 60, half full
+	s.Concoct(1, o);
+	CHECK(Near(s.Charge(Rejuv), 22.5));
+	s.Concoct(2, o);
+	CHECK(Near(s.Capacity(Rejuv, o), 30) && Near(s.Charge(Rejuv), 15) && Name(Rejuv, s, o) == "Full Rejuvenation Potion");
+	o.nodes = { "potheal", "potmana" };
+	CHECK(Near(s.Capacity(Rejuv, o), 42.5));  // both passives count
+	Potions::State straight;
+	straight.Concoct(2, o);  // the Act V concoction without the Act IV one
+	CHECK(straight.blend == 2 && straight.Owns(Rejuv, o));
+}
+
+static void PotionAffixesLandOnOpenStopsOnce() {
+	using namespace Potions;
+	Owner o;
+	int full = 0;
+	for (unsigned seed = 0; seed < 2000; ++seed) {
+		std::mt19937 rng(seed);
+		Potions::State s;
+		s.Roll(Route::Progress {}, rng, o);
+		CHECK(s.affixes.count("antidote") && s.affixes.count("stamina") && s.affixes.count("thawing") && s.affixes.count("concoct"));
+		CHECK(s.affixes["antidote"] != s.affixes["stamina"]);
+		for (const auto& [id, stop] : s.affixes) {
+			const auto* found = Route::StopById(stop);
+			CHECK(found != nullptr && Route::ActOfTier(found->tier) == AffixById(id)->act);
+			CHECK(stop != "andariel" && stop != "durance" && stop != "chaos" && stop != "baal");
+		}
+		full += s.affixes.count("full") ? 1 : 0;
+		const auto before = s.affixes;
+		s.Roll(Route::Progress {}, rng, o);
+		CHECK(s.affixes == before);
+	}
+	CHECK(full > 60 && full < 140);  // 5%
+	std::mt19937 rng(4);
+	Potions::State old;
+	old.Roll(ActDone(2), rng, o);  // past Act I: its potions are given
+	CHECK(old.Owns(Antidote, o) && old.Owns(Stamina, o) && !old.Owns(Thawing, o) && old.affixes.count("thawing"));
+	const std::string stop = old.affixes["concoct"];
+	CHECK(old.Cleared("den", o) == nullptr);
+	CHECK(std::string(old.Cleared(stop, o)->id) == "concoct" && old.blend == 1 && old.Cleared(stop, o) == nullptr);
+}
+
+static void PotionFileRoundTripAndBadLines() {
+	using namespace Potions;
+	Owner o;
+	Potions::State s;
+	s.rolled = true;
+	s.Give(Antidote, o);
+	s.charge[Heal] = 12.5;
+	s.Equip(3, Antidote, o);
+	s.affixes = { { "thawing", "spider" } };
+	const auto back = Potions::Parse(Potions::Serialize(s));
+	CHECK(back.rolled && back.own == s.own && back.slots == s.slots && Near(back.Charge(Heal), 12.5) && back.affixes == s.affixes && back.blend == 0);
+	s.Concoct(1, o);
+	const auto mixed = Potions::Parse(Potions::Serialize(s));
+	CHECK(mixed.blend == 1 && mixed.own == s.own && mixed.slots == s.slots);
+	const auto bad = Potions::Parse("blend 9\nown heal\nown what\ncharge heal nan\ncharge mana -4\nslot 1 heal\nslot 9 mana\nslot 2 rejuv\nslot 3 rejuv\naffix x den\naffix antidote nowhere\n");
+	CHECK(bad.blend == 2 && !bad.Owns(Heal, o) && bad.Owns(Rejuv, o) && bad.slots[0] == None && bad.slots[1] == Rejuv && bad.slots[2] == None);
+	CHECK(bad.affixes.empty() && bad.Charge(Heal) == 0 && bad.Charge(Mana) == 0);
 }
 
 static void JournalListsARunesWordsByLevel() {
@@ -606,6 +756,11 @@ int main(int argc, char** argv) {
 	StashSlotsTakeWhatIsUnlocked();
 	StashFileRoundTripAndBadLines();
 	JournalListsARunesWordsByLevel();
+	PotionChargesFillAndAreSpent();
+	PotionLoadoutSwapsAndGrades();
+	PotionsConcoctIntoOne();
+	PotionAffixesLandOnOpenStopsOnce();
+	PotionFileRoundTripAndBadLines();
 	RouteUnlocksTierByTier();
 	ForkGivesTwoPicksSameOneAllowed();
 	ActTwoFollowsAndariel();

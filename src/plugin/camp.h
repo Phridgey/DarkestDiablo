@@ -644,6 +644,10 @@ inline auto Bury(const fs::path& live, int slot, const std::string& name, std::s
 	if (fs::exists(progress, ec)) {
 		files.push_back(progress);
 	}
+	const fs::path potions = SlotDir(live, slot) / "potions" / (name + ".potions.txt");  // potions.h
+	if (fs::exists(potions, ec)) {
+		files.push_back(potions);
+	}
 	char stamp[32] {};
 	const std::time_t now = std::time(nullptr);
 	std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));

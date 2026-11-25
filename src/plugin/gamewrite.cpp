@@ -134,6 +134,16 @@ auto Copies(const Game::Unit& unit) -> std::vector<uintptr_t> {
 					}
 					const uintptr_t found = block + i;
 					uintptr_t stats = 0;
+					// A player's class and number are small and turn up all over memory, so a copy must also
+					// hold the player's name (the first thing in its player data).
+					if (unit.kind == Game::Kind::Player && !unit.name.empty()) {
+						uint64_t data = 0;
+						char name[64] {};
+						if (!Get(found + 0x10, data) || !LooksPointer(data) || !Get(static_cast<uintptr_t>(data), name) ||
+						    std::strncmp(name, unit.name.c_str(), unit.name.size() + 1) != 0) {
+							continue;
+						}
+					}
 					if (found != unit.address && Get(found + UnitStatList, stats) && LooksPointer(stats)) {
 						out.push_back(found);
 					}
@@ -156,6 +166,50 @@ auto SetStat(const std::vector<uintptr_t>& copies, uint16_t stat, int value, uin
 		}
 	}
 	return changed;
+}
+
+auto SameUnit(uintptr_t copy, const Game::Unit& unit) -> bool {
+	uint32_t head[3] {};
+	return unit && Get(copy, head) && head[0] == static_cast<uint32_t>(unit.kind) && head[1] == unit.row && head[2] == unit.id;
+}
+
+auto AddStat(const std::vector<uintptr_t>& copies, uint16_t stat, uint16_t maxStat, int add256, double share) -> int {
+	struct Entry { uintptr_t at; int32_t value; };
+	int found = 0;
+	for (const uintptr_t unit : copies) {
+		uintptr_t list = 0;
+		if (!Get(unit + UnitStatList, list)) {
+			continue;
+		}
+		std::vector<Entry> entries;
+		int32_t maximum = 0;  // the total with items is the largest one
+		ForEachArray(list, [&](uintptr_t at, std::size_t count) {
+			for (std::size_t i = 0; i < count; ++i) {
+				uint32_t p = 0, id = 0;
+				int32_t v = 0;
+				if (!Get(at + i * StatSize, p) || !Get(at + i * StatSize + 4, id) || !Get(at + i * StatSize + 8, v) || p != 0) {
+					continue;
+				}
+				if (id == stat) {
+					entries.push_back({ at + i * StatSize + 8, v });
+				} else if (id == maxStat) {
+					maximum = (std::max)(maximum, v);
+				}
+			}
+		});
+		// Nothing is written where the numbers don't look like a hero's.
+		if (entries.empty() || maximum < 256 || maximum > 256 * 1000000) {
+			continue;
+		}
+		++found;
+		const int32_t gain = add256 + static_cast<int32_t>(maximum * share);
+		for (const auto& entry : entries) {
+			if (entry.value >= (stat == Game::StatId::Life ? 1 : 0) && entry.value < maximum) {
+				Put<int32_t>(entry.at, (std::min)(maximum, entry.value + gain));
+			}
+		}
+	}
+	return found;
 }
 
 auto SetStateEnd(const std::vector<uintptr_t>& copies, int state, uint32_t endFrame) -> int {

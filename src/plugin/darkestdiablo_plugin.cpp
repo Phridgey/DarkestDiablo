@@ -30,6 +30,7 @@
 #include "route.h"
 #include "zone.h"
 #include "andariel.h"
+#include "potionsgame.h"
 #include "stashgame.h"
 #include "waveoverlay.h"
 #include "mercgear.h"
@@ -1003,65 +1004,8 @@ static void __cdecl FindTargetUnique(const D2RL::PluginContext* context, void* r
 	Trace(context, "Target unique: not found; the stop clears when everything is dead.");
 }
 
-// ---- The camp's potion supply -------------------------------------------------------------
-// Shops sell no health potions and nothing drops them (src/patches/006_no_health_potions.py).
-// Instead every cleared stop earns PotionsPerClear, handed out in town onto the first shared stash page
-// (the bag if it is full). What doesn't fit stays owed (in the route progress file) and comes
-// at the next visit, so unclaimed potions pile up.
-static constexpr int PotionsPerClear = 3;
-static std::atomic<uint32_t> g_difficulty { 0 };  // as last seen from a monster's death
-static constexpr const char* PotionByDifficulty[] = { "hp2", "hp4", "hp5" };  // light, greater, super
-
-// Game thread, in town: hand out what is owed.
-static void __cdecl DeliverPotions(const D2RL::PluginContext* context, void*) noexcept {
-	Route::Progress progress = LoadProgress();
-	if (progress.potionsOwed <= 0) {
-		return;
-	}
-	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
-	if (g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
-		return;
-	}
-	const char* code = PotionByDifficulty[(std::min)(g_difficulty.load(), 2U)];
-	int given = 0;
-	while (progress.potionsOwed > 0) {
-		D2RL::Items::ItemCreateSpec spec {
-			.structSize      = D2RL::Items::ItemCreateSpecSize,
-			.code            = ItemCode(code),
-			.quality         = D2RL::Items::Quality::Normal,
-			.qualityRecordId = D2RL::Items::RandomQualityRecord,
-			.itemLevel       = 1,
-			.seedMode        = D2RL::Items::SeedMode::Random,
-			.quantity        = D2RL::Items::DefaultValue,
-			.durability      = D2RL::Items::DefaultValue,
-			.destination     = {
-				.structSize = D2RL::Items::ItemDestinationSize,
-				// the first shared page: heroes have no personal page (docs/stash.md)
-				.container  = StashGame::CanPutOnSharedPages() ? D2RL::Items::ItemContainer::SharedStash : D2RL::Items::ItemContainer::Inventory,
-				.placement  = D2RL::Items::Placement::Automatic,
-			},
-		};
-		D2RL::ItemHandle item = D2RL::InvalidItemHandle;
-		auto result = g_items->createItem(context, player, &spec, &item);
-		if (result != D2RL::Items::Result::Success) {  // never the ground: plugin ground drops crash the game
-			spec.destination.container = D2RL::Items::ItemContainer::Inventory;
-			result = g_items->createItem(context, player, &spec, &item);
-		}
-		if (result != D2RL::Items::Result::Success) {
-			break;  // no room: the rest stays owed
-		}
-		--progress.potionsOwed;
-		++given;
-	}
-	SaveProgress(context, progress);
-	char message[128] {};
-	std::snprintf(message, sizeof(message), "Potion supply: %d %s handed out, %d still owed.", given, code, progress.potionsOwed);
-	context->LogInfo(message);
-	Trace(context, message);
-}
-
 // ---- No healing from Akara -------------------------------------------------------------------
-// Healing is the potion supply's job (above). The game heals the hero whenever they talk to Akara,
+// Healing is the potions' job (potions.h). The game heals the hero whenever they talk to Akara,
 // decided by who she is, with no setting for it, so in town a watcher undoes it: when the hero's
 // life or mana jumps to full while standing at Akara, it is written back to what it was a moment
 // before (gamewrite.h, the one place that writes game memory). Drinking a full rejuvenation right
@@ -1113,6 +1057,54 @@ static void WatchTownHealing(const D2RL::PluginContext* context, int townLevel) 
 		}
 		g_healWatch = false;
 	}).detach();
+}
+
+// ---- Potion affixes on the route map ---------------------------------------------------------
+// UI thread. The route map's pages are fixed while they are loaded, so the hero's potion affixes
+// (potions.h) are drawn in by giving a page whose affixes changed a new layout and asking the game to
+// forget the old one, when a hero enters the game and after each counted clear.
+struct RoutePageSlot { D2RL::Resources::RegistrationHandle resource = D2RL::Resources::InvalidHandle; std::string content; };
+static RoutePageSlot g_routePages[5];
+static const D2RL::ResourceService* g_routeResources = nullptr;
+static const D2RL::WidgetService*   g_widgets = nullptr;  // sends native panel messages (optional)
+
+static void DrawRouteAffixes(const D2RL::PluginContext* context) noexcept {
+	static constexpr const char* Plain[] = { RouteMapLayout, RouteMap2Layout, RouteMap3Layout, RouteMap4Layout, RouteMap5Layout };
+	if (g_routeResources == nullptr || g_widgets == nullptr) {
+		return;
+	}
+	try {
+		for (int act = 1; act <= 5; ++act) {
+			RoutePageSlot& page = g_routePages[act - 1];
+			std::string now = PotionsGame::RoutePage(Plain[act - 1], act);
+			if (page.resource == D2RL::Resources::InvalidHandle || now == (page.content.empty() ? std::string(Plain[act - 1]) : page.content)) {
+				continue;
+			}
+			const std::string name = act == 1 ? "darkestdiablo/RouteMap" : "darkestdiablo/RouteMap" + std::to_string(act);
+			const std::string path = "data/global/ui/layouts/" + name + "hd.json";
+			g_routeResources->unregisterResource(context, page.resource);
+			page.resource = D2RL::Resources::InvalidHandle;
+			page.content = std::move(now);
+			D2RL::Resources::ResourceRegistration resource {
+				.structSize = D2RL::Resources::ResourceRegistrationSize,
+				.path       = path.c_str(),
+				.bytes      = page.content.data(),
+				.byteCount  = page.content.size(),
+			};
+			const auto result = g_routeResources->registerResource(context, &resource, &page.resource);
+			if (result != D2RL::Resources::Result::Success) {  // the plain page is better than none
+				page.content = Plain[act - 1];
+				resource.bytes = page.content.data();
+				resource.byteCount = page.content.size();
+				g_routeResources->registerResource(context, &resource, &page.resource);
+			}
+			const D2RL::Widgets::UiAction unload { .structSize = D2RL::Widgets::UiActionSize, .target = "PanelManager", .command = "UnloadPanel", .text = name.c_str() };
+			(void)g_widgets->dispatchUiAction(context, &unload);
+			context->LogInfo(("Route map: act " + std::to_string(act) + "'s potion affixes drawn (code " + std::to_string(static_cast<int>(result)) + ").").c_str());
+		}
+	} catch (...) {
+		context->LogWarn("Route map: drawing the potion affixes failed.");
+	}
 }
 
 // ---- Rewards of Acts I-V given by the plugin (docs/act3.md, act4.md, act5.md) -----------------
@@ -1267,13 +1259,14 @@ static void __cdecl ClearArena(const D2RL::PluginContext* context, void* run) no
 			const bool counted = progress.RecordClear(*stop);
 			progress.flags.erase(std::string("bossdown:") + stop->id);  // saved with the clear
 			g_runStop.clear();
-			if (counted) {
-				progress.potionsOwed += PotionsPerClear;  // handed out in town (DeliverPotions)
-			}
 			if (counted && !Route::Save(file, progress)) {
 				context->LogWarn("Route: could not save the hero's progress.");
 			}
 			StashGame::OnStopCleared(context);  // the act may be done: a caravan point
+			if (counted) {
+				PotionsGame::OnStopCleared(context, stop->id);  // the stop's potion affix
+				DrawRouteAffixes(context);
+			}
 			// The Den quest's skill point, once per hero: the Den arena is not the quest level (that
 			// would offer Akara's free respec), and a dropped Book of Skill can't be used in Act I.
 			// Quest rewards given once per difficulty are tripled (docs/flattening.md): 3 points.
@@ -1860,7 +1853,7 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 		return;
 	}
 	Campfire::NoteDifficulty(context, event->difficulty);
-	g_difficulty = event->difficulty;
+	PotionsGame::OnMonsterDeath(event);
 	{
 		char line[96];
 		std::snprintf(line, sizeof(line), "death: level %d class %u", event->levelId, event->monster.classId);
@@ -1930,7 +1923,6 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 // waypoint opens this map instead of Blizzard's list (see OnUiMessage); waypoints outside town
 // keep Blizzard's list, so the player can always get home.
 static const D2RL::PanelService*     g_panels = nullptr;
-static const D2RL::WidgetService*    g_widgets = nullptr;  // sends native panel messages (optional)
 static D2RL::Panels::RegistrationHandle g_routeMap = D2RL::Panels::InvalidHandle;   // Act I's page
 static D2RL::Panels::RegistrationHandle g_routeMap2 = D2RL::Panels::InvalidHandle;  // Act II's page
 static D2RL::Panels::RegistrationHandle g_routeLater[3] = { D2RL::Panels::InvalidHandle, D2RL::Panels::InvalidHandle,
@@ -2401,6 +2393,9 @@ static void RouteNote(const D2RL::PluginContext* context) noexcept {
 			line += " Done here: " + done + ".";
 		}
 		context->WriteConsoleMessage(line.c_str());
+		if (const std::string potions = PotionsGame::RouteLine(CurrentAct()); !potions.empty()) {
+			context->WriteConsoleMessage(potions.c_str());
+		}
 	} catch (...) {
 	}
 }
@@ -2415,13 +2410,13 @@ static auto OnUiMessage(const D2RL::PluginContext* context, const D2RL::SharedEv
 	const char* text = event->text != nullptr ? event->text : "";
 	char message[256] {};
 	// Log UI messages for finding new ones, but not mouse and keys or the per-frame monster bar.
-	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0) {
+	if (std::strcmp(target, "MonsterHealth") != 0 && std::strcmp(target, "InputMessage") != 0 && std::strstr(text, "darkestdiablo/PotionHud") == nullptr) {
 		std::snprintf(message, sizeof(message), "UI message: %s:%s:%s", target, command, text);
 		context->LogInfo(message);
 		Trace(context, message);
 	}
 	if (DevTools::OnUiMessage(context, target, command, text) || Campfire::OnUiMessage(context, target, command, text) ||
-		StashGame::OnUiMessage(context, target, command, text)) {
+		StashGame::OnUiMessage(context, target, command, text) || PotionsGame::OnUiMessage(context, target, command, text)) {
 		return Action::Consume;
 	}
 	// Meshif sails east as soon as Duriel is dead (decided 2026-11-23): talking to him in Lut Gholein
@@ -2543,6 +2538,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 	Campfire::OnGameplayEvent(context, event);
 	DevTools::OnGameplayEvent(context, event);
 	StashGame::OnGameplayEvent(context, event);
+	PotionsGame::OnGameplayEvent(context, event);
 	using Kind = D2RL::Lifecycle::GameplayEventKind;
 	if (event->kind == Kind::LevelChanged) {
 		g_levelId = event->currentValue;
@@ -2555,9 +2551,6 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		std::snprintf(message, sizeof(message), "Level changed: %d -> %d.", event->previousValue, event->currentValue);
 		context->LogInfo(message);
 		Trace(context, message);
-		if (InTown()) {  // the camp's potion supply (DeliverPotions), in every town
-			g_threads->runOnGameThread(context, DeliverPotions, nullptr);
-		}
 		g_threads->runOnGameThread(context, CheckHeldRewards, nullptr);
 		if (InTown()) {
 			WatchHeldRewards(context, g_levelId.load());
@@ -2660,7 +2653,7 @@ static void __cdecl OnGameplayEvent(const D2RL::PluginContext* context, const D2
 		WaveOverlay::OnPlayerReady();
 		RunConsole(context, "cheat waypoints");
 		GiveUpLeftRun(context);  // a run the hero quit with nothing more to spawn
-		g_threads->runOnGameThread(context, DeliverPotions, nullptr);  // games start in town
+		DrawRouteAffixes(context);
 		// WatchTownHealing(context, TownLevelId);  // off: healers heal as normal again (2026-11-23)
 		return;
 	}
@@ -2835,6 +2828,8 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 			context->LogWarn("Route map: could not register the panel.");
 			g_panels = nullptr;
 		} else {
+			g_routeResources = resources;
+			g_routePages[0].resource = resourceHandle;
 			// Act II's page: the same kind of panel, its own layout.
 			const D2RL::Resources::ResourceRegistration resource2 {
 				.structSize = D2RL::Resources::ResourceRegistrationSize,
@@ -2849,6 +2844,8 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 				g_panels->registerPanel(context, &registration2, &g_routeMap2) != D2RL::Panels::Result::Success) {
 				context->LogWarn("Route map: could not register Act II's page.");
 				g_routeMap2 = g_routeMap;
+			} else {
+				g_routePages[1].resource = resourceHandle2;
 			}
 			// Acts III-V: the same again (routepages.h, tools/route_pages.py).
 			static constexpr struct { const char* path; const char* local; const char* bytes; size_t size; } Later[] = {
@@ -2870,6 +2867,8 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 					g_panels->registerPanel(context, &registrationK, &g_routeLater[k]) != D2RL::Panels::Result::Success) {
 					context->LogWarn((std::string("Route map: could not register ") + Later[k].local + ".").c_str());
 					g_routeLater[k] = D2RL::Panels::InvalidHandle;
+				} else {
+					g_routePages[2 + k].resource = resourceHandleK;
 				}
 			}
 			const D2RL::Resources::ResourceRegistration anyaResource {
@@ -2912,7 +2911,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	// The GM window's event list. A new event needs one line here (or a RegisterEvent call of its
 	// own before DevTools::Load); the window and "gm event <id>" pick it up by themselves.
 	DevTools::RegisterEvent({ .id = "traveler", .label = "A traveler joins the camp", .console = "dd-traveler" });
-	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) && StashGame::Load(context) && LoadWaveCounter(context) &&
+	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) && StashGame::Load(context) && PotionsGame::Load(context) && LoadWaveCounter(context) &&
 		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&

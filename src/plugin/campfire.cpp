@@ -85,7 +85,7 @@ struct LivePanel {
 // 16 spares (was 24, 2026-11-22): a plugin may register at most 64 panels, and the wave counter
 // (waveoverlay.cpp) and the later acts' route pages need room. After 16 changes in one session the
 // row starts over, asking the game to forget the oldest panel first (PoolSet).
-LivePanel g_fire  { "Fire", 16 };
+LivePanel g_fire  { "Fire", 15 };  // one given to the potion slots (potions.cpp)
 LivePanel g_slots { "SaveSlots", 6 };  // was 14: the caravan stash (stash.cpp) needs 11 panels
 constexpr char PanelNameMark[] = "@PANEL@";
 D2RL::Panels::RegistrationHandle g_travelerPanel = D2RL::Panels::InvalidHandle;

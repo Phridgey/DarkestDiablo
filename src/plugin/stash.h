@@ -6,7 +6,7 @@
 //   each. Gold is paid in as it comes, by any hero of the save, and counts toward the next tier.
 // - Points: the first time a class finishes an act in this save, the save earns 1 point (8 classes
 //   x 5 acts = 40 at most). Points buy nodes of the passive tree. A fallen hero's points stay.
-// - Upgrades tab: gems, runes and potions kept as counts, one slot per kind. Nodes decide which
+// - Upgrades tab: gems and runes kept as counts, one slot per kind. Nodes decide which
 //   kinds may be put in and how many of each. What is in a slot can always be taken out again.
 // On disk: camp/slot<N>/stash.txt, one fact per line:
 //   "tier <n>", "fund <gold>", "act <Class> <1-5>", "node <id>", "mat <code> <count>",
@@ -40,7 +40,7 @@ struct Node {
 	const char* id;
 	const char* parent;  // must be owned first ("" for the first node)
 	int         cost;
-	float       column;  // where it stands in the tree: 0-5 across, 0-5 down
+	float       column;  // where it stands in the tree: 0-5 across, 0-7 down
 	int         row;
 	const char* label;
 	const char* text;    // the tooltip
@@ -60,12 +60,21 @@ inline constexpr Node Nodes[] = {
 	{ "rune4",    "rune3",    2, 2.0f, 4, "Rune Rack IV",  "Keeps runes Pul to Ohm." },
 	{ "rune5",    "rune4",    3, 2.0f, 5, "Rune Rack V",   "Keeps runes Lo to Zod." },
 	{ "runecap",  "rune1",    1, 3.0f, 2, "Deep Rack",     "Each rune slot holds 99 instead of 20." },
-	{ "pot1",     "tab",      1, 4.0f, 1, "Mana Shelf",    "Keeps mana potions." },
-	{ "pot2",     "pot1",     1, 4.0f, 2, "Healing Shelf", "Keeps healing potions." },
-	{ "pot3",     "pot2",     2, 4.0f, 3, "Rejuvenation",  "Keeps Rejuvenation and Full Rejuvenation potions." },
-	{ "potcap",   "pot2",     1, 5.0f, 3, "Deep Shelf",    "Each potion slot holds 99 instead of 20." },
-	{ "quick",    "tab",      1, 5.0f, 1, "Quick Stash",   "Adds a button that stores everything storable in the bag." },
-	{ "porter",   "quick",    3, 5.0f, 2, "Porter",        "Coming back to town stores the bag's gems and runes by itself." },
+	{ "quick",    "tab",      1, 1.5f, 1, "Quick Stash",   "Adds a button that stores everything storable in the bag." },
+	{ "porter",   "quick",    3, 1.0f, 4, "Porter",        "Coming back to town stores the bag's gems and runes by itself." },
+	// The heroes' permanent potions (potions.h). They need no Upgrades tab.
+	{ "potregen",  "",         1, 4.5f, 0, "Simmering",     "Potions refill twice as fast by themselves (0.2% a second)." },
+	{ "potheal",   "potregen", 1, 4.0f, 1, "Bigger Vial",   "The healing potion holds 25% more charges." },
+	{ "potanti",   "potheal",  1, 4.0f, 2, "Purge",         "Using a healing potion also uses the hero's Antidote Potion at 50% effect, for no charge." },
+	{ "potstam",   "potanti",  1, 4.0f, 3, "Second Wind",   "Using a healing potion also uses the hero's Stamina Potion at 50% effect, for no charge." },
+	{ "potmana",   "potregen", 1, 5.0f, 1, "Deeper Well",   "The mana potion holds 25% more charges." },
+	{ "potthaw",   "potmana",  1, 5.0f, 2, "Warm Blood",    "Using a mana potion also uses the hero's Thawing Potion at 50% effect, for no charge." },
+	{ "potkill",   "potthaw",  1, 5.0f, 3, "Harvest",       "Kills give potions 25% more charges." },
+	{ "potregen2", "potkill",  1, 5.0f, 4, "Rolling Boil",  "Potions refill three times as fast by themselves (0.3% a second)." },
+	{ "potfire",   "",         2, 3.5f, 5, "Fire Pots",     "Every hero gets the Fulminating Potion, a throwing potion for a potion slot." },
+	{ "potgas",    "potfire",  2, 4.5f, 6, "Gas Pots",      "Every hero gets the Strangling Gas Potion, a throwing potion for a potion slot." },
+	{ "potstrong", "potfire",  2, 3.5f, 6, "Strong Pots",   "Throwing potions become Exploding (level 12) and Choking Gas (level 16) Potions." },
+	{ "potmaster", "potstrong", 2, 3.5f, 7, "Master Pots",  "Throwing potions become Oil (level 20) and Rancid Gas (level 24) Potions." },
 };
 
 inline auto FindNode(const std::string& id) -> const Node* {
@@ -78,7 +87,7 @@ inline auto FindNode(const std::string& id) -> const Node* {
 }
 
 // ---- What the tab keeps -------------------------------------------------------------------
-enum class Section : int { Gems = 0, Runes = 1, Potions = 2 };
+enum class Section : int { Gems = 0, Runes = 1 };
 inline constexpr int SmallCap = 20;
 inline constexpr int LargeCap = 99;
 
@@ -124,24 +133,6 @@ inline auto Kinds() -> const std::vector<Kind>& {
 			const std::string code = (n < 10 ? "r0" : "r") + std::to_string(n);
 			out.push_back({ code, std::string(Runes[i]) + " Rune", "rune/" + Camp::Lower(Runes[i]) + "_rune", Section::Runes, i % 11, i / 11,
 				{ n <= 8 ? "rune1" : n <= 13 ? "rune2" : n <= 20 ? "rune3" : n <= 27 ? "rune4" : "rune5" } });
-		}
-		struct Potion { const char* code; const char* name; const char* picture; int column, row; const char* need; };
-		static constexpr Potion Potions[] = {
-			{ "mp1", "Minor Mana Potion", "lesser_mana_potion", 0, 0, "pot1" },
-			{ "mp2", "Light Mana Potion", "light_mana_potion", 0, 1, "pot1" },
-			{ "mp3", "Mana Potion", "mana_potion2", 0, 2, "pot1" },
-			{ "mp4", "Greater Mana Potion", "strong_mana_potion", 0, 3, "pot1" },
-			{ "mp5", "Super Mana Potion", "greater_mana_potion", 0, 4, "pot1" },
-			{ "hp1", "Minor Healing Potion", "lesser_healing_potion", 1, 0, "pot2" },
-			{ "hp2", "Light Healing Potion", "light_healing_potion", 1, 1, "pot2" },
-			{ "hp3", "Healing Potion", "healing_potion2", 1, 2, "pot2" },
-			{ "hp4", "Greater Healing Potion", "strong_healing_potion", 1, 3, "pot2" },
-			{ "hp5", "Super Healing Potion", "greater_healing_potion", 1, 4, "pot2" },
-			{ "rvs", "Rejuvenation Potion", "rejuv_potion", 2, 0, "pot3" },
-			{ "rvl", "Full Rejuvenation Potion", "full_rejuv_potion", 2, 1, "pot3" },
-		};
-		for (const auto& p : Potions) {
-			out.push_back({ p.code, p.name, std::string("potion/") + p.picture, Section::Potions, p.column, p.row, { p.need } });
 		}
 		return out;
 	}();
@@ -229,7 +220,7 @@ struct State {
 		return Has("tab");
 	}
 	auto Cap(const Kind& kind) const -> int {
-		return Has(kind.section == Section::Gems ? "gemcap" : kind.section == Section::Runes ? "runecap" : "potcap") ? LargeCap : SmallCap;
+		return Has(kind.section == Section::Gems ? "gemcap" : "runecap") ? LargeCap : SmallCap;
 	}
 	// How many more of this kind may be put in.
 	auto Room(const Kind& kind) const -> int { return Open(kind) ? (std::max)(0, Cap(kind) - Count(kind.code)) : 0; }
@@ -392,7 +383,7 @@ inline auto Panel(const Rect& r, const char* anchor, int priority, const std::st
 
 }  // namespace Ui
 
-inline constexpr int    TreeW = 1900, TreeH = 1507, TreeX = 420, TreeColumnW = 245, TreeRowY = 190, TreeRowH = 205;
+inline constexpr int    TreeW = 1900, TreeH = 1507, TreeX = 420, TreeColumnW = 245, TreeRowY = 170, TreeRowH = 160;
 inline constexpr double NodeScale = 0.65;
 inline constexpr int    SideW = 275, SideH = 70, SideY = 151, SidePitch = 76;  // the Caravan / Stash button at a window's right edge
 
@@ -492,17 +483,16 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 		add(Button("Deposit", 820, 1340, 0.7, "Store bag", TextWhite, "deposit", "Store everything in the bag that the unlocked slots take."));
 	}
 	struct Place { int x, y, pitchX, pitchY; const char* title; int w; };
-	static constexpr Place Places[3] = {
+	static constexpr Place Places[2] = {
 		{ 84, 290, 88, 98, "Gems", 612 },
 		{ 84, 880, 91, 116, "Runes", 994 },
-		{ 816, 290, 91, 98, "Potions", 266 },
 	};
 	const auto shown = [&](const Kind& kind) { return state.Open(kind) || state.Count(kind.code) > 0; };
-	bool any[3] {};
+	bool any[2] {};
 	for (const auto& kind : Kinds()) {
 		any[static_cast<int>(kind.section)] |= shown(kind);
 	}
-	for (int s = 0; s < 3; ++s) {
+	for (int s = 0; s < 2; ++s) {
 		const Place& p = Places[s];
 		const std::string n = std::to_string(s);
 		if (any[s]) {
@@ -510,7 +500,7 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 			add(Box("Rule" + n, { p.x, p.y - 12, p.w, 3 }, Bronze));
 		}
 	}
-	if (!any[0] && !any[1] && !any[2]) {
+	if (!any[0] && !any[1]) {
 		add(Text("Empty", { 100, 620, W - 200, 60 }, "Caravan points open the sections here.", TextBeige, "$MediumFontSize"));
 	}
 	for (const auto& kind : Kinds()) {

@@ -15,8 +15,7 @@
 //   pick quit with nothing left to spawn (the last wave out) ends as given up: it counts as done,
 //   with no reward. A main-line stop is never given up: it resumes with its last wave.
 // On disk: camp/slot<N>/progress/<hero>.txt, one line per stop: "clear <stop id> <times>", and
-// "run <stop id> <waves spawned>" for a run in progress, "potions owed <n>": health potions
-// earned by clears and not yet handed out (the plugin puts them in the stash in town), and
+// "run <stop id> <waves spawned>" for a run in progress, and
 // "flag <name> <n>": one-off rewards already given (Hratli's socket, the Golden Bird's life).
 #pragma once
 
@@ -143,7 +142,6 @@ struct Progress {
 	std::map<std::string, int> clears;  // stop id -> times cleared
 	std::string running;                // the stop of the run in progress ("" none)
 	int         runWaves = 0;           // its waves spawned so far (a stop without waves: 1 once entered)
-	int         potionsOwed = 0;        // health potions earned by clears, not yet handed out
 	std::map<std::string, int> flags;   // one-off rewards already given ("hratli", "goldenbird"...)
 
 	auto Flag(const std::string& name) const -> int {
@@ -240,8 +238,6 @@ inline auto Load(const fs::path& file) -> Progress {
 		int times = 0;
 		if (words >> kind >> id >> times && kind == "clear" && StopById(id) != nullptr && times > 0) {
 			progress.clears[id] = times;
-		} else if (kind == "potions" && id == "owed" && times > 0) {
-			progress.potionsOwed = times;
 		} else if (kind == "flag" && !id.empty() && times > 0) {
 			progress.flags[id] = times;
 		} else if (kind == "run" && StopById(id) != nullptr && times >= 0) {
@@ -261,9 +257,6 @@ inline auto Save(const fs::path& file, const Progress& progress) -> bool {
 	}
 	for (const auto& [name, value] : progress.flags) {
 		out << "flag " << name << ' ' << value << '\n';
-	}
-	if (progress.potionsOwed > 0) {
-		out << "potions owed " << progress.potionsOwed << '\n';
 	}
 	if (!progress.running.empty()) {
 		out << "run " << progress.running << ' ' << progress.runWaves << '\n';

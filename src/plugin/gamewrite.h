@@ -29,6 +29,15 @@ auto Copies(const Game::Unit& unit) -> std::vector<uintptr_t>;
 // Returns how many entries were changed (0: the unit doesn't have this stat now).
 auto SetStat(const std::vector<uintptr_t>& copies, uint16_t stat, int value, uint16_t param = 0) -> int;
 
+// Adds to a stat held in 256ths (life, mana, stamina) in every copy that has it, never past the copy's
+// own `maxStat` and never lowering it: `add256` 256ths plus `share` of the maximum. Each copy's own value
+// is read and written back at once. A copy without life left (dead) keeps none. Returns how many copies
+// have the stat.
+auto AddStat(const std::vector<uintptr_t>& copies, uint16_t stat, uint16_t maxStat, int add256, double share) -> int;
+
+// True while the unit at `copy` is still the same one (kind, class/row, unit number).
+auto SameUnit(uintptr_t copy, const Game::Unit& unit) -> bool;
+
 // Changes a state's end frame (longer or shorter buffs/debuffs) and its own stat values.
 auto SetStateEnd(const std::vector<uintptr_t>& copies, int state, uint32_t endFrame) -> int;
 auto SetStateStat(const std::vector<uintptr_t>& copies, int state, uint16_t stat, int value) -> int;

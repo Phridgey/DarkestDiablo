@@ -19,9 +19,10 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   tiers on its left, passive tree beside them. Its **Stash** button goes back; the X closes both.
 - **Points.** 1 point the first time a class finishes an act in this save (8 classes x 5 acts: 40).
   They stay when the hero dies; a later hero of the same class earns nothing for the same act. Acts
-  finished before this was added count the next time that hero is played. The tree costs 28.
-- **The Upgrades tab** (first node): one slot per gem, rune and potion, kept as counts. Nodes open the
-  kinds (by quality, rune range, potion type), raise the limit per slot from 20 to 99, and add the gem cutter,
+  finished before this was added count the next time that hero is played. The tree costs 40. Part of it is for the heroes'
+  potions (`docs/potions.md`). Points spent on the old potion shelves come back; potions on them are gone.
+- **The Upgrades tab** (first node): one slot per gem and rune, kept as counts. Nodes open the
+  kinds (by quality, rune range), raise the limit per slot from 20 to 99, and add the gem cutter,
   a "Store bag" button and the Porter (stores gems and runes on coming back to town). Click a slot
   to take one out or to store what is in the hand; Ctrl+click a bag item stores it.
 
@@ -37,8 +38,8 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   on item clicks), and stops the right arrow at the last open page. Anything that still lands on a
   locked page is moved to an open one, so a wrong count never gives free space or loses an item.
 - **Old saves.** Locked pages that already held items stay open until they are emptied.
-- **Panels.** Every change draws a new layout in the next spare panel (3 for the window, 4 for the
-  tab, 1 for the button). With the save slots' spares cut from 14 to 6, the plugin uses 63 of 64 panels.
+- **Panels.** Every change draws a new layout in the next spare panel (3 for the window, 3 for the
+  tab, 1 for the button). With the save slots' spares cut from 14 to 6, the plugin uses all 64 panels.
 - The controller and legacy-graphics stash windows still show the personal tab and no Upgrades tab
   (items put there are moved all the same).
 
