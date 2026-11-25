@@ -68,6 +68,10 @@ auto SkillKeysHeld(uintptr_t table) -> std::vector<int>;
 auto MissileColumns(const Game::SkillTable& table, const std::vector<std::pair<int, int>>& known) -> std::vector<std::size_t>;
 auto SetMissile(const Game::SkillTable& table, int row, const std::vector<std::size_t>& columns, int missile, const std::vector<int>& ours) -> bool;
 
+// Research: missile units of these missiles.txt rows anywhere in memory, live or just gone, the client's
+// own too (the unit lists hold only some). Slow (1-2 s).
+auto MissilesInMemory(const std::vector<int>& rows) -> std::vector<std::pair<int, int>>;
+
 // One line per copy for the log: where it is, its stat list, life (to tell the copies apart).
 auto CopiesReport(const Game::Unit& unit, const std::vector<uintptr_t>& copies) -> std::string;
 

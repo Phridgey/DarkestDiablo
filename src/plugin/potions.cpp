@@ -535,7 +535,7 @@ struct ThrowInHand {
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(80));
 			LetGo();
-			LoadMissile("none");
+			// 0.27.2 test: the potion stays in the skill, so neither timing nor "none" can be why nothing flies.
 		} catch (...) {
 		}
 	}
@@ -548,6 +548,27 @@ auto MonsterLives() -> std::map<uint32_t, int> {
 		lives[u.id] = GameState::Life(u);
 	}
 	return lives;
+}
+
+auto HeldMissiles() -> std::string {
+	const std::lock_guard<std::mutex> guard(g_tablesMutex);
+	std::string text;
+	for (const auto& t : g_throwTables) {
+		for (const std::size_t column : t.columns) {
+			uint16_t value = 0;
+			(void)GameState::ReadBytes(t.table.rows + static_cast<uintptr_t>(g_throwSkill) * t.table.size + column, &value, 2);
+			text += " " + std::to_string(value) + "@" + std::to_string(column);
+		}
+	}
+	return text;
+}
+
+auto MissileRows() -> std::vector<int> {
+	std::vector<int> rows;
+	for (const auto& [name, id] : g_throwMissiles) {
+		rows.push_back(id);
+	}
+	return rows;
 }
 
 void WatchThrow(const D2RL::PluginContext* context, std::string code, int skill, std::map<uint32_t, int> before) noexcept {
@@ -563,6 +584,10 @@ void WatchThrow(const D2RL::PluginContext* context, std::string code, int skill,
 		for (const auto& [row, samples] : missiles) {
 			seen += " " + std::to_string(row) + "x" + std::to_string(samples);
 		}
+		std::string memory;
+		for (const auto& [row, count] : GameWrite::MissilesInMemory(MissileRows())) {
+			memory += " " + std::to_string(row) + "x" + std::to_string(count);
+		}
 		const auto after = MonsterLives();
 		for (const auto& [id, life] : before) {
 			const auto now = after.find(id);
@@ -574,8 +599,9 @@ void WatchThrow(const D2RL::PluginContext* context, std::string code, int skill,
 		for (const auto& s : Game::HeroSkills().skills) {
 			level = s.id == skill ? s.baseLevel : level;
 		}
-		Note(context, "%s after the cast: missiles seen (row x times)%s; %d monsters, life fell:%s; skill points %d", code.c_str(),
-			seen.empty() ? " none" : seen.c_str(), static_cast<int>(before.size()), hurt.empty() ? " none" : hurt.substr(0, 300).c_str(), level);
+		Note(context, "%s after the cast: missiles seen (row x times)%s; %d monsters, life fell:%s; skill points %d; our missiles anywhere in memory:%s; the skill holds%s", code.c_str(),
+			seen.empty() ? " none" : seen.c_str(), static_cast<int>(before.size()), hurt.empty() ? " none" : hurt.substr(0, 300).c_str(), level,
+			memory.empty() ? " none" : memory.c_str(), HeldMissiles().c_str());
 	} catch (...) {
 	}
 }

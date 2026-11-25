@@ -155,6 +155,48 @@ auto Copies(const Game::Unit& unit) -> std::vector<uintptr_t> {
 	return out;
 }
 
+auto MissilesInMemory(const std::vector<int>& rows) -> std::vector<std::pair<int, int>> {
+	std::vector<std::pair<int, int>> counts;
+	for (const int row : rows) {
+		counts.emplace_back(row, 0);
+	}
+	constexpr SIZE_T Step = 4 * 1024 * 1024, Head = 0x40;
+	std::vector<unsigned char> buffer(Step + Head);
+	MEMORY_BASIC_INFORMATION info {};
+	for (uintptr_t at = 0x10000; at < 0x7FFFFFFF0000ULL;) {
+		if (VirtualQuery(reinterpret_cast<LPCVOID>(at), &info, sizeof(info)) == 0) {
+			break;
+		}
+		const uintptr_t start = reinterpret_cast<uintptr_t>(info.BaseAddress), end = start + info.RegionSize;
+		if (info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && (info.Protect & PAGE_READWRITE) != 0 &&
+		    (info.Protect & (PAGE_GUARD | PAGE_NOCACHE | PAGE_WRITECOMBINE)) == 0) {
+			for (uintptr_t block = start; block < end; block += Step) {
+				const SIZE_T size = static_cast<SIZE_T>(std::min<uintptr_t>(Step + Head, end - block));
+				SIZE_T got = 0;
+				if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(block), buffer.data(), size, &got) || got < Head) {
+					continue;
+				}
+				for (SIZE_T i = 0; i + Head <= got && i < Step; i += 8) {
+					uint32_t head[4] {};  // kind, row, id, mode
+					std::memcpy(head, buffer.data() + i, sizeof(head));
+					uint64_t data = 0, path = 0;
+					std::memcpy(&data, buffer.data() + i + 0x10, 8);
+					std::memcpy(&path, buffer.data() + i + 0x38, 8);
+					if (head[0] != 3 || head[2] == 0 || head[3] > 4 || !LooksPointer(data) || !LooksPointer(path)) {
+						continue;
+					}
+					for (auto& [row, count] : counts) {
+						count += head[1] == static_cast<uint32_t>(row) ? 1 : 0;
+					}
+				}
+			}
+		}
+		at = end > at ? end : at + 0x1000;
+	}
+	std::erase_if(counts, [](const auto& c) { return c.second == 0; });
+	return counts;
+}
+
 auto SetStat(const std::vector<uintptr_t>& copies, uint16_t stat, int value, uint16_t param) -> int {
 	const bool fixedPoint = stat >= Game::StatId::Life && stat <= Game::StatId::MaxStamina;
 	const int32_t stored = fixedPoint ? value * 256 : value;

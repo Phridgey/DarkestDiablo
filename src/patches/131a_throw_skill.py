@@ -17,9 +17,7 @@ NAME = "DD Throw Potion"
 DESC = "dd throw potion"
 SOURCE = "Fire Bolt"
 NOTHING = "leapknockback"  # no picture, no damage, 2 frames
-COOLDOWN = "10"  # frames, 25 a second
-CLEAR = ("ELen", "EMin", "EMax", "EType", "EDmgSymPerCalc", "Param8", "*Param8 Description", "aitype", "attackrank", "ItemEffect", "ItemCastSound",
-         "castoverlay", "cost mult", "cost add") + tuple(f"{c}Lev{i}" for c in ("EMin", "EMax") for i in range(1, 6))
+START = "oilpotion"  # what it holds until the plugin changes it (0.27.2 test: a real potion)
 REFERENCES = ("Fire Bolt", "Ice Bolt", "Glacial Spike", "Holy Bolt", "Lightning", "VampireFireball", "Bone Spear")
 STRINGS = {
     "skillname_ddthrow": "Throw Potion",
@@ -58,11 +56,10 @@ def patch(t):
     missiles = {r["Missile"].lower(): r for r in t.table("missiles").rows if r.get("*ID")}
     by_id = {r["*ID"]: r["Missile"] for r in missiles.values()}
     number = len(skills.rows)
-    blank = {c: "" for c in CLEAR if c in skills.columns}
-    skills.add_copy("skill", SOURCE, **{**blank, "skill": NAME, "*Id": str(number), "charclass": "", "skilldesc": DESC,
-                    "srvmissile": NOTHING, "cltmissile": NOTHING, "stsound": "weapon_throw_1",
+    skills.add_copy("skill", SOURCE, **{"skill": NAME, "*Id": str(number), "charclass": "", "skilldesc": DESC,
+                    "srvmissile": START, "cltmissile": START, "stsound": "weapon_throw_1",
                     "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
-                    "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": COOLDOWN,
+                    "mana": "0", "minmana": "0", "lvlmana": "0",
                     "leftskill": "0", "rightskill": "1", "ContinueCastUnselected": "1"})
 
     desc.add_copy("skilldesc", "throw", **{"skilldesc": DESC, "str name": "skillname_ddthrow", "str short": "skillsd_ddthrow",
