@@ -127,6 +127,7 @@ def patch(t):
         level_life = int(t.table("monlvl").first("Level", source["Level"])["HP"])
         t.loot_lines.append(f"ascendhp {act} {round(level_life * num(source, 'minHP') / 100 * HP)}")
         spoils(t, loot, act, stats, models)
+    guide(t, stats, models)
     if t.excel.name != "excel":
         return
     strings = t.data("local/lng/strings/monsters.json")
@@ -134,6 +135,19 @@ def patch(t):
     for n, (key, text) in enumerate(names):
         if not any(e.get("Key") == key for e in strings):
             strings.append({"id": STRING_ID + n, "Key": key, **{lang: text for lang in langs}})
+
+
+def guide(t, stats, models):
+    """Tyrael, who waits in the arena after the win. Not selectable, like the camp heroes (046): the
+    plugin asks when the hero walks up (a click on him does that), so none of the game's dialogue runs."""
+    name = "dd_ascendguide"
+    bodies = t.table("monstats2")
+    bodies.add_copy("Id", "tyrael1", Id=name, isSel="", alSel="", **{"*hcIdx": str(len(bodies.rows))})
+    cls = len([r for r in stats.rows if r.get("*hcIdx", "").strip().isdigit()])
+    stats.add_copy("Id", "tyrael1", Id=name, BaseId=name, NextInClass="", MonStatsEx=name, AI="Idle", npc="",
+                   interact="", inventory="", isSpawn="", killable="", Velocity="0", Run="0", **{"*hcIdx": str(cls)})
+    models[name] = models["tyrael1"]
+    t.loot_lines.append(f"ascendguide 1 {cls}")
 
 
 def boss_loot(t, loot, act, source):

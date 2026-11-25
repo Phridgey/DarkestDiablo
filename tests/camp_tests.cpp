@@ -586,6 +586,7 @@ static void WriteStashLayouts(const fs::path& dir) {
 	WriteFile(dir / "wall_part.json", Stash::WallLayout(full, "Hero not found yet, try again"));
 	WriteFile(dir / "wall_fresh.json", Stash::WallLayout(fresh));
 	WriteFile(dir / "page.json", Stash::PageLayout(10, 10, 1234567, 6));
+	WriteFile(dir / "tabs.json", Stash::TabsLayout({ { 0, "Shiftaced" }, { 2, "Abcdefghijklmno" } }, 0));
 	WriteFile(dir / "side.json", Stash::SideLayout());
 	Potions::State potions;
 	Potions::Owner owner;
@@ -912,6 +913,9 @@ static void AscendedItemsTravel() {
 	Ascend::Hero bert;
 	CHECK(Ascend::ReadHero(L::ReadBytes(live / "Bert.d2s"), shapes, bert, error) && bert.items.size() == 1);
 	CHECK(L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());  // never twice
+	// Bert's save is put back from before: the items are sent again at once.
+	L::WriteBytes(live / "Bert.d2s", AscendSave("4a4d0000" + tail));
+	CHECK(!L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());
 	// Bert dies on the way: the items go with the next hero.
 	L::WriteBytes(live / "Cleo.d2s", AscendSave("4a4d0000" + tail));
 	CHECK(!L::Send(live, 1, "Cleo", { "Cleo" }, shapes).empty());

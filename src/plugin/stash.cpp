@@ -183,7 +183,7 @@ Row g_wall { "StashWall", 2 };
 Row g_tab  { "StashTab", 2 };
 Row g_journal { "StashJournal", 2 };
 Row g_pageRow { "StashPage", 2 };
-Row g_name { "StashName", 2 };  // whose ascended items the page holds
+Row g_name { "StashName", 2 };  // the tabs of the ascended heroes' pages
 D2RL::Panels::RegistrationHandle g_side = D2RL::Panels::InvalidHandle;
 
 auto RowName(const Row& row, int i) -> std::string {
@@ -279,9 +279,9 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 		if (g_side != D2RL::Panels::InvalidHandle && !IsOpen(context, g_side)) {
 			g_panels->openPanel(context, g_side);
 		}
-		const auto estate = g_legacy.tabs.find(g_page.load() - Stash::PageCount - 1);
-		if (estate != g_legacy.tabs.end() && !g_tabWanted.load() && !g_treeWanted.load()) {
-			ShowRow(context, g_name, Stash::NameLayout(estate->second));
+		const int heroTab = g_page.load() - Stash::PageCount - 1;  // negative: an ordinary page
+		if (!g_legacy.tabs.empty() && !g_treeWanted.load()) {
+			ShowRow(context, g_name, Stash::TabsLayout(g_legacy.tabs, g_tabWanted.load() ? -1 : heroTab));
 		} else {
 			CloseRow(context, g_name);
 		}
@@ -298,13 +298,8 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 			CloseRow(context, g_wall);
 		}
 		if (!g_treeWanted.load() && !g_tabWanted.load()) {
-			// Ascended heroes' pages count on after the last open one.
 			const int open = g_state.legacyDone ? g_state.LastPage() : Stash::PageCount;
-			int shown = g_page.load();
-			if (shown > Stash::PageCount) {
-				shown = open + 1 + static_cast<int>(std::distance(g_legacy.tabs.begin(), g_legacy.tabs.lower_bound(shown - Stash::PageCount - 1)));
-			}
-			ShowRow(context, g_pageRow, Stash::PageLayout(shown, open + static_cast<int>(g_legacy.tabs.size()), g_state.purse, g_goldStep));
+			ShowRow(context, g_pageRow, Stash::PageLayout(g_page.load(), open, g_state.purse, g_goldStep, heroTab >= 0 ? "Take only" : ""));
 		} else {
 			CloseRow(context, g_pageRow);
 		}
@@ -971,6 +966,9 @@ void LookUp(int rune) noexcept {
 	}
 }
 
+void __cdecl HomePage(const D2RL::PluginContext* context, void*) noexcept;
+void OpenHeroTab(const D2RL::PluginContext* context, int n) noexcept;
+
 void OnAction(const D2RL::PluginContext* context, const char* action) {
 	const fs::path progress = Campfire::RouteProgressFile();
 	const Lock lock(g_mutex);
@@ -989,6 +987,15 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 		}
 	} else if (std::strcmp(action, "shared") == 0) {
 		g_tabWanted = false;
+		if (g_page.load() > Stash::PageCount) {
+			g_threads->runOnUiThread(context, HomePage, nullptr);
+		}
+	} else if (StartsWith(action, "hero-")) {
+		const int n = std::atoi(action + 5);
+		if (g_legacy.tabs.count(n) != 0) {
+			g_tabWanted = false;
+			OpenHeroTab(context, n);
+		}
 	} else if (std::strcmp(action, "closebank") == 0) {
 		g_tabWanted = false;
 		Dispatch(context, "BankPanelMessage", "Close", "");
@@ -1146,6 +1153,7 @@ auto __cdecl OnItemClick(const D2RL::PluginContext* context, const D2RL::ItemInt
 // remembered, and when the stash opens that spot is clicked for the player and the mouse put back.
 // Another window size, or a click that chose no tab, and the spot is forgotten until the next click.
 std::atomic<bool> g_clicking { false }, g_tabChosen { false };
+std::atomic<bool> g_onShared { false };  // the shared pages were chosen since the stash opened
 std::atomic<int>  g_spotX { -1 }, g_spotY { -1 }, g_spotW { 0 }, g_spotH { 0 };
 
 auto GameWindow(RECT& area) noexcept -> HWND {
@@ -1162,6 +1170,7 @@ auto SpotFile() -> fs::path {
 // UI thread: the player chose the Shared tab with the mouse.
 void NoteTabClick() noexcept {
 	g_tabChosen = true;
+	g_onShared = true;
 	RECT area {};
 	POINT at {};
 	const HWND window = GameWindow(area);
@@ -1241,11 +1250,38 @@ void ClickShared(const D2RL::PluginContext* context) noexcept {
 	}
 }
 
+// UI thread. Turns to an ascended hero's page, counted from the very first page like HomePage.
+void __cdecl ShowHeroTab(const D2RL::PluginContext* context, void* data) noexcept {
+	const int n = static_cast<int>(reinterpret_cast<intptr_t>(data));
+	{
+		const Lock lock(g_mutex);
+		if (g_legacy.tabs.count(n) == 0) {
+			return;
+		}
+	}
+	HomePage(context, nullptr);
+	if (g_bankOpen.load()) {
+		GoTo(context, Stash::PageCount + 1 + n);
+		Log(context, "Stash: the tab of ascended hero %d (page %d of the file).", n, FilePage(Stash::PageCount + 1 + n) + 1);
+	}
+}
+
+// The game may still show the hero's own (hidden) page: the Shared tab is clicked first.
+void OpenHeroTab(const D2RL::PluginContext* context, int n) noexcept {
+	void* data = reinterpret_cast<void*>(static_cast<intptr_t>(n));
+	if (g_onShared.load()) {
+		g_threads->runOnUiThread(context, ShowHeroTab, data);
+	} else {
+		ClickShared(context);
+		Later(context, 900, ShowHeroTab, data);
+	}
+}
+
 // UI thread. The shown page went away: back to the last open one.
 void __cdecl LeaveTab(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
 	if (g_bankOpen.load()) {
-		GoTo(context, (std::max)(1, g_state.LastPage()));
+		GoTo(context, 1);
 	}
 }
 
@@ -1253,7 +1289,8 @@ void __cdecl LeaveTab(const D2RL::PluginContext* context, void*) noexcept {
 // plugin turned several pages itself, past the locked ones).
 auto TurnPage(const D2RL::PluginContext* context, int direction) -> bool {
 	const int last = g_state.legacyDone ? g_state.LastPage() : Stash::PageCount;
-	const int presses = Legacy::Presses(g_page.load(), direction, last, Stash::PageCount + 1, g_legacy);
+	// Ascended heroes' pages are tabs of their own: no arrow leads there or away.
+	const int presses = g_page.load() > Stash::PageCount ? 0 : Legacy::Presses(g_page.load(), direction, last, Stash::PageCount + 1, {});
 	if (presses == 0) {
 		Log(context, "Stash: no page %s of page %d.", direction > 0 ? "right" : "left", g_page.load());
 		return true;
@@ -1432,6 +1469,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			if (std::strcmp(text, BankPanel) == 0) {
 				if (std::strcmp(command, "OpenPanel") == 0) {
 					g_page = 1;
+					g_onShared = false;
 					g_treeWanted = false;
 					g_tabWanted = false;
 					if (!g_bankOpen.exchange(true)) {

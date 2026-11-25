@@ -562,7 +562,8 @@ inline constexpr std::array<long long, 8> GoldSteps = { 100, 500, 1000, 5000, 10
 // On the open stash, over the place of the game's own page number and gold (130_stash.py moves those
 // away): which of the save's pages shows (always from 1) and the save's own gold, with the amount
 // to move between arrows.
-inline auto PageLayout(int page, int pages, long long purse, size_t step) -> std::string {
+// `label`: instead of the page number (an ascended hero's page).
+inline auto PageLayout(int page, int pages, long long purse, size_t step, const std::string& label = {}) -> std::string {
 	using namespace Ui;
 	constexpr int X = 100, Y = 1200;
 	const auto arrow = [&](const char* name, int x, const char* picture, const char* action, const char* tip) {
@@ -571,7 +572,7 @@ inline auto PageLayout(int page, int pages, long long purse, size_t step) -> std
 			tip + "\",\"onClickMessage\":\"" + ActionMessage + action + "\"}}";
 	};
 	const long long amount = GoldSteps[step < GoldSteps.size() ? step : GoldSteps.size() - 1];
-	std::string out = Text("Page", { 464 - X, 1224 - Y, 230, 64 }, "Page " + std::to_string(page) + " of " + std::to_string(pages), "$PanelTitleColor", "$MediumFontSize") + "," +
+	std::string out = Text("Page", { 464 - X, 1224 - Y, 230, 64 }, label.empty() ? "Page " + std::to_string(page) + " of " + std::to_string(pages) : label, "$PanelTitleColor", "$MediumFontSize") + "," +
 		Text("Gold", { 364 - X, 1302 - Y, 430, 40 }, "Gold " + Commas(purse), TextGold, "$MediumLargeFontSize") + "," +
 		arrow("Less", 400, "Stash_LeftArrow", "goldless", "A smaller amount") + "," +
 		Text("Amount", { 466 - X, 1356 - Y, 226, 44 }, amount == 0 ? std::string("All") : Commas(amount), TextWhite, "$MediumFontSize") + "," +
@@ -581,13 +582,32 @@ inline auto PageLayout(int page, int pages, long long purse, size_t step) -> std
 	return Panel({ 236 + X, -651 + Y, 1162 - 2 * X, 220 }, "$LeftPanelAnchor", 8540, out);
 }
 
-// The Journal button (journal.h), and the button attached to the stash's right side that shows the caravan window in its place.
-// Over the stash, on an ascended hero's page.
-inline auto NameLayout(const std::string& hero) -> std::string {
+// On the stash's own tab bar: a tab for every ascended hero's page in use, after Shared and Upgrades.
+// `active`: the one that shows (negative: none). With one showing, Shared is drawn as not chosen.
+inline auto TabsLayout(const std::map<int, std::string>& tabs, int active) -> std::string {
 	using namespace Ui;
-	return Panel({ 200, -770, 1000, 60 }, "$LeftPanelAnchor", 8600, Text("Whose", { 0, 0, 1000, 60 }, hero + ", ascended (take only)", TextGold, "$LargeFontSize"));
+	constexpr int W = 195;
+	std::string out;
+	const auto tab = [&](const std::string& name, int at, bool on, const std::string& text, const std::string& action, const std::string& tip) {
+		const std::string frame = on ? "1" : "0";
+		const char* size = text[0] == '@' || text.size() <= 9 ? "\"$SmallPanelFontSize\"" : text.size() <= 12 ? "22" : "18";
+		out += std::string(out.empty() ? "" : ",") + "{\"type\":\"ButtonWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(at * W) +
+			",\"y\":0},\"filename\":\"PANEL\\\\stash\\\\MKB_Tabs_195_TGA\",\"normalFrame\":" + frame + ",\"pressedFrame\":1,\"hoveredFrame\":" + frame +
+			",\"disabledFrame\":" + frame + ",\"textString\":\"" + text + "\",\"pointSize\":" + size + ",\"textColor\":\"" +
+			(on ? "$TabsActiveTextColor" : "$TabsInactiveTextColor") + "\"" + (tip.empty() ? "" : ",\"tooltipString\":\"" + tip + "\"") +
+			",\"onClickMessage\":\"" + ActionMessage + action + "\"}}";
+	};
+	if (active >= 0) {
+		tab("TabShared", 0, false, "@d2r:shared", "shared", "");
+	}
+	int at = 2;
+	for (const auto& [n, hero] : tabs) {
+		tab("TabHero" + std::to_string(n), at++, n == active, hero, "hero-" + std::to_string(n), hero + " has ascended. Take only. The tab goes when it is empty.");
+	}
+	return Panel({ 236 + 82, -651 + 146, 5 * W, 72 }, "$LeftPanelAnchor", 8650, out);  // over the Upgrades tab (8600), under the caravan window
 }
 
+// The Journal button (journal.h), and the button attached to the stash's right side that shows the caravan window in its place.
 inline auto SideLayout() -> std::string {
 	using namespace Ui;
 	return Panel({ 1400, -651 + SideY, SideW, SidePitch + SideH }, "$LeftPanelAnchor", 8500, Button("Caravan", 0, 0, 0.75, "Caravan", TextGold, "tree", "Stash pages and passives") + "," +

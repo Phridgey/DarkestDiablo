@@ -27,6 +27,7 @@ namespace Legacy {
 namespace fs = std::filesystem;
 
 inline constexpr int TabCount = 4;       // stash pages kept for ascended heroes
+inline constexpr int ShownTabs = 3;      // of them in use at once: what fits beside Shared and Upgrades
 inline constexpr int PageSize = 10;      // cells, across and down
 
 struct Estate {
@@ -40,7 +41,7 @@ struct State {
 	std::vector<Estate> estates;
 	std::map<int, std::string> tabs;  // in use: number -> its hero
 	auto FreeTab() const -> int {
-		for (int i = 0; i < TabCount; ++i) {
+		for (int i = 0; i < ShownTabs; ++i) {
 			if (tabs.count(i) == 0) {
 				return i;
 			}
@@ -164,6 +165,17 @@ inline auto Send(const fs::path& live, int slot, const std::string& hero, const 
 	for (Estate& e : state.estates) {  // a carrier that died with the page: send it again
 		const bool alive = std::any_of(living.begin(), living.end(), [&](const std::string& n) { return Camp::Lower(n) == Camp::Lower(e.carrier); });
 		if (!e.carrier.empty() && !alive) {
+			e.carrier.clear();
+			changed = true;
+		}
+		// Noted as carried, but nothing is in the carrier's save (saves put back from a backup): it
+		// goes again now, unless it did reach its page.
+		Ascend::Hero carrier;
+		std::string unread;
+		if (!e.carrier.empty() && Ascend::ReadHero(ReadBytes(live / (e.carrier + ".d2s")), shapes, carrier, unread) &&
+			std::none_of(carrier.items.begin(), carrier.items.end(), [](const Ascend::Item& i) { return i.loc == 0 && i.page == 5; })) {
+			const auto tab = state.tabs.find(e.tab);
+			e.sent += tab != state.tabs.end() && tab->second == e.name ? 1 : 0;
 			e.carrier.clear();
 			changed = true;
 		}

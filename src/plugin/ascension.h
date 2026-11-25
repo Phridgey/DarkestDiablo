@@ -1,4 +1,4 @@
-// Darkest Diablo — Ascend in the game: the arena, the boss, its loot, the portal (ascension.cpp).
+// Darkest Diablo — Ascend in the game: the arena, the boss, its loot, Tyrael (ascension.cpp).
 // docs/ascend.md. The Campfire starts it and ends it; legacy.h carries the items home.
 #pragma once
 
@@ -41,7 +41,7 @@ void OnGameLeft() noexcept;
 // Every monster's death (monstats row), so a boss whose body is gone at once counts too.
 void OnMonsterDied(const D2RL::PluginContext* context, uint32_t classId) noexcept;
 
-// A button of the portal's question ("ascend-yes", "ascend-no"). True when it was one.
+// A button of the closing question ("ascend-yes", "ascend-no"). True when it was one.
 auto OnAction(const D2RL::PluginContext* context, const char* action) noexcept -> bool;
 
 // The level a hero should have for an act's boss: below it the Campfire warns.
