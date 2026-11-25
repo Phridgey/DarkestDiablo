@@ -99,6 +99,16 @@ struct SkillSet {
 // The hero's skills. The skill list is found by its shape the first time (docs/game-state-api.md).
 auto HeroSkills() -> SkillSet;
 
+// The skill list of one copy of a player (GameWrite::Copies): each skill's row and where it lies, and
+// where the list keeps its right-button skill. Not found: nothing. For gamewrite.cpp.
+struct SkillPlaces {
+	std::vector<std::pair<int, uintptr_t>> skills;
+	uintptr_t rightAt = 0;  // address of the pointer
+	uintptr_t right = 0;    // what it points at
+	auto Find(int row) const -> uintptr_t;  // 0: the copy has no such skill
+};
+auto SkillsOf(uintptr_t copy) -> std::optional<SkillPlaces>;
+
 // Research for "dd-state skills": where the skill list was found and each skill's raw numbers.
 auto SkillsReport() -> std::string;
 

@@ -97,9 +97,8 @@ You need: your own copy of D2R, Python 3, Git, Visual Studio with "Desktop devel
     one, compose_map's `open`) leading into the Smith's forge; waves worth 40% more experience;
     cleared when the Smith dies. See `src/maps/malus.json` and `src/patches/110_malus.py`.
 - **No keys** drop anywhere (`src/patches/005_no_keys.py`).
-- **No health potions** drop anywhere or are sold; everything else in those tables drops as often
-  as before (`src/patches/006_no_health_potions.py`). Instead each cleared stop earns 3, put in the
-  hero's stash next time in town; what doesn't fit stays owed (the plugin's potion supply).
+- **No potions** drop or are sold; everything else in those tables drops as often as before
+  (`src/patches/006_no_health_potions.py`). Every hero has permanent potions (`docs/potions.md`).
 - **Bigger inventory:** every hero's bag is 10x5 instead of 10x4 (`src/patches/055_inventory_row.py`).
   The panel's background gets its extra row at build time from the game's own picture.
 - **Route map**: every waypoint opens it instead of Blizzard's list (outside town it has

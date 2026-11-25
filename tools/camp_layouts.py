@@ -82,7 +82,7 @@ PANEL_GAP = 50
 PANEL_X = [-(PANEL_W * 3 + PANEL_GAP * 2) // 2 + i * (PANEL_W + PANEL_GAP) for i in range(3)]
 HERO_LINES = 8                          # one hero per class at most: two columns of four
 BUTTON_Y = PANEL_Y + PANEL_H + 25
-ROW_Y = 1930                            # Exit and the delete questions' answers
+ROW_Y = 1930                            # the delete questions' answers
 
 
 def styled(name, x, y, width, height, value, color, size, align="left", font="16pt"):
@@ -146,7 +146,7 @@ def save_slots():
     # Deleting a save is asked twice. Each question's words are a ready-made group per slot that
     # the plugin shows. A hidden button still takes clicks in this game, so no two buttons may
     # share a spot: the four answer buttons are made once (not per slot) and stand in the bottom
-    # row, clear of the Exit button in the middle. The second question's buttons are to the
+    # row, clear of each other. The second question's buttons are to the
     # right of the first's and swap order, so a double click can't answer both.
     for slot in (1, 2, 3):
         kids.append({"type": "Widget", "name": f"Confirm{slot}A", "fields": {"rect": {"x": 0, "y": 0}}, "children": [
@@ -160,8 +160,13 @@ def save_slots():
     kids.append(fe_button("AskNo", -960, ROW_Y, "Keep it", act + "slot-delete-cancel"))
     kids.append(fe_button("SureNo", 490, ROW_Y, "Keep it", act + "slot-delete-cancel"))
     kids.append(fe_button("SureYes", 990, ROW_Y, "Yes, delete it", act + "slot-delete-yes"))
-    kids.append(line("RestartNotice", 1000, "This Delve is ready. Close the game and start it again to play it.", "$FontColorWhite"))
-    kids.append(fe_button("Exit", -235, ROW_Y, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit"))
+    kids.append(line("RestartNotice", 1000, "The game has to start again for this. Press Exit Diablo II, then start it again.", "$FontColorWhite"))
+    kids.append(fe_button("NoticeBack", -235, 1130, "Back", act + "slot-notice-back"))
+    # Exit in the top left corner, the same button in the same place as at the Campfire
+    # (ExitCorner in campfire.cpp, FireLayoutJson).
+    exit_button = fe_button("ExitGame", 100, 60, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit")
+    exit_button["fields"].update({"pointSize": "$LargeFontSize", "textColor": "$LightButtonTextColor"})
+    kids.append({"type": "Widget", "name": "Exit", "fields": {"anchor": {"x": -0.5, "y": 0.0}}, "children": [exit_button]})
     return {"type": "Panel", "name": "darkestdiablo/SaveSlots",
             "fields": {"anchor": {"x": 0.5}, "fitToParent": True, "priority": 9000}, "children": kids}
 

@@ -1,0 +1,14 @@
+{
+  "name": "darkest_ascend5",
+  "folder": "expansion/baallair",
+  "room": 55,
+  "comment": "Ascension arena of Act 5 (990_ascension.py): the boss's room without monsters.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "expansion/baallair/wstone01"
+    }
+  ],
+  "keep_monsters": []
+}

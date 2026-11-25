@@ -1,5 +1,6 @@
 // See gameapi.h and docs/game-state-api.md. READ ONLY.
 #include "gameapi.h"
+#include <atomic>
 
 #include "gamememory.h"
 
@@ -267,6 +268,34 @@ auto HeroSkills() -> SkillSet {
 		}
 	}
 	return set;
+}
+
+auto SkillPlaces::Find(int row) const -> uintptr_t {
+	for (const auto& [id, node] : skills) {
+		if (id == row) {
+			return node;
+		}
+	}
+	return 0;
+}
+
+auto SkillsOf(uintptr_t copy) -> std::optional<SkillPlaces> {
+	Unit unit;
+	unit.address = copy;
+	SkillChain chain;
+	uintptr_t list = 0;
+	if (copy == 0 || !FindSkillList(unit, chain, list)) {
+		return std::nullopt;
+	}
+	SkillPlaces places;
+	for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
+		places.skills.emplace_back(chain.ids[i], chain.nodes[i]);
+	}
+	places.rightAt = list + 2 * sizeof(uintptr_t);  // { first, left, right }
+	if (!Get(places.rightAt, places.right) || places.right == 0) {
+		return std::nullopt;
+	}
+	return places;
 }
 
 auto SkillsReport() -> std::string {

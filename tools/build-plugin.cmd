@@ -9,6 +9,7 @@ for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -requires Mic
 if not defined VS (echo Visual Studio C++ tools not found. Install "Desktop development with C++". & exit /b 1)
 call "%VS%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
 python "%ROOT%\tools\gen_game_tables.py" || exit /b 1
+python "%ROOT%\tools\gen_journal.py" || exit /b 1
 cmake -S "%ROOT%\src\plugin" -B "%ROOT%\build\plugin-obj" -A x64 || exit /b 1
 cmake --build "%ROOT%\build\plugin-obj" --config Release || exit /b 1
 "%ROOT%\build\plugin\camp_tests.exe" || exit /b 1

@@ -14,6 +14,8 @@
 
 #include "devtools.h"
 #include "gameapi.h"
+#include "potionsgame.h"
+#include "gamestate.h"
 #include <D2RLPlugin/core_exports.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -201,7 +203,7 @@ auto LayoutJson() -> std::string {
 		add(Button(std::string("Item") + Qualities[q], Margin + q * 323, 600, Qualities[q], action, White, "0.6"));
 	}
 	add(Button("Gold", Column(0), 680, "Gold (up to 50,000)", "gold"));
-	add(Button("Potions", Column(1), 680, "4 full rejuvenations", "potions"));
+	add(Button("Potions", Column(1), 680, "Refill potions", "potions"));
 	add(Button("Identify", Column(2), 680, "Identify everything", "identify"));
 
 	add(Text("EventsLabel", Margin, 800, 1600, 50, "Events", Gold, "$LargeFontSize"));
@@ -500,6 +502,7 @@ void OnAction(const D2RL::PluginContext* context, const char* action) noexcept {
 		// an amount would pass that (50,000 at once left low-level heroes with 0). So give what
 		// still fits, up to 50,000; if the hero can't be read, 5,000, which fits even at level 1.
 		int amount = 5000;
+		GameState::Ready();
 		const Game::HeroDetails hero = Game::HeroInfo();
 		if (hero.level > 0 && hero.gold >= 0) {
 			amount = (std::min)(50000, hero.level * 10000 - hero.gold);
@@ -512,7 +515,7 @@ void OnAction(const D2RL::PluginContext* context, const char* action) noexcept {
 			problem = "This hero carries all the gold its level allows (10,000 per level).";
 		}
 	} else if (std::strcmp(action, "potions") == 0) {
-		problem = SpawnItem(context, "rvl", D2RL::Items::Quality::Normal, 4);
+		PotionsGame::Refill(context);
 	} else if (std::strcmp(action, "identify") == 0) {
 		RunConsole(context, "cheat idall");
 	} else if (std::strncmp(action, "event-", 6) == 0) {

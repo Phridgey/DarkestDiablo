@@ -20,7 +20,7 @@ typed there.
 | Go to town | Sends you to the town of the act you are in and remembers where you were. |
 | Return to where I was | Takes you back to that level, at its entrance. This stands in for the portal: a plugin can't make a real one. Going back into an arena starts its waves again. |
 | Items | Type an item code (`rin`, `amu`, `lsd`, ...) and press a quality. The item goes into the inventory, or on the ground if it is full. |
-| Gold, rejuvenations, identify | One press each. The gold button gives up to 50,000, but never more than the hero can still carry (10,000 per level): a gift that passes that limit empties the purse instead. |
+| Gold, refill potions, identify | One press each. The gold button gives up to 50,000, but never more than the hero can still carry (10,000 per level): a gift that passes that limit empties the purse instead. |
 | Events | One button per registered event (see below). |
 
 The same tools from the console, for when the window is in the way:

@@ -192,7 +192,8 @@ def chests_without_ammo(t):
             copy["NoDrop"] = str((int(copy["NoDrop"]) if copy.get("NoDrop", "").strip().isdigit() else 0) + dropped)
         for k in range(1, 11):
             copy[f"Item{k}"], copy[f"Prob{k}"] = kept[k - 1] if k <= len(kept) else ("", "")
-        tcs.rows.append(copy)
+        # Right after its original: the game reads the tables top to bottom (003_gems.py).
+        tcs.rows.insert(1 + next(i for i, r in enumerate(tcs.rows) if r is by_name[name]), copy)
         return copy["Treasure Class"]
 
     for tag in ("", " (N)", " (H)"):

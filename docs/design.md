@@ -114,8 +114,8 @@ every stop built, not yet tested). Patches `113_act3.py`, `114_act4.py`, `114a_a
   (008_act1_rune_levels.py); later runes keep the game's requirements.
 
 ## Healing (decided 2026-11-19)
-- No health potions drop or are sold. Each cleared stop earns 3 (by difficulty: light, greater,
-  super), put in the hero's stash in town; what doesn't fit stays owed and piles up.
+- No potions drop or are sold. Every hero has permanent potions with charges (`docs/potions.md`,
+  2026-11-24; they replaced the 3 potions a cleared stop used to earn).
 - Akara doesn't heal (the plugin undoes it).
 
 ## Drop and experience numbers (decided so far)
@@ -134,8 +134,7 @@ Every multiplier and drop rate we have agreed on, in one place. "Built" means it
 | Pit (MF run) | Like Rakanishu & Treehead: every monster's drops 1.4 times as likely to be magic or better; 5 packs of the Pit's monsters, each led by a unique; one unique, picked at random, drops a guaranteed unique or set, and killing it clears the stop | built |
 | MF runs (Rakanishu & Treehead, Pit) | Every drop 1.4 times as likely to be magic or better; charms 3 times as likely (+200%) | built |
 | Den of Evil, first clear | 1 skill point (no respec) | built |
-| Health potions | None drop and shops sell none; every cleared stop earns 3 (light in Normal, greater in Nightmare, super in Hell), put in the hero's stash in town (the bag if full); what doesn't fit stays owed and piles up | built |
-| Mana potions | Drop half as often as in the base game (`src/patches/007_fewer_mana_potions.py`); everything else in the same loot tables is unchanged | built |
+| Potions | None drop, none are sold; every hero has permanent potions that kills and time refill (`docs/potions.md`) | built, not tested |
 | Akara | No longer heals: the plugin writes life and mana back when talking to her fills them (a full rejuvenation drunk next to her is undone too) | built |
 | Rakanishu & Treehead (MF run) | Treehead: one guaranteed unique or set (a set if no unique fits), plus his normal table drops | built |
 | Mausoleum: rune chance per kill | 5% at 0 magic find, 10% at 250, then on up in a straight line (+1% per 50 MF), 100% at most | built |
@@ -166,14 +165,14 @@ game: the numbers are for one player.
   `docs/campfire.md`.
 - The next character to play is picked from the campfire circle, with the stash in view to plan.
 - Stashed items keep their level and attribute requirements. That is the balance.
-- The stash starts small. Optional challenges (e.g. "bonus for spears", "can't use shields")
-  unlock more tabs and stash features.
+- The stash starts small: one shared page, no personal page. Gold buys pages; finishing acts with
+  different classes earns points for an Upgrades tab (gems, runes) and for the potions. See `docs/stash.md`.
 - **Atlas:** kiss and curse bonuses that keep less-progressed characters relevant. Points come
   from reaching a new furthest point; they can be re-allocated freely; profiles can be saved
   (pushing vs farming). No out-of-run skill tree.
 - **Blaze of glory:** for a character that won't go further. One boss fight, no fleeing, uber
   difficulty for its level, huge rewards. Win: the character retires and brings its whole
-  inventory home, boss loot included. When it can be tried: not decided.
+  inventory home, boss loot included. Built as Ascend, at any time: `docs/ascend.md`.
 
 ## Technical approach
 - Data edits (tables, maps) for everything they can do.
@@ -186,7 +185,6 @@ game: the numbers are for one player.
 ## Open questions
 - Is Andariel (and each act boss) a forced final stop?
 - Examples of kiss and curse bonuses.
-- When can a character attempt a blaze of glory?
 
 ## Arena stops (decided 2026-11-17, updated)
 - Waves come on a timer: wave 1 shortly after arrival, then one every 10 s, whatever is still

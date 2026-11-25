@@ -2,5 +2,8 @@
 # is active. tools/build.py copies this folder into the mod.
 
 [d2rcore.stash]
-# The camp's stash: extra shared pages after the game's own. Every hero of a save sees them.
-add_shared_tabs = 7
+# The camp's stash: extra shared pages after the game's own 3, 14 in all (the last 4 are for ascended heroes, docs/ascend.md). Every hero of a save sees
+# them. The save unlocks them one by one (docs/stash.md); stash.h counts on there being 10.
+# All three saves share one file: 10 pages each, then 4 each for ascended heroes: 42 with the 3 of
+# the game (docs/stash.md, docs/ascend.md).
+add_shared_tabs = 39

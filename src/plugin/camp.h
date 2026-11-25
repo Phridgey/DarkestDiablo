@@ -344,12 +344,18 @@ inline auto IsSharedFile(const fs::path& file) -> bool {
 	return name == "settings.json" || name == "lootfilter.json" || ext == ".fltr";
 }
 
+// Once the three saves' stashes are one file (stashfile.h), it stays in the live folder.
+inline constexpr const char* StashName = "SharedStashSoftCoreV2.d2i";
+inline auto JoinedFile(const fs::path& live) -> fs::path { return live / "camp" / "stash-joined.txt"; }
+inline auto StashJoined(const fs::path& live) -> bool { return ReadFile(JoinedFile(live)).rfind("done", 0) == 0; }
+
 // The files of the live slot: everything at the top of the live folder except shared files.
 inline auto SlotFiles(const fs::path& live) -> std::vector<fs::path> {
 	std::vector<fs::path> out;
 	std::error_code ec;
+	const bool joined = StashJoined(live);
 	for (const auto& entry : fs::directory_iterator(live, ec)) {
-		if (entry.is_regular_file(ec) && !IsSharedFile(entry.path())) {
+		if (entry.is_regular_file(ec) && !IsSharedFile(entry.path()) && !(joined && entry.path().filename() == StashName)) {
 			out.push_back(entry.path());
 		}
 	}
@@ -400,8 +406,9 @@ inline auto SwitchSlot(const fs::path& live, int to, std::string& error) -> bool
 	}
 	std::vector<fs::path> incoming;
 	std::error_code ec;
+	const bool joined = StashJoined(live);
 	for (const auto& entry : fs::directory_iterator(parkNew, ec)) {
-		if (entry.is_regular_file(ec)) {
+		if (entry.is_regular_file(ec) && !(joined && entry.path().filename() == StashName)) {
 			incoming.push_back(entry.path());
 		}
 	}
@@ -718,6 +725,10 @@ inline auto Bury(const fs::path& live, int slot, const std::string& name, std::s
 	const fs::path progress = SlotDir(live, slot) / "progress" / (name + ".txt");
 	if (fs::exists(progress, ec)) {
 		files.push_back(progress);
+	}
+	const fs::path potions = SlotDir(live, slot) / "potions" / (name + ".potions.txt");  // potions.h
+	if (fs::exists(potions, ec)) {
+		files.push_back(potions);
 	}
 	char stamp[32] {};
 	const std::time_t now = std::time(nullptr);

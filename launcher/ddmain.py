@@ -46,7 +46,8 @@ DEFAULT_VANILLA = ["data/global/excel/", "data/local/lng/strings/", "data/global
                    "data/hd/character/player/paladin.json",
                    "data/hd/character/player/sorceress.json",
                    "data/hd/character/player/warlock.json",
-                   "data/hd/global/ui/panel/inventory/background"]
+                   "data/hd/global/ui/panel/inventory/background",
+                   "data/hd/global/ui/panel/stash/mkb_tabs_195_tga"]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 

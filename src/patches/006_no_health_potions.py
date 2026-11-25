@@ -1,20 +1,20 @@
 """No potions and no scrolls drop anywhere (decided 2026-11-23; health potions since 2026-11-19;
 throwing potions and elixirs since 2026-11-24).
 
-Every loot table entry for a potion (healing, mana, rejuvenation, antidote, stamina, thawing) or a
+Every loot table entry for a potion (healing, mana, rejuvenation, antidote, stamina, thawing, throwing), an elixir or a
 scroll (Town Portal, Identify) is taken out, and in tables that pick by chance its weight moves to
 "NoDrop", so everything else in that table (gold, items, gems, runes) drops exactly as often as
 before. Tables that drop every entry (negative Picks) just lose it.
 
 Shops don't sell health potions: every vendor's stock columns for them in misc.txt are emptied.
-The plugin hands out a few per cleared stop instead (the camp's potion supply), and the Town
+Heroes have permanent potions instead (131_potions.py, docs/potions.md), and the Town
 Portal scroll that ends each stop still comes from the plugin.
 """
 
 HEALTH = {"hp1", "hp2", "hp3", "hp4", "hp5"}
 NO_DROP = HEALTH | {"mp1", "mp2", "mp3", "mp4", "mp5", "rvs", "rvl", "yps", "vps", "wms", "tsc", "isc",
-                   # throwing potions (oil, exploding, gas) and elixirs too (2026-11-24)
-                   "ops", "opm", "opl", "gps", "gpm", "gpl", "elx"}
+                    "gps", "gpm", "gpl", "ops", "opm", "opl",
+                    "elx"}
 
 
 def patch(t):

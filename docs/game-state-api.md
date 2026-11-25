@@ -278,8 +278,12 @@ const Game::Unit hero = Game::Hero();
 const auto copies = GameWrite::Copies(hero);              // slow (1-2 s): once per game, keep it
 GameWrite::SetStat(copies, Game::StatId::MagicFind, 300); // only if the hero has magic find now
 GameWrite::SetStateStat(copies, 60, Game::StatId::VelocityPercent, -20);  // a weaker slow
+GameWrite::AddStat(copies, Game::StatId::Life, Game::StatId::MaxLife, 256, 0.0);  // +1 life, never past the maximum
 GameWrite::SetStateEnd(copies, 60, endFrame);              // a shorter or longer state
 ```
+
+`GameWrite::HoldSkill` / `GiveBack` change what the skill keys hold for a moment, and `RestoreRight` puts the
+right-button skill back (throwing a potion; mapped).
 
 What it can and can't do (status: mapped, being tested with `dd-set`):
 

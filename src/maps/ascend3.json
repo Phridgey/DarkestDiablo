@@ -1,0 +1,15 @@
+{
+  "name": "darkest_ascend3",
+  "folder": "act3/travincal",
+  "room": 41,
+  "comment": "Ascension arena of Act 3 (990_ascension.py): the boss's room without monsters.",
+  "pieces": [
+    {
+      "x": 0,
+      "y": 0,
+      "piece": "act3/travincal/mephcomp"
+    }
+  ],
+  "keep_monsters": [],
+  "close_edges": true
+}

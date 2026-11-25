@@ -1,8 +1,15 @@
 // Tests for the camp rules (src/plugin/camp.h). No game needed.
 //   g++ -std=c++20 -I src/plugin tests/camp_tests.cpp -o build/camp_tests && build/camp_tests
 // tools\build-plugin.cmd builds and runs them too.
+#include "ascend.h"
+#include "legacy.h"
 #include "camp.h"
 #include "route.h"
+#include "stash.h"
+#include "potions.h"
+#include "routepages.h"
+#include "journal.h"
+#include "stashfile.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -449,7 +456,512 @@ static void ReadsThisGameBuildsSaves() {
 	fs::remove_all(dir);
 }
 
-int main() {
+static auto ActDone(int lastAct) -> Route::Progress {
+	Route::Progress p;
+	for (const auto& stop : Route::Stops) {
+		if (Route::ActOfTier(stop.tier) <= lastAct) {
+			p.clears[stop.id] = Route::IsFork(stop.tier) ? Route::PicksPerFork : 1;
+		}
+	}
+	return p;
+}
+
+static void StashPagesArePaidInParts() {
+	Stash::State s;
+	CHECK(s.Pages() == 1 && s.Owing() == 50000);
+	CHECK(!s.Pay(30000) && s.fund == 30000 && s.Owing() == 20000);
+	CHECK(s.Pay(999999) && s.tier == 1 && s.fund == 0);  // never more than is owed, nothing carried over
+	long long last = 0;
+	for (const long long price : Stash::TierPrice) {
+		CHECK(price > last);
+		last = price;
+	}
+	while (s.tier < Stash::TierCount) {
+		CHECK(s.Pay(s.Owing()));
+	}
+	CHECK(s.Pages() == Stash::PageCount && s.Owing() == 0 && !s.Pay(1));
+	CHECK(Stash::Commas(50000) == "50,000" && Stash::Commas(2500000) == "2,500,000" && Stash::Commas(7) == "7" && Stash::Commas(100) == "100");
+}
+
+static void StashPointsComeOncePerClassAndAct() {
+	for (int act = 1; act <= 5; ++act) {  // LastTierOfAct agrees with the route
+		const int tier = Stash::LastTierOfAct[act - 1];
+		CHECK(Route::ActOfTier(tier) == act && (tier + 1 == Route::TierCount || Route::ActOfTier(tier + 1) == act + 1));
+	}
+	Stash::State s;
+	CHECK(Stash::CountActs(s, Paladin, Route::Progress {}) == 0);
+	CHECK(Stash::CountActs(s, Paladin, ActDone(1)) == 1);
+	CHECK(Stash::CountActs(s, Paladin, ActDone(1)) == 0);   // the same act again, even by a later Paladin
+	CHECK(Stash::CountActs(s, Paladin, ActDone(3)) == 2);
+	CHECK(Stash::CountActs(s, Druid, ActDone(1)) == 1);
+	CHECK(Stash::CountActs(s, -1, ActDone(5)) == 0);
+	CHECK(s.Earned() == 4 && s.Points() == 4);
+}
+
+static void StashTreeNeedsParentsAndPoints() {
+	std::set<std::string> ids;
+	int total = 0;
+	for (const auto& node : Stash::Nodes) {
+		CHECK(ids.insert(node.id).second);
+		CHECK(node.parent[0] == '\0' || ids.count(node.parent) == 1);  // listed after its parent
+		total += node.cost;
+		for (const auto& other : Stash::Nodes) {  // none lies over another
+			CHECK(&other == &node || other.row != node.row || other.column >= node.column + 1 || node.column >= other.column + 1);
+		}
+	}
+	CHECK(total > 5 && total <= ClassCount * 5);  // one class is never enough, all classes always are
+	Stash::State s;
+	CHECK(s.BuyNode("tab") == Stash::Buy::NotEnoughPoints);
+	Stash::CountActs(s, Paladin, ActDone(5));
+	CHECK(s.BuyNode("gem1") == Stash::Buy::Locked);
+	CHECK(s.BuyNode("tab") == Stash::Buy::Bought && s.BuyNode("tab") == Stash::Buy::AlreadyOwned);
+	CHECK(s.BuyNode("gem1") == Stash::Buy::Bought && s.BuyNode("gem2") == Stash::Buy::Bought && s.BuyNode("gem3") == Stash::Buy::Bought);
+	CHECK(s.Points() == 0 && s.BuyNode("rune1") == Stash::Buy::NotEnoughPoints && s.BuyNode("nonsense") == Stash::Buy::Unknown);
+}
+
+static void StashSlotsTakeWhatIsUnlocked() {
+	std::set<std::string> codes;
+	for (const auto& kind : Stash::Kinds()) {
+		CHECK(codes.insert(kind.code).second);
+		for (const char* need : kind.needs) {
+			CHECK(Stash::FindNode(need) != nullptr);
+		}
+	}
+	CHECK(codes.size() == 35 + 33);
+	Stash::State s;
+	const auto& chipped = *Stash::KindOf("gcw");
+	const auto& skull = *Stash::KindOf("skc");
+	CHECK(s.Room(chipped) == 0);
+	s.nodes = { "tab", "gem1" };
+	CHECK(s.Room(chipped) == Stash::SmallCap && s.Room(skull) == 0);
+	s.nodes.insert("gemskull");
+	CHECK(s.Room(skull) == Stash::SmallCap);
+	s.Add("gcw", 20);
+	CHECK(s.Room(chipped) == 0);
+	s.nodes.insert("gemcap");
+	CHECK(s.Room(chipped) == 79);
+	CHECK(s.CutGems(0) == 0);  // no cutter yet
+	s.nodes.insert("gemcut");
+	CHECK(s.CutGems(0) == 6 && s.Count("gcw") == 2 && s.Count("gfw") == 6);
+	CHECK(s.CutGems(1) == 0 && s.Count("gfw") == 6);  // the normal gems' slot is not unlocked: nothing is lost
+	s.Add("gcw", -2);
+	CHECK(s.mats.count("gcw") == 0);
+}
+
+static void StashFileRoundTripAndBadLines() {
+	Stash::State s;
+	s.tier = 2; s.fund = 1234; s.legacyDone = true; s.legacy = { 4 };
+	s.acts = { { Druid, 1 }, { Paladin, 5 } }; s.nodes = { "tab", "rune1" }; s.mats = { { "r01", 7 } };
+	const auto back = Stash::Parse(Stash::Serialize(s));
+	CHECK(back.tier == 2 && back.fund == 1234 && back.legacyDone && back.legacy == s.legacy && back.acts == s.acts && back.nodes == s.nodes && back.mats == s.mats);
+	CHECK(back.PageOpen(2) && !back.PageOpen(3) && back.PageOpen(4) && back.LastPage() == 5);
+	const auto bad = Stash::Parse("tier 99\nfund -5\nact Nobody 1\nact Druid 9\nnode what\nmat zzz 4\nmat r01 -3\nlegacy 40\nnonsense\n");
+	CHECK(bad.tier == Stash::TierCount && bad.fund == 0 && bad.acts.empty() && bad.nodes.empty() && bad.mats.empty() && bad.legacy.empty());
+}
+
+// "camp_tests layouts <folder>" writes the caravan's panels there, for tests/test_stash_layouts.py.
+static void WriteStashLayouts(const fs::path& dir) {
+	Stash::State fresh, full;
+	full.tier = 3; full.fund = 120000;
+	for (int c = 0; c < ClassCount; ++c) {
+		Stash::CountActs(full, c, ActDone(5));
+	}
+	for (const auto& node : Stash::Nodes) {
+		full.nodes.insert(node.id);
+	}
+	int n = 0;
+	for (const auto& kind : Stash::Kinds()) {
+		full.mats[kind.code] = n++ % 5 == 0 ? 0 : n;
+	}
+	WriteFile(dir / "tree_fresh.json", Stash::TreeLayout(fresh));
+	WriteFile(dir / "tree_full.json", Stash::TreeLayout(full));
+	full.nodes = { "tab", "gem1", "rune1", "potregen" };
+	WriteFile(dir / "tree_part.json", Stash::TreeLayout(full));
+	full.nodes.clear();
+	for (const auto& node : Stash::Nodes) {
+		full.nodes.insert(node.id);
+	}
+	WriteFile(dir / "tab_fresh.json", Stash::UpgradesLayout(fresh));
+	WriteFile(dir / "tab_full.json", Stash::UpgradesLayout(full));
+	WriteFile(dir / "wall_part.json", Stash::WallLayout(full, "Hero not found yet, try again"));
+	WriteFile(dir / "wall_fresh.json", Stash::WallLayout(fresh));
+	WriteFile(dir / "page.json", Stash::PageLayout(10, 10, 1234567, 6));
+	WriteFile(dir / "tabs.json", Stash::TabsLayout({ { 0, "Shiftaced" }, { 2, "Abcdefghijklmno" } }, 0));
+	WriteFile(dir / "side.json", Stash::SideLayout());
+	Potions::State potions;
+	Potions::Owner owner;
+	WriteFile(dir / "hud_new.json", Potions::HudLayout(potions, owner, -1));
+	owner.nodes = full.nodes;
+	owner.level = 40;
+	for (const int kind : { Potions::Antidote, Potions::Thawing, Potions::Stamina }) {
+		potions.Give(kind, owner);
+	}
+	potions.Fill(owner);
+	for (int slot = 0; slot < Potions::SlotCount; ++slot) {
+		WriteFile(dir / ("hud_pick" + std::to_string(slot) + ".json"), Potions::HudLayout(potions, owner, slot));
+	}
+	potions.Concoct(2, owner);
+	WriteFile(dir / "hud_full.json", Potions::HudLayout(potions, owner, 3));
+	potions.affixes = { { "antidote", "crypt" }, { "stamina", "pit" } };
+	WriteFile(dir / "route1.json", Potions::WithAffixes(RouteMapLayout, 1, potions, { { "Fork1Crypt", "Crypt" } }));
+	for (int rune = 0; rune < Journal::RuneCount; ++rune) {
+		for (int page = 0; page < Journal::PageCount(rune); ++page) {
+			WriteFile(dir / ("journal_" + std::to_string(rune) + "_" + std::to_string(page) + ".json"), Journal::Layout(rune, page));
+		}
+	}
+}
+
+static bool Near(double a, double b) { return a - b < 1e-6 && b - a < 1e-6; }
+
+static void PotionChargesFillAndAreSpent() {
+	using namespace Potions;
+	Potions::State s;
+	Owner o;
+	CHECK(s.slots[0] == Heal && s.slots[1] == Mana && s.slots[2] == None && !s.Use(Heal, o));
+	s.Fill(o);
+	CHECK(Near(s.Charge(Heal), 50) && s.Uses(Mana) == 5 && s.Charge(Antidote) == 0);
+	CHECK(s.Use(Heal, o) && Near(s.Charge(Heal), 40) && !s.Use(Antidote, o) && !s.Use(None, o));
+	s.Tick(50, o);  // 0.2% of 50 a second
+	CHECK(Near(s.Charge(Heal), 45) && Near(s.Charge(Mana), 50));
+	s.Give(Antidote, o);
+	CHECK(s.slots[2] == Antidote && Near(s.Charge(Antidote), 20));
+	s.Use(Antidote, o);
+	s.charge[Heal] = 0;
+	s.Kill(Rank::Normal, 1, o);
+	CHECK(Near(s.Charge(Heal), 0.5) && Near(s.Charge(Antidote), 10.375));
+	s.Kill(Rank::Unique, 1, o);
+	CHECK(Near(s.Charge(Heal), 3));
+	o.level = 24;
+	s.Kill(Rank::Champion, 1, o);  // far below the hero: 5%
+	CHECK(Near(s.Charge(Heal), 3.075));
+	CHECK(Near(LevelFactor(10, 15), 1) && Near(LevelFactor(10, 16), 0.81) && Near(LevelFactor(50, 100), 0.5) && Near(LevelFactor(50, 41), 0.24) && Near(LevelFactor(50, -1), 1));
+	o.belt = 12;
+	CHECK(Near(s.Capacity(Heal, o), 62) && Near(s.Capacity(Stamina, o), 32));
+	o.nodes = { "potregen", "potregen2", "potheal" };
+	CHECK(Near(s.Capacity(Heal, o), 74.5) && Near(s.Regen(o), 0.006));
+	o.belt = 0;
+	s.charge[Heal] = 74;  // a smaller belt: what no longer fits is lost at the next gain
+	s.Tick(0, o);
+	CHECK(Near(s.Charge(Heal), 62.5));
+	CHECK(BeltCharges("lbl") == 4 && BeltCharges("tbl") == 8 && BeltCharges("uhc") == 12 && BeltCharges("rin") == 0);
+}
+
+static void FullHeroesKeepTheirPotions() {
+	using namespace Potions;
+	using S = Potions::State;
+	CHECK(S::Pointless(Heal, 240, 240, 10, 171) && !S::Pointless(Heal, 239, 240, 171, 171) && !S::Pointless(Heal, -1, -1, 0, 0));
+	CHECK(S::Pointless(Mana, 1, 240, 171, 171) && !S::Pointless(Mana, 240, 240, 170, 171));
+	CHECK(S::Pointless(Rejuv, 240, 240, 171, 171) && !S::Pointless(Rejuv, 240, 240, 1, 171) && !S::Pointless(Rejuv, 1, 240, 171, 171));
+	CHECK(!S::Pointless(Antidote, 240, 240, 171, 171) && !S::Pointless(None, 240, 240, 171, 171));
+}
+
+static void SkillKeysAreReadFromTheKeyFile() {
+	std::string file(2, '\x25');
+	const auto add = [&](int action, int key) {
+		file += std::string { static_cast<char>(action), 0, 0, 0, static_cast<char>(key & 0xFF), static_cast<char>(key >> 8), 1, 0, 0, 0 };
+	};
+	add(13, 0x54); add(14, 0x51); add(14, 0xFFFF); add(15, 0x101); add(16, 0x1045); add(21, 0x46); add(22, 0xC0);
+	CHECK(Potions::SkillKeys(file) == std::vector<int>({ 0x51, 0x46 }));
+	CHECK(Potions::SkillKeys("").empty() && Potions::SkillKeys("ab\x0e").empty());
+}
+
+static void PotionLoadoutSwapsAndGrades() {
+	using namespace Potions;
+	Potions::State s;
+	Owner o;
+	CHECK(s.Equip(3, Heal, o) && s.slots[3] == Heal && s.slots[0] == None);
+	CHECK(s.Equip(1, Heal, o) && s.slots[1] == Heal && s.slots[3] == Mana);
+	CHECK(s.Equip(1, Heal, o) && s.slots[1] == Heal);
+	CHECK(!s.Equip(0, Thawing, o) && !s.Equip(4, Heal, o) && !s.Equip(0, Fire, o) && s.Equip(1, None, o) && s.slots[1] == None);
+	CHECK(Name(Heal, s, o) == "Minor Healing Potion" && Name(Mana, s, o) == "Light Mana Potion");
+	o.level = 54;
+	CHECK(Name(Heal, s, o) == "Super Healing Potion" && Name(Mana, s, o) == "Super Mana Potion");
+	o.nodes = { "potfire", "potgas" };
+	CHECK(s.Equip(0, Fire, o) == ThrowingOn && std::string(PotFor(Fire, o).code) == "opl");
+	o.nodes.insert({ "potstrong", "potmaster" });
+	CHECK(std::string(PotFor(Fire, o).code) == "ops" && std::string(PotFor(Gas, o).code) == "gps");
+	o.level = 13;
+	CHECK(std::string(PotFor(Fire, o).code) == "opm" && std::string(PotFor(Gas, o).code) == "gpl");
+	o.nodes = { "potanti", "potstam", "potthaw" };
+	CHECK(s.Echoes(Heal, o).empty());  // only potions the hero has
+	s.Give(Antidote, o); s.Give(Thawing, o); s.Give(Stamina, o);
+	CHECK(s.Echoes(Heal, o) == std::vector<int>({ Antidote, Stamina }) && s.Echoes(Mana, o) == std::vector<int>({ Thawing }));
+	CHECK(s.Echoes(Rejuv, o).size() == 3 && s.Echoes(Antidote, o).empty());
+}
+
+static void PotionsConcoctIntoOne() {
+	using namespace Potions;
+	Potions::State s;
+	Owner o;
+	o.belt = 10;
+	s.Fill(o);
+	s.charge[Mana] = 0;
+	s.Concoct(1, o);
+	CHECK(!s.Owns(Heal, o) && !s.Owns(Mana, o) && s.slots[0] == Rejuv && s.slots[1] == None);
+	CHECK(Near(s.Capacity(Rejuv, o), 45) && Near(s.Charge(Rejuv), 22.5));  // 75% of 60, half full
+	s.Concoct(1, o);
+	CHECK(Near(s.Charge(Rejuv), 22.5));
+	s.Concoct(2, o);
+	CHECK(Near(s.Capacity(Rejuv, o), 30) && Near(s.Charge(Rejuv), 15) && Name(Rejuv, s, o) == "Full Rejuvenation Potion");
+	o.nodes = { "potheal", "potmana" };
+	CHECK(Near(s.Capacity(Rejuv, o), 42.5));  // both passives count
+	Potions::State straight;
+	straight.Concoct(2, o);  // the Act V concoction without the Act IV one
+	CHECK(straight.blend == 2 && straight.Owns(Rejuv, o));
+}
+
+static void PotionAffixesLandOnOpenStopsOnce() {
+	using namespace Potions;
+	Owner o;
+	int full = 0;
+	for (unsigned seed = 0; seed < 2000; ++seed) {
+		std::mt19937 rng(seed);
+		Potions::State s;
+		s.Roll(Route::Progress {}, rng, o);
+		CHECK(s.affixes.count("antidote") && s.affixes.count("stamina") && s.affixes.count("thawing") && s.affixes.count("concoct"));
+		CHECK(s.affixes["antidote"] != s.affixes["stamina"]);
+		for (const auto& [id, stop] : s.affixes) {
+			const auto* found = Route::StopById(stop);
+			CHECK(found != nullptr && Route::ActOfTier(found->tier) == AffixById(id)->act);
+			CHECK(stop != "andariel" && stop != "durance" && stop != "chaos" && stop != "baal");
+		}
+		full += s.affixes.count("full") ? 1 : 0;
+		const auto before = s.affixes;
+		s.Roll(Route::Progress {}, rng, o);
+		CHECK(s.affixes == before);
+	}
+	CHECK(full > 60 && full < 140);  // 5%
+	std::mt19937 rng(4);
+	Potions::State old;
+	old.Roll(ActDone(2), rng, o);  // past Act I: its potions are given
+	CHECK(old.Owns(Antidote, o) && old.Owns(Stamina, o) && !old.Owns(Thawing, o) && old.affixes.count("thawing"));
+	const std::string stop = old.affixes["concoct"];
+	CHECK(old.Cleared("den", o) == nullptr);
+	CHECK(std::string(old.Cleared(stop, o)->id) == "concoct" && old.blend == 1 && old.Cleared(stop, o) == nullptr);
+}
+
+static void PotionFileRoundTripAndBadLines() {
+	using namespace Potions;
+	Owner o;
+	Potions::State s;
+	s.rolled = true;
+	s.Give(Antidote, o);
+	s.charge[Heal] = 12.5;
+	s.Equip(3, Antidote, o);
+	s.affixes = { { "thawing", "spider" } };
+	const auto back = Potions::Parse(Potions::Serialize(s));
+	CHECK(back.rolled && back.own == s.own && back.slots == s.slots && Near(back.Charge(Heal), 12.5) && back.affixes == s.affixes && back.blend == 0);
+	s.Concoct(1, o);
+	const auto mixed = Potions::Parse(Potions::Serialize(s));
+	CHECK(mixed.blend == 1 && mixed.own == s.own && mixed.slots == s.slots);
+	const auto bad = Potions::Parse("blend 9\nown heal\nown what\ncharge heal nan\ncharge mana -4\nslot 1 heal\nslot 9 mana\nslot 2 rejuv\nslot 3 rejuv\naffix x den\naffix antidote nowhere\n");
+	CHECK(bad.blend == 2 && !bad.Owns(Heal, o) && bad.Owns(Rejuv, o) && bad.slots[0] == None && bad.slots[1] == Rejuv && bad.slots[2] == None);
+	CHECK(bad.affixes.empty() && bad.Charge(Heal) == 0 && bad.Charge(Mana) == 0);
+}
+
+static auto StashPage(int items, uint32_t gold, const std::string& body) -> std::string {
+	std::string page = StashFile::BlankPage() + body;
+	page[StashFile::HeaderSize + 2] = static_cast<char>(items);
+	StashFile::SetNumber(page, 12, gold);
+	StashFile::SetNumber(page, 16, static_cast<uint32_t>(page.size()));
+	return page;
+}
+
+static void StashesJoinIntoOneFile() {
+	const fs::path live = TempDir("stash-join");
+	const auto save = [&](const std::string& a, uint32_t gold) {
+		std::vector<std::string> pages(10, StashFile::BlankPage());
+		pages[0] = StashPage(1, gold, a);
+		pages[3] = StashPage(2, 0, a + " fourth \x55\xAA\x55\xAA inside");  // a page mark inside an item must not matter
+		return StashFile::JoinPages(pages);
+	};
+	const std::string one = save("one", 500) + StashFile::BlankPage() + StashPage(3, 0, "ascended") + StashFile::BlankPage() + StashFile::BlankPage(), three = save("three", 7);
+	CHECK(WriteFile(live / "camp" / "active.txt", "3\n"));
+	CHECK(WriteFile(live / StashName, three));
+	CHECK(WriteFile(SlotDir(live, 1) / "files" / StashName, one));  // save 2 has none
+	std::string log;
+	CHECK(StashFile::Join(live, "t", log));
+	CHECK(StashJoined(live) && StashFile::Join(live, "t2", log) && !fs::exists(live / "camp" / "stash-backup-t2"));
+	const auto pages = StashFile::Pages(ReadFile(live / StashName));
+	CHECK(pages && pages->size() == 42 && StashFile::ItemCount((*pages)[31]) == 3);  // save 1's ascended hero
+	CHECK(StashFile::ItemCount((*pages)[0]) == 1 && StashFile::ItemCount((*pages)[3]) == 2 && StashFile::ItemCount((*pages)[20]) == 1);
+	CHECK((*pages)[0].find("one") != std::string::npos && (*pages)[23].find("three fourth") != std::string::npos);
+	CHECK(StashFile::ItemCount((*pages)[10]) == 0 && StashFile::Gold((*pages)[0]) == 0 && StashFile::Gold((*pages)[20]) == 0);
+	CHECK(StashFile::JoinedGold(live, 1) == 500 && StashFile::JoinedGold(live, 2) == 0 && StashFile::JoinedGold(live, 3) == 7);
+	CHECK(ReadFile(live / "camp" / "stash-backup-t" / "slot1.d2i") == one && ReadFile(live / "camp" / "stash-backup-t" / "slot3.d2i") == three);
+	// Changing saves leaves the stash where it is.
+	const std::string file = ReadFile(live / StashName);
+	std::string error;
+	CHECK(SwitchSlot(live, 1, error) && ReadFile(live / StashName) == file);
+	CHECK(SwitchSlot(live, 2, error) && ReadFile(live / StashName) == file);
+	// Deleting: a copy, then blank pages, and only its own.
+	CHECK(StashFile::CopyPages(live, 1, live / "copy.d2i") && StashFile::Pages(ReadFile(live / "copy.d2i"))->size() == 14);
+	CHECK(StashFile::SetWipes(live, { 1, 3 }) && StashFile::Wipes(live) == std::set<int>({ 1, 3 }));
+	CHECK(StashFile::SetWipes(live, {}) && StashFile::Wipes(live).empty());
+	CHECK(StashFile::BlankPages(live, 1));
+	StashFile::ForgetJoinedGold(live, 1);
+	const auto after = StashFile::Pages(ReadFile(live / StashName));
+	CHECK(after && after->size() == 42 && StashFile::ItemCount((*after)[0]) == 0 && StashFile::ItemCount((*after)[31]) == 0 && (*after)[20] == (*pages)[20]);
+	CHECK(StashJoined(live) && StashFile::JoinedGold(live, 1) == 0 && StashFile::JoinedGold(live, 3) == 7);
+}
+
+static void AStashThatCantBeReadIsLeftAlone() {
+	const fs::path live = TempDir("stash-join-bad");
+	const std::string good = StashFile::JoinPages(std::vector<std::string>(10, StashFile::BlankPage()));
+	for (const std::string& bad : { std::string("nonsense"), good + "x", good.substr(0, good.size() - 1) }) {
+		CHECK(WriteFile(live / StashName, bad));
+		CHECK(WriteFile(SlotDir(live, 2) / "files" / StashName, good));
+		std::string log;
+		CHECK(!StashFile::Join(live, "t", log) && !log.empty() && !StashJoined(live));
+		CHECK(ReadFile(live / StashName) == bad && ReadFile(SlotDir(live, 2) / "files" / StashName) == good);
+	}
+	// Stopped after the file was replaced: the next start finishes and does not join twice.
+	const std::string whole = StashFile::JoinPages(std::vector<std::string>(30, StashPage(1, 0, "x")));
+	CHECK(WriteFile(live / StashName, whole) && WriteFile(JoinedFile(live), "joining\ngold 1 9\n"));
+	std::string log;
+	CHECK(StashFile::Join(live, "t", log) && StashJoined(live) && ReadFile(live / StashName) == whole && StashFile::JoinedGold(live, 1) == 9);
+	CHECK(SwitchSlot(live, 2, log) && ReadFile(live / StashName) == whole);  // a parked file left behind is not in the way
+}
+
+static void JournalListsARunesWordsByLevel() {
+	CHECK(Journal::RuneIndex("r01") == 0 && Journal::RuneIndex("r33") == 32);
+	CHECK(Journal::RuneIndex("r34") == -1 && Journal::RuneIndex("rvs") == -1 && Journal::RuneIndex("") == -1);
+	for (int rune = 0; rune < Journal::RuneCount; ++rune) {
+		const auto words = Journal::WordsWith(rune);
+		CHECK(!words.empty());
+		for (size_t i = 1; i < words.size(); ++i) {
+			CHECK(words[i - 1]->level <= words[i]->level);
+		}
+	}
+}
+
+// Ascend (ascend.h): a made-up save around real item bytes (a sorceress's starting kit).
+static auto AscendSave(const std::string& hex) -> Ascend::Bytes {
+	Ascend::Bytes b(400, 0);
+	b[0] = 0x55, b[1] = 0xAA, b[2] = 0x55, b[3] = 0xAA, b[4] = 105;
+	for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+		b.push_back(static_cast<uint8_t>(std::stoi(hex.substr(i, 2), nullptr, 16)));
+	}
+	Ascend::Checksum(b);
+	return b;
+}
+
+static void AscendMovesItems() {
+	using namespace Ascend;
+	Shapes shapes;
+	std::istringstream lines("isave hp1 m 0 0 1 1\nisave box m 0 0 2 2\nssave 83 3 3\n");
+	shapes.Read(lines);
+	const std::string potion = "1000a200150000cf4f232869b703c888aa738b166ce19ee18b01";
+	const std::string cube = "1000800005c044ff3c80dfa64052842a0d9915d785447abdd5699a333afc89fe03";
+	const std::string tail = "4a4d00006a666b6600";
+	Bytes donor = AscendSave("4a4d0200" + potion + cube + tail), heir = AscendSave("4a4d0000" + tail);
+	Ascend::Hero hero;
+	std::string error;
+	CHECK(ReadHero(donor, shapes, hero, error) && hero.items.size() == 2 && hero.items[0].loc == 2 && hero.items[1].code == "box");
+	std::vector<Item> legacy = Ascend::Legacy(hero);
+	CHECK(legacy.size() == 1 && legacy[0].code == "hp1");  // the Cube itself stays behind
+	std::vector<int> pages;
+	CHECK(Pack(legacy, 10, pages) == 1 && pages[0] == 0);
+	CHECK(Inject(heir, legacy, shapes, error));
+	Ascend::Hero after;
+	CHECK(ReadHero(heir, shapes, after, error) && after.items.size() == 1 && after.items[0].loc == 0 && after.items[0].page == 5);
+	// Only its place bits differ from the original.
+	Bytes was = hero.items[0].bytes, is = after.items[0].bytes;
+	for (size_t i = 0; i < was.size(); ++i) {
+		if (i < 4 || i > 6) { CHECK(was[i] == is[i]); }
+	}
+	// A belt potion with a stack count (27 bytes) reads, and the item after it too.
+	const Bytes belt = AscendSave("4a4d0200" "0000a0001500004fa6cf6e6437ddff475ea3e6c35a65dd3dea0100" + potion + tail);
+	shapes.items["hp2"] = {};
+	Ascend::Hero belted;
+	CHECK(ReadHero(belt, shapes, belted, error) && belted.items.size() == 2 && belted.items[0].bytes.size() == 27 && belted.items[1].code == "hp1");
+	// A stash page in use, a cut-off file and an unknown item are refused, with the save untouched.
+	const Bytes before = heir;
+	CHECK(!Inject(heir, legacy, shapes, error) && heir == before);
+	Bytes cut(donor.begin(), donor.end() - 5);
+	CHECK(!ReadHero(cut, shapes, hero, error));
+	shapes.items.erase("hp1");
+	CHECK(!ReadHero(donor, shapes, hero, error));
+	// More than a page holds goes to a second page, nothing overlaps.
+	std::vector<Item> many(130, legacy[0]);
+	CHECK(Pack(many, 10, pages) == 2);
+}
+
+static void AscendedItemsTravel() {
+	namespace L = Legacy;
+	const fs::path live = fs::temp_directory_path() / "dd_ascend_test";
+	fs::remove_all(live);
+	fs::create_directories(Camp::SlotDir(live, 1));
+	Ascend::Shapes shapes;
+	std::istringstream lines("isave hp1 m 0 0 1 1\nssave 83 3 3\n");
+	shapes.Read(lines);
+	const std::string potion = "1000a200150000cf4f232869b703c888aa738b166ce19ee18b01", tail = "4a4d00006a666b6600";
+	L::WriteBytes(live / "Anna.d2s", AscendSave("4a4d0100" + potion + tail));
+	L::WriteBytes(live / "Bert.d2s", AscendSave("4a4d0000" + tail));
+	std::string who, error;
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::None);
+	L::WriteFight(live, 1, L::Fight::Fighting, "Anna");
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::Fighting && who == "Anna");
+	L::WriteFight(live, 1, L::Fight::Won, "Anna");
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::Won);
+	CHECK(L::Keep(live, 1, "Anna", "7", error));
+	L::WriteFight(live, 1, L::Fight::None, "");
+	who.clear();
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::None);
+	CHECK(!L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());
+	CHECK(L::Load(live, 1).CarriedBy("bert") != nullptr);
+	Ascend::Hero bert;
+	CHECK(Ascend::ReadHero(L::ReadBytes(live / "Bert.d2s"), shapes, bert, error) && bert.items.size() == 1);
+	CHECK(L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());  // never twice
+	// Bert's save is put back from before: the items are sent again at once.
+	L::WriteBytes(live / "Bert.d2s", AscendSave("4a4d0000" + tail));
+	CHECK(!L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());
+	// Bert dies on the way: the items go with the next hero.
+	L::WriteBytes(live / "Cleo.d2s", AscendSave("4a4d0000" + tail));
+	CHECK(!L::Send(live, 1, "Cleo", { "Cleo" }, shapes).empty());
+	L::State state = L::Load(live, 1);
+	L::Delivered(state, "Cleo");
+	CHECK(state.tabs.size() == 1 && state.tabs.begin()->second == "Anna" && state.CarriedBy("Cleo") == nullptr);
+	L::Save(live, 1, state);
+	CHECK(L::Send(live, 1, "Cleo", { "Cleo" }, shapes).empty());  // nothing left to send
+	CHECK(L::Load(live, 1).estates[0].done);
+	// Arrows: 2 open pages, a tab on page 11.
+	CHECK(L::Presses(1, 1, 2, 11, state) == 1 && L::Presses(2, 1, 2, 11, state) == 9 && L::Presses(11, 1, 2, 11, state) == 0);
+	CHECK(L::Presses(11, -1, 2, 11, state) == 9 && L::Presses(1, -1, 2, 11, state) == 0);
+	// Take only: what was taken out can't go back.
+	std::vector<int> known { 1, 2 };
+	CHECK(L::Strangers(known, std::vector<int> { 1, 2, 3 }) == std::vector<int> { 3 });
+	CHECK(L::Strangers(known, std::vector<int> { 1 }).empty());
+	CHECK(L::Strangers(known, std::vector<int> { 1, 2 }) == std::vector<int> { 2 });
+	fs::remove_all(live);
+}
+
+int main(int argc, char** argv) {
+	if (argc == 3 && std::string(argv[1]) == "join") {  // joins the stashes of a COPY of a save folder
+		std::string log;
+		const bool ok = StashFile::Join(argv[2], "dry-run", log);
+		std::cout << log << "\n";
+		return ok ? 0 : 1;
+	}
+	if (argc == 3 && std::string(argv[1]) == "layouts") {
+		WriteStashLayouts(argv[2]);
+		return 0;
+	}
+	StashPagesArePaidInParts();
+	StashPointsComeOncePerClassAndAct();
+	StashTreeNeedsParentsAndPoints();
+	StashSlotsTakeWhatIsUnlocked();
+	StashFileRoundTripAndBadLines();
+	StashesJoinIntoOneFile();
+	AStashThatCantBeReadIsLeftAlone();
+	JournalListsARunesWordsByLevel();
+	PotionChargesFillAndAreSpent();
+	FullHeroesKeepTheirPotions();
+	SkillKeysAreReadFromTheKeyFile();
+	PotionLoadoutSwapsAndGrades();
+	PotionsConcoctIntoOne();
+	PotionAffixesLandOnOpenStopsOnce();
+	PotionFileRoundTripAndBadLines();
 	RouteUnlocksTierByTier();
 	ForkGivesTwoPicksSameOneAllowed();
 	ActTwoFollowsAndariel();
@@ -461,6 +973,8 @@ int main() {
 	NewCampOffersEveryClassThenLocksTheRest();
 	TravelerOffersThreeLockedClasses();
 	OfferShrinksWhenFewClassesAreLocked();
+	AscendMovesItems();
+	AscendedItemsTravel();
 	FallenClassIsAlwaysOffered();
 	EmptyFireGetsATraveler();
 	CampFileRoundTrip();
