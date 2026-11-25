@@ -38,6 +38,10 @@ inline auto KindFromId(const std::string& id) -> int {
 inline constexpr auto Support(int kind) -> bool { return kind == Antidote || kind == Thawing || kind == Stamina; }
 inline constexpr auto Thrown(int kind) -> bool { return kind == Fire || kind == Gas; }
 
+// Throwing potions are off until a throw works in the game (docs/potions.md): no hero has them, and the
+// caravan's nodes for them are out of the tree (stash.h). The skills are in shelved/throwing.
+inline constexpr bool ThrowingOn = false;
+
 // ---- Numbers --------------------------------------------------------------------------------
 inline constexpr int    SlotCount       = 4;
 inline constexpr double UseCost         = 10;     // charges one use takes
@@ -156,7 +160,7 @@ struct State {
 			return false;
 		}
 		if (Thrown(kind)) {
-			return o.Has(kind == Fire ? "potfire" : "potgas");
+			return ThrowingOn && o.Has(kind == Fire ? "potfire" : "potgas");
 		}
 		return own.count(kind) != 0;
 	}

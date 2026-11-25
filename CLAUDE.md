@@ -32,7 +32,7 @@ A roguelite mod for Diablo II: Resurrected, built by two people. Read `docs/desi
   Since 2026-11-25 (Sam's decision; Fab to see it in the pull request) it may also change which skill
   the skill keys hold (and the right-button skill, to put it back), to one the hero already has, for the
   moment it presses one of those keys for the player (`SendInput`), only to throw a potion from its
-  slot (`docs/potions.md`).
+  slot (`docs/potions.md`). Off for now (`ThrowingOn`, potions.h): no write of this kind happens.
   One code exception, agreed by both of us (2026-11-23): `src/plugin/mercgear.cpp` changes one
   number in the game's two "may a mercenary wear this" checks (body armor -> our "merc" item type),
   through D2RLoader's MutationService, found by byte pattern; nothing else in game code. Each value read and its address go in

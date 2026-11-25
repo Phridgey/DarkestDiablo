@@ -19,7 +19,7 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   tiers on its left, passive tree beside them. Its **Stash** button goes back; the X closes both.
 - **Points.** 1 point the first time a class finishes an act in this save (8 classes x 5 acts: 40).
   They stay when the hero dies; a later hero of the same class earns nothing for the same act. Acts
-  finished before this was added count the next time that hero is played. The tree costs 40. Part of it is for the heroes'
+  finished before this was added count the next time that hero is played. The tree costs 32. Part of it is for the heroes'
   potions (`docs/potions.md`). Points spent on the old potion shelves come back; potions on them are gone.
 - **The Upgrades tab** (first node): one slot per gem and rune, kept as counts. Nodes open the
   kinds (by quality, rune range), raise the limit per slot from 20 to 99, and add the gem cutter,

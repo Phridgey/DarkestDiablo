@@ -1,13 +1,28 @@
 {
   "name": "darkest_swampy",
-  "folder": "act3/jungle",
-  "room": 40,
-  "comment": "Swampy Pit (113_act3.py): a copy of the pit's treasure room.",
+  "folder": "act3/kurast",
+  "room": 16,
+  "comment": "Swampy Pit (113_act3.py, on level 90): four open blocks of Kurast's ruins in a 2x2 square (two slums, two metro), borrowing the Kurast Bazaar's look but keeping the Swampy Pit's name. Replaced the pit's treasure room (act3/jungle/dungrm1a) on 2026-11-24: walls cut it into corridors, and only about a tenth of it could be reached.",
   "pieces": [
     {
       "x": 0,
       "y": 0,
-      "piece": "act3/jungle/dungrm1a"
+      "piece": "act3/kurast/slums16x16_2"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "piece": "act3/kurast/metro16x16_4"
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "piece": "act3/kurast/slums16x16_1"
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "piece": "act3/kurast/metro16x16_5"
     }
   ],
   "keep_monsters": [],

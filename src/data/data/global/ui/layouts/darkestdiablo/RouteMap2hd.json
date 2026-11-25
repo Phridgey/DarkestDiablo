@@ -89,6 +89,111 @@
     },
     {
       "type": "ButtonWidget",
+      "name": "ActTab1",
+      "fields": {
+        "rect": {
+          "x": -205,
+          "y": 150
+        },
+        "filename": "PANEL\\Waypoints\\Waypoints_Tab",
+        "pressedFrame": 0,
+        "hoveredFrame": 0,
+        "disabledFrame": 1,
+        "textString": "Act I",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/routeact-1"
+      }
+    },
+    {
+      "type": "ImageWidget",
+      "name": "ActTab2",
+      "fields": {
+        "rect": {
+          "x": -205,
+          "y": 240
+        },
+        "filename": "PANEL\\Waypoints\\Waypoints_Tab",
+        "frame": 0
+      }
+    },
+    {
+      "type": "TextBoxWidget",
+      "name": "ActTabText2",
+      "fields": {
+        "rect": {
+          "x": -205,
+          "y": 240,
+          "width": 174,
+          "height": 70
+        },
+        "text": "Act II",
+        "style": {
+          "fontColor": "$FontColorGoldYellow",
+          "pointSize": "$SmallFontSize",
+          "alignment": {
+            "h": "center",
+            "v": "center"
+          }
+        }
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "ActTab3",
+      "fields": {
+        "rect": {
+          "x": -205,
+          "y": 330
+        },
+        "filename": "PANEL\\Waypoints\\Waypoints_Tab",
+        "pressedFrame": 0,
+        "hoveredFrame": 0,
+        "disabledFrame": 1,
+        "textString": "Act III",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/routeact-3"
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "ActTab4",
+      "fields": {
+        "rect": {
+          "x": -205,
+          "y": 420
+        },
+        "filename": "PANEL\\Waypoints\\Waypoints_Tab",
+        "pressedFrame": 0,
+        "hoveredFrame": 0,
+        "disabledFrame": 1,
+        "textString": "Act IV",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/routeact-4"
+      }
+    },
+    {
+      "type": "ButtonWidget",
+      "name": "ActTab5",
+      "fields": {
+        "rect": {
+          "x": -205,
+          "y": 510
+        },
+        "filename": "PANEL\\Waypoints\\Waypoints_Tab",
+        "pressedFrame": 0,
+        "hoveredFrame": 0,
+        "disabledFrame": 1,
+        "textString": "Act V",
+        "pointSize": "$SmallFontSize",
+        "textColor": "$FontColorWhite",
+        "onClickMessage": "PanelManager:OpenPanel:darkestdiablo/routeact-5"
+      }
+    },
+    {
+      "type": "ButtonWidget",
       "name": "NodeHallsLocked",
       "fields": {
         "rect": {

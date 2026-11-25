@@ -677,7 +677,7 @@ static void PotionLoadoutSwapsAndGrades() {
 	o.level = 54;
 	CHECK(Name(Heal, s, o) == "Super Healing Potion" && Name(Mana, s, o) == "Super Mana Potion");
 	o.nodes = { "potfire", "potgas" };
-	CHECK(s.Equip(0, Fire, o) && std::string(PotFor(Fire, o).code) == "opl");
+	CHECK(s.Equip(0, Fire, o) == ThrowingOn && std::string(PotFor(Fire, o).code) == "opl");
 	o.nodes.insert({ "potstrong", "potmaster" });
 	CHECK(std::string(PotFor(Fire, o).code) == "ops" && std::string(PotFor(Gas, o).code) == "gps");
 	o.level = 13;

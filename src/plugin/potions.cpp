@@ -838,7 +838,7 @@ auto PotionsCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* comma
 		std::istringstream in(command->args != nullptr ? command->args : "");
 		std::string what, value;
 		in >> what >> value;
-		if (what == "throwtest") {
+		if (what == "throwtest" && Potions::ThrowingOn) {
 			std::string code;
 			{
 				const Lock lock(g_mutex);

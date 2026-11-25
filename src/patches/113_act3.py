@@ -55,7 +55,7 @@ def stop(t, a):
     if a.get("look"):
         real = levels.first("Id", a["look"])
         for col in LOOK:
-            if col in row and col in real:
+            if col in row and col in real and not (a.get("keep_name") and col == "LevelName"):
                 row[col] = real[col]
     if a.get("offset"):
         row["OffsetX"], row["OffsetY"] = (str(v) for v in a["offset"])
@@ -124,9 +124,10 @@ KSEWERS = {"id": "93", "map": "Act3/Sewer/darkest_ksewers.ds1", "size": ("18", "
 LAMESEN = {"id": "94", "map": "Act3/Temple/darkest_lamesen.ds1", "size": ("24", "24"), "template": "Act 3 - Temple 1",
            "name": "Act 3 - Darkest Diablo Ruined Temple", "waves": ["brute5", "corruptrogue5", "arach5", "vampire2"],
            "prefix": "dd_xp_a3d_", "pieces": ["temple0"], "kind": "xp"}
-SWAMPY = {"id": "90", "map": "Act3/Jungle/darkest_swampy.ds1", "size": ("40", "40"), "template": "Act 3 - Dungeon Treasure 1",
-          "name": "Act 3 - Darkest Diablo Swampy Pit", "waves": ["bonefetish4", "bonefetish5", "batdemon2", "willowisp1"],
-          "prefix": "dd_mf_a3_", "pieces": ["dungrm1a"], "kind": "mf"}
+SWAMPY = {"id": "90", "look": "80", "keep_name": True, "map": "Act3/Kurast/darkest_swampy.ds1", "size": ("32", "32"),
+          "template": "Act 3 - Slums 16x16", "name": "Act 3 - Darkest Diablo Swampy Pit",
+          "waves": ["bonefetish4", "bonefetish5", "batdemon2", "willowisp1"], "prefix": "dd_mf_a3_",
+          "pieces": ["slums16x16_2", "metro16x16_4", "slums16x16_1", "metro16x16_5"], "kind": "mf"}
 LOWERKURAST = {"id": "95", "look": "79", "map": "Act3/Kurast/darkest_lowerkurast.ds1", "size": ("16", "48"),
                "template": "Act 3 - Burbs 16x16", "name": "Act 3 - Darkest Diablo Lower Kurast",
                "waves": ["baboon4", "sandleaper4", "zealot1"], "prefix": "dd_craft_a3_",
@@ -154,7 +155,71 @@ def jade_figurine(t):
             first_drop(t, row, ["TreasureClassUnique"], "DD Jade Chance", f"DD Jade {a['prefix']}{source}")
 
 
+def chests_without_ammo(t):
+    """No arrows or bolts from Act III's chests (2026-11-24: Lower Kurast's super chests were full
+    of them). The game picks a chest's table by act and difficulty ("Act 3 Chest A/B/C"), so every
+    Act III chest changes: each table on the way to "Ammo" becomes a copy without it (its weight
+    goes to NoDrop). Monsters keep the game's own tables."""
+    tcs = t.table("treasureclassex")
+    by_name = {r["Treasure Class"]: r for r in tcs.rows}
+    copies = {}
+
+    def reaches_ammo(name, seen):
+        if name == "Ammo":
+            return True
+        if name in seen or name not in by_name:
+            return False
+        seen.add(name)
+        row = by_name[name]
+        return any(reaches_ammo(row.get(f"Item{k}", "").split(",")[0], seen) for k in range(1, 11))
+
+    def without(name):
+        if name in copies:
+            return copies[name]
+        copy = dict(by_name[name])
+        copy["Treasure Class"] = copies[name] = f"DD NoAmmo {name}"
+        kept, dropped = [], 0
+        for k in range(1, 11):
+            item, prob = copy.get(f"Item{k}", ""), copy.get(f"Prob{k}", "")
+            base = item.split(",")[0]
+            if base == "Ammo":
+                dropped += int(prob) if prob.strip().isdigit() else 0
+            elif item:
+                if reaches_ammo(base, set()):
+                    item = without(base) + item[len(base):]
+                kept.append((item, prob))
+        if int(copy.get("Picks") or 1) > 0:
+            copy["NoDrop"] = str((int(copy["NoDrop"]) if copy.get("NoDrop", "").strip().isdigit() else 0) + dropped)
+        for k in range(1, 11):
+            copy[f"Item{k}"], copy[f"Prob{k}"] = kept[k - 1] if k <= len(kept) else ("", "")
+        # Right after its original: the game reads the tables top to bottom (003_gems.py).
+        tcs.rows.insert(1 + next(i for i, r in enumerate(tcs.rows) if r is by_name[name]), copy)
+        return copy["Treasure Class"]
+
+    for tag in ("", " (N)", " (H)"):
+        for letter in "ABC":
+            chest = by_name.get(f"Act 3{tag} Chest {letter}")
+            if chest is None:
+                continue
+            for k in range(1, 11):
+                item = chest.get(f"Item{k}", "")
+                base = item.split(",")[0]
+                if base and base != chest["Treasure Class"] and reaches_ammo(base, set()):
+                    chest[f"Item{k}"] = without(base) + item[len(base):]
+
+
+def orb_without_event(t):
+    """Smashing the Compelling Orb crashed the game (2026-11-24): its use (OperateFn 53) plays the
+    game's own event, which opens the way into the Durance in the real Travincal, and our copy on
+    another level has none of that. The orb now just opens when used (the Tower tome's OperateFn 6,
+    a book that only changes its look), which is all the plugin needs to clear the stop (it counts
+    the orb's change of state). The Durance is reached from the route map, as before."""
+    t.table("objects").first("Class", "CompellingOrb")["OperateFn"] = "6"
+
+
 def patch(t):
+    orb_without_event(t)
+    chests_without_ammo(t)
     for a in (SPIDER, FLAYER, KSEWERS, LAMESEN, SWAMPY, LOWERKURAST, TRAVINCAL, DURANCE):
         stop(t, a)
     jade_figurine(t)

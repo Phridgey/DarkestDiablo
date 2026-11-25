@@ -13,7 +13,7 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 | Thawing | 20 | an Act III stop | ends cold and freezing, and keeps them off for 30 s |
 | Rejuvenation | 75% of the healing potion's | an Act IV stop | 35% life and mana at once |
 | Full Rejuvenation | 50% | an Act V stop, 5% of heroes | 100% life and mana at once |
-| Fire pots, gas pots | 30 | caravan tree | thrown from the slot toward the cursor |
+| Fire pots, gas pots | 30 | off for now (see Throwing) | thrown from the slot toward the cursor |
 
 - A use takes 10 charges. Healing can't be used with full life, mana with full mana, Rejuvenation with
   both full.
@@ -24,8 +24,8 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 - Every potion refills 0.2% of what it holds a second.
 - A belt adds 4, 8 or 12 charges to every potion, as many as the slots it used to add.
 - Caravan tree: 0.4% and 0.6% a second; +25% charges for healing, for mana; +25% from kills; healing also
-  uses Antidote / Stamina, mana also uses Thawing, at 50% effect (15 s) and no charge; throwing potions
-  (2 points each step). Rejuvenation has both the healing and the mana passives.
+  uses Antidote / Stamina, mana also uses Thawing, at 50% effect (15 s) and no charge.
+  Rejuvenation has both the healing and the mana passives.
 - Affixes: placed once per hero on stops of the act it has not cleared yet, never an act's last stop. On
   a fork the stop may go unpicked. The route map shows the potion beside the stop. A supporting potion
   whose act an older hero has already passed is given at once.
@@ -35,6 +35,11 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   are drawn over the belt's place in three spare panels, and the plugin works their effects by
   changing life, mana and stamina (`gamewrite.h`). Antidote and Thawing don't give the resistance the
   game's own do: a stat the hero doesn't have can't be added.
+- **Throwing is off** (0.26.0, `ThrowingOn` in potions.h; its nodes are out of the caravan tree and its skills
+  in `shelved/throwing`). In 0.24.2 the hero's skill list was not found in either copy ("no list"), so no
+  throw got as far as a key: the list's place in memory has to be found first. The game also wrote a crash
+  report (access violation, 01:05) within a minute of a throw attempt; cause not known. The rest of this
+  point and the next say how it is meant to work.
 - **Throwing.** The hero gets a skill per throwing potion (`131a_throw_skills.py`), which only the plugin
   can use. For a moment every skill key holds it, the plugin presses one of them (from the hero's
   `.key` file), and the keys hold what they held again. It needs the game's **Quick Cast** option and at

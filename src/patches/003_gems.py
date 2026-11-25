@@ -92,4 +92,7 @@ def patch(t):
             if gems:
                 kept.insert(1, (gem_table(good_level[row["Treasure Class"]]), str(gems)))
             set_entries(row, kept)
-    tcs.rows.extend(made.values())
+    # The game reads the tables top to bottom and can't find one that comes later ("Couldn't parse
+    # treasure class item", 2026-11-25), so these go right after the gem grades they are made of.
+    at = 1 + max(i for i, row in enumerate(tcs.rows) if row["Treasure Class"] in grades)
+    tcs.rows[at:at] = made.values()
