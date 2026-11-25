@@ -61,6 +61,7 @@ std::atomic<bool>      g_autoTab { false }; // dd-stash autotab: try to open the
 std::atomic<bool>      g_treeWanted { false }, g_tabWanted { false };
 std::atomic<bool>      g_journalWanted { true };  // not minimized; stays as it is between visits
 std::atomic<int>       g_journalRune { -1 }, g_journalPage { 0 };
+std::atomic<bool>      g_jumping { false };  // dd-stash jump: the page lock lets these arrows through
 std::atomic<bool>      g_refresh { false };
 std::atomic<bool>      g_paying { false };
 
@@ -726,6 +727,21 @@ void __cdecl SelectShared(const D2RL::PluginContext* context, void*) noexcept {
 	}
 }
 
+// UI thread. Turns `data` pages of the open stash (negative: back). A test for giving every save its
+// own pages in one stash file, so changing saves needs no restart (docs/stash.md).
+void __cdecl Jump(const D2RL::PluginContext* context, void* data) noexcept {
+	const auto pages = static_cast<int>(reinterpret_cast<intptr_t>(data));
+	if (!g_bankOpen.load()) {
+		context->WriteConsoleMessage("Stash: open the stash on its shared pages first.");
+		return;
+	}
+	g_jumping = true;
+	for (int i = 0; i < std::abs(pages); ++i) {
+		Dispatch(context, "BankPanelMessage", pages > 0 ? "SharedStashRight" : "SharedStashLeft", "");
+	}
+	g_jumping = false;
+}
+
 void BankClosed(const D2RL::PluginContext* context) noexcept {
 	if (g_bankOpen.exchange(false)) {
 		g_treeWanted = false;
@@ -767,6 +783,10 @@ auto StashCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 			}
 			Save(context);
 			QueueRefresh(context);
+		} else if (what == "jump") {
+			const auto pages = static_cast<intptr_t>(std::clamp(n, -static_cast<long long>(Stash::PageCount), static_cast<long long>(Stash::PageCount)));
+			g_threads->runOnUiThread(context, Jump, reinterpret_cast<void*>(pages));
+			return D2RL::ConsoleCommandResult::Handled;
 		} else if (what == "autotab") {
 			g_autoTab = !g_autoTab.load();
 			context->WriteConsoleMessage(g_autoTab.load() ? "Stash: tries to open on the shared pages." : "Stash: opens as the game does.");
@@ -847,7 +867,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		}
 		Log(context, "Stash: ready (%d + %d + %d panels, moving items between pages %s).", static_cast<int>(g_tree.panels.size()), static_cast<int>(g_tab.panels.size()), static_cast<int>(g_journal.panels.size()),
 			g_sharedWrite ? "works" : "is not offered");
-		return context->RegisterConsoleCommand("dd-stash", StashCommand, "Show the caravan stash. Tests: dd-stash points <n>, gold <n>, autotab.");
+		return context->RegisterConsoleCommand("dd-stash", StashCommand, "Show the caravan stash. Tests: dd-stash points <n>, gold <n>, autotab, jump <n>.");
 	} catch (...) {
 		g_panels = nullptr;
 		context->LogWarn("Stash: setting up failed; no caravan upgrades.");
@@ -903,7 +923,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			} else if (std::strcmp(command, "SharedStashRight") == 0) {
 				const fs::path progress = Campfire::RouteProgressFile();
 				const Lock lock(g_mutex);
-				if (Current(progress) && g_state.legacyDone && g_page.load() >= g_state.LastPage()) {
+				if (!g_jumping.load() && Current(progress) && g_state.legacyDone && g_page.load() >= g_state.LastPage()) {
 					Log(context, "Stash: page %d is still locked.", g_page.load() + 1);
 					return true;
 				}
