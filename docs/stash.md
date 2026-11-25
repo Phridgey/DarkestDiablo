@@ -8,8 +8,8 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   moved to the open shared pages while the stash is open; what doesn't fit stays where it is.
 - **Pages.** A save starts with 1 page. 9 tiers add one each, for 50,000 / 100,000 / 175,000 /
   300,000 / 500,000 / 750,000 / 1,000,000 / 1,500,000 / 2,500,000 gold (6,875,000 in all). Gold is
-  paid in parts, by any hero of the save (a hero can only carry 10,000 per level). Gold on the
-  shared pages has to be withdrawn first; the hero's old personal stash gold is used up first.
+  paid in parts, by any hero of the save (a hero can only carry 10,000 per level): what the hero
+  carries, then its old personal stash gold, then the gold in the stash.
 - **The Journal** (button under Caravan; click again or Minimize to fold it) is a small window beside the
   stash. Clicking a rune in the bag, on a shared page or in the Upgrades tab lists its
   runewords by level; pointing at a name shows what it does. Alt+click looks a rune up without picking it up;
@@ -55,12 +55,22 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
 
 Console: `dd-stash` (what this save has); for tests `dd-stash points <n>`, `dd-stash gold <n>`.
 
-## Idea being tested: no restart when changing saves
-The game reads the shared stash once and keeps it until it closes. `SharedStashSoftCoreV2.d2i` is just
-its pages one after another (each with its own header and length), and D2RLoader allows up to 1,000.
-So all three saves could live in one file of 30 pages, each save seeing only its own 10; nothing would
-have to be read again. Open questions, tested with `dd-stash jump <n>` (turns that many pages):
-1. Does the stash turn pages when the plugin sends its arrow messages?
-2. Does the page number on the window show the real page? Every save must show 1-10 (decided
-   2026-11-24): hide `CurrentSharedStashText` and draw our own.
-3. Is gold kept per page, or one purse for all pages? One purse would be shared between saves.
+## One stash file for all saves (0.22.0)
+The game reads `SharedStashSoftCoreV2.d2i` once, **when it starts** (not at the first game, as thought
+before: on 2026-11-24 a save opened right after starting got the other save's stash written over its
+own), and keeps it until it closes. So the file is never swapped. It holds 30 pages: save 1 has pages
+1-10, save 2 11-20, save 3 21-30 (`src/plugin/stashfile.h`; the file is just its pages one after
+another). Changing saves needs no restart.
+- **Joining** happens once, while the game starts. The old files are kept in `camp/stash-backup-<time>`.
+  A file it doesn't know, or items past page 10, and nothing is touched (then changing saves still needs
+  a restart).
+- **Always pages 1-10.** Opening the stash goes all the way back and then forward to the save's own
+  pages (`HomePage`); the arrows stop at its ends; our own page number covers the game's. An item on
+  another save's page can't be taken (the click is refused and the stash goes back).
+- **Gold.** The game has one purse for every page, so gold is kept per save in `stash.txt` (`purse`),
+  with Deposit and Take buttons. The game's own gold controls are moved out of the window and refused.
+  The old purses were put in at the joining. Paying uses the hero's gold first, then the purse.
+- **Deleting a save** copies its pages to `camp/trash`. If the game holds the stash, they are emptied
+  when the new save's stash is first opened (`camp/wipe.txt`), or at the next start.
+- **Going back** to a version before this: `python tools/split_stash.py "<save folder>"` first.
+- **Not for the controller layout:** it still shows the game's page number and gold.
