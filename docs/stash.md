@@ -75,6 +75,10 @@ save, the same 4 for ascended heroes, two unused pages at the end; joined once w
 (old files in `camp/stash-backup-<time>-modern`, marker `camp/stash-joined-modern.txt`), kept in place when
 saves change, emptied with a deleted save (`camp/wipe-modern.txt`). Its gold goes to each save's purse.
 - Pages that lie right stay. Pages of a parked save's file go to that save's pages, or an empty one of them.
+- **Joined without doubles (0.28.4).** The sections are told apart by type, not place (a real DLC file has the
+  tabs' section after 12 pages). Pages of one save found unchanged in a later save's file are kept once, for the
+  earlier save. An old-rules file of another version without items counts as blank; one with items is left alone
+  (then only the old-rules stashes stay separate, and changing saves needs a restart).
 - **Still two stashes.** Heroes with and without the Warlock rules of one save don't share items: the
   game loads one file or the other. The purse, the Upgrades tab, the safe and the page tiers are shared.
 - `split_stash.py` doesn't touch this file.

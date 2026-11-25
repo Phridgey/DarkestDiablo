@@ -88,6 +88,26 @@ inline auto JoinPages(const std::vector<std::string>& pages) -> std::string {
 	return file;
 }
 
+// Is this a row of pages without a single item, of whatever version? (A DLC owner's old-rules file may
+// never have been opened by this build of the game.) `gold` is what they hold.
+inline auto HoldsNothing(const std::string& file, uint32_t& gold) -> bool {
+	gold = 0;
+	for (size_t at = 0; at < file.size();) {
+		if (file.size() - at < HeaderSize + 4) {
+			return false;
+		}
+		const std::string head = file.substr(at, HeaderSize + 4);
+		const size_t length = Number(head, 16);
+		if (Number(head, 0) != 0xAA55AA55 || length < HeaderSize + 4 || length > file.size() - at ||
+			(head[20] != 2 && (head.substr(HeaderSize, 2) != "JM" || length != HeaderSize + 4 || ItemCount(head) != 0))) {
+			return false;
+		}
+		gold += Gold(head);
+		at += length;
+	}
+	return true;
+}
+
 // One save's ten pages out of its own file (a missing file: blank pages), and its ascended heroes'
 // (pages 11-14 of it). `gold` is its purse.
 inline auto SavePages(const fs::path& file, std::vector<std::string>& out, std::vector<std::string>& tabs, uint32_t& gold, std::string& error) -> bool {
@@ -96,12 +116,24 @@ inline auto SavePages(const fs::path& file, std::vector<std::string>& out, std::
 	gold = 0;
 	std::error_code ec;
 	if (fs::exists(file, ec)) {
-		const auto pages = Pages(Camp::ReadFile(file));
+		const std::string text = Camp::ReadFile(file);
+		auto pages = Pages(text);
 		if (!pages) {
-			error = "not a stash file this version knows: " + file.string();
-			return false;
+			if (!HoldsNothing(text, gold)) {
+				error = "not a stash file this version knows: " + file.string() + " (" + std::to_string(text.size()) + " bytes, version " +
+					(text.size() >= 12 ? std::to_string(Number(text, 8)) : "?") + "); if the version is below 105, open the stash once with a hero without the Warlock rules";
+				return false;
+			}
+			pages.emplace();  // blank pages of this version instead
 		}
 		for (const auto& page : *pages) {
+			if (page[20] != 0) {  // not an ordinary page: the Warlock rules' own, which this file has no use for
+				if (page[20] != 2 && ItemCount(page) != 0) {
+					error = "items in a section this version does not know: " + file.string();
+					return false;
+				}
+				continue;
+			}
 			gold += Gold(page);
 			if (out.size() >= PagesPerSave && tabs.size() >= TabsPerSave) {
 				if (ItemCount(page) != 0) {

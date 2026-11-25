@@ -27,6 +27,7 @@ namespace ModernStash {
 namespace fs = std::filesystem;
 
 inline constexpr int OrdinaryPages = 44;  // the game's 5 and the mod's 39 (d2rloader.toml)
+inline constexpr size_t CopiedBytes = 64;  // a page's items take at least this much before it can count as a copy
 
 inline auto Type(const std::string& page) -> int { return static_cast<uint8_t>(page[20]); }
 inline auto File(const fs::path& live) -> fs::path { return live / Camp::ModernStashName; }
@@ -105,6 +106,8 @@ inline auto Join(const fs::path& live, const std::string& stamp, bool laidOut, s
 	}
 	const int active = Camp::ActiveSlot(live);
 	Sections files[Camp::SlotCount];
+	std::vector<std::string> copies[Camp::SlotCount];  // the pages as they were read
+	int copied = 0;
 	fs::path sources[Camp::SlotCount];
 	long long gold[Camp::SlotCount] {};
 	bool any = false;
@@ -120,6 +123,26 @@ inline auto Join(const fs::path& live, const std::string& stamp, bool laidOut, s
 			return false;
 		}
 		files[s] = *sections;
+		copies[s] = files[s].ordinary;
+		// Played without the one-file stash, the game could write one save's stash into the next save's
+		// folder: pages that are the same, gold too, are the earlier save's. (One of them must be more than a
+		// rune or two, which can be alike by chance.)
+		for (int t = 0; t < s && !laidOut; ++t) {
+			std::vector<size_t> same;
+			bool sure = false;
+			for (size_t i = 0; i < copies[s].size() && i < copies[t].size(); ++i) {
+				if (copies[s][i] == copies[t][i] && StashFile::ItemCount(copies[s][i]) != 0) {
+					same.push_back(i);
+					sure = sure || copies[s][i].size() >= StashFile::HeaderSize + 4 + CopiedBytes;
+				}
+			}
+			for (const size_t i : same) {
+				if (sure && StashFile::ItemCount(files[s].ordinary[i]) != 0) {
+					files[s].ordinary[i] = StashFile::BlankPage();
+					copied += 1;
+				}
+			}
+		}
 		for (auto& page : files[s].ordinary) {
 			gold[s] += StashFile::Gold(page);
 			StashFile::SetNumber(page, 12, 0);
@@ -239,7 +262,7 @@ inline auto Join(const fs::path& live, const std::string& stamp, bool laidOut, s
 			fs::rename(sources[s], backup / ("slot" + std::to_string(s + 1) + "-parked.d2i"), ec);
 		}
 	}
-	log = "joined the Warlock rules' stashes into one file (" + std::to_string(items) + " items); the old files are in camp/" + backup.filename().string() + ".";
+	log = "joined the Warlock rules' stashes into one file (" + std::to_string(items) + " items" + (copied != 0 ? ", without " + std::to_string(copied) + " copied page(s)" : std::string()) + "); the old files are in camp/" + backup.filename().string() + ".";
 	return true;
 }
 

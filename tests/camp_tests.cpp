@@ -1050,6 +1050,40 @@ void TestModernStash(const fs::path& dir) {
 		}
 		CHECK(items == 2 + 4 + 3 + 5 && at(s->ordinary, 1, 0));
 	}
+	{  // a DLC owner's: the tabs' section in the middle (after 12 pages), the Chronicle last, the same stash in two saves' folders
+		const fs::path live = fresh("modern5"), parked = live / "camp" / "slot2" / "files" / ModernStashName;
+		const auto big = StashPage(6, 9, std::string(100, 'x'));
+		std::vector<std::string> all(44, StashFile::BlankPage());
+		all[0] = big;
+		all[2] = c;
+		all[20] = d;
+		all.insert(all.begin() + 12, TabsPage(43));
+		const std::string text = StashFile::JoinPages(all) + Chronicle();
+		WriteFile(live / ModernStashName, text);
+		WriteFile(parked, text);
+		CHECK(ModernStash::Join(live, "t", false, log));
+		const auto s = ModernStash::Split(ReadFile(live / ModernStashName));
+		CHECK(s && s->ordinary.size() == 44 && s->special.size() == 2 && s->special[1] == Chronicle());
+		CHECK(at(s->ordinary, 0, 6) && at(s->ordinary, 2, 3) && at(s->ordinary, 10, 0));
+		CHECK(ModernStash::JoinedGold(live, 1) == 9 && ModernStash::JoinedGold(live, 2) == 0);
+		CHECK(ModernStash::EmptyTabs(live, "t", log) && Stash::ParseSafe(ReadFile(live / "camp" / "safe.txt")).at("r05") == 43);
+		CHECK(ReadFile(live / "camp" / "stash-backup-t-modern" / "slot2.d2i") == text);
+		// Its old-rules file of an older version: joined when it holds nothing, left alone when it holds something.
+		std::string old = StashFile::BlankPage();
+		StashFile::SetNumber(old, 8, 99);
+		StashFile::SetNumber(old, 12, 4);
+		WriteFile(live / StashName, old + Chronicle());
+		CHECK(StashFile::Join(live, "t", log) && StashFile::JoinedGold(live, 1) == 4);
+		fs::remove(JoinedFile(live));
+		std::string held = StashPage(1, 0, "zzz");
+		StashFile::SetNumber(held, 8, 99);
+		WriteFile(live / StashName, held);
+		CHECK(!StashFile::Join(live, "t", log) && ReadFile(live / StashName) == held && log.find("version 99") != std::string::npos);
+		WriteFile(live / StashName, StashPage(1, 0, "zzz") + Chronicle());
+		CHECK(StashFile::Join(live, "t", log));
+		const auto pages = StashFile::Pages(ReadFile(live / StashName));
+		CHECK(pages && pages->size() == StashFile::FilePages && at(*pages, 0, 1));
+	}
 	{  // none yet; and one that is not understood stays as it is
 		const fs::path none = fresh("modern3"), bad = fresh("modern4");
 		CHECK(ModernStash::Join(none, "t", true, log) && ModernStashJoined(none) && ModernStash::EmptyTabs(none, "t", log) && !fs::exists(none / ModernStashName));
