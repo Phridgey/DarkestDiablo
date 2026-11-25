@@ -157,32 +157,53 @@ def jade_figurine(t):
 def chests_without_ammo(t):
     """No arrows or bolts from Act III's chests (2026-11-24: Lower Kurast's super chests were full
     of them). The game picks a chest's table by act and difficulty ("Act 3 Chest A/B/C"), so every
-    Act III chest changes: their "Act 3 Junk" becomes a copy without its "Ammo" entry (whose weight
-    goes to NoDrop). Monsters keep the game's own junk table."""
+    Act III chest changes: each table on the way to "Ammo" becomes a copy without it (its weight
+    goes to NoDrop). Monsters keep the game's own tables."""
     tcs = t.table("treasureclassex")
     by_name = {r["Treasure Class"]: r for r in tcs.rows}
-    for tag in ("", " (N)", " (H)"):
-        junk = by_name.get(f"Act 3{tag} Junk")
-        if junk is None:
-            continue
-        copy = dict(junk)
-        copy["Treasure Class"] = f"DD Act 3{tag} Junk NoAmmo"
+    copies = {}
+
+    def reaches_ammo(name, seen):
+        if name == "Ammo":
+            return True
+        if name in seen or name not in by_name:
+            return False
+        seen.add(name)
+        row = by_name[name]
+        return any(reaches_ammo(row.get(f"Item{k}", "").split(",")[0], seen) for k in range(1, 11))
+
+    def without(name):
+        if name in copies:
+            return copies[name]
+        copy = dict(by_name[name])
+        copy["Treasure Class"] = copies[name] = f"DD NoAmmo {name}"
         kept, dropped = [], 0
         for k in range(1, 11):
             item, prob = copy.get(f"Item{k}", ""), copy.get(f"Prob{k}", "")
-            if item.split(",")[0] == "Ammo":
+            base = item.split(",")[0]
+            if base == "Ammo":
                 dropped += int(prob) if prob.strip().isdigit() else 0
             elif item:
+                if reaches_ammo(base, set()):
+                    item = without(base) + item[len(base):]
                 kept.append((item, prob))
-        copy["NoDrop"] = str((int(copy["NoDrop"]) if copy.get("NoDrop", "").strip().isdigit() else 0) + dropped)
+        if int(copy.get("Picks") or 1) > 0:
+            copy["NoDrop"] = str((int(copy["NoDrop"]) if copy.get("NoDrop", "").strip().isdigit() else 0) + dropped)
         for k in range(1, 11):
             copy[f"Item{k}"], copy[f"Prob{k}"] = kept[k - 1] if k <= len(kept) else ("", "")
         tcs.rows.append(copy)
+        return copy["Treasure Class"]
+
+    for tag in ("", " (N)", " (H)"):
         for letter in "ABC":
             chest = by_name.get(f"Act 3{tag} Chest {letter}")
+            if chest is None:
+                continue
             for k in range(1, 11):
-                if chest is not None and chest.get(f"Item{k}") == junk["Treasure Class"]:
-                    chest[f"Item{k}"] = copy["Treasure Class"]
+                item = chest.get(f"Item{k}", "")
+                base = item.split(",")[0]
+                if base and base != chest["Treasure Class"] and reaches_ammo(base, set()):
+                    chest[f"Item{k}"] = without(base) + item[len(base):]
 
 
 def patch(t):
