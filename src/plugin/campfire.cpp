@@ -21,6 +21,7 @@
 
 #include "campfire.h"
 #include "stashfile.h"
+#include "modernstash.h"
 #include "ascension.h"
 #include "legacy.h"
 #include "camp.h"
@@ -730,7 +731,7 @@ auto PickSlot(const D2RL::PluginContext* context, int slot) -> std::string {
 	Camp::Unbench(g_live, g_slot);
 	const bool fire = g_fireOn && g_fireReady && g_threads != nullptr;
 	std::string said = "Save " + std::to_string(slot) + " is already loaded.";
-	if (slot != g_slot && g_stashSlot != 0 && !Camp::StashJoined(g_live)) {  // the game holds this save's stash: restart (camp.h, Pending)
+	if (slot != g_slot && g_stashSlot != 0 && !(Camp::StashJoined(g_live) && Camp::ModernStashJoined(g_live))) {  // the game holds this save's stash: restart (camp.h, Pending)
 		Camp::Pending change;
 		change.open = slot;
 		return RestartWith(context, change);
@@ -2335,6 +2336,10 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 	if (joined) {  // its pages are kept beside the trash
 		StashFile::CopyPages(g_live, slot, g_live / "camp" / "trash" / ("slot" + std::to_string(slot) + "-" + stamp + "-stash.d2i"));
 	}
+	const bool modern = Camp::ModernStashJoined(g_live);
+	if (modern) {
+		StashFile::CopyPages(g_live, slot, g_live / "camp" / "trash" / ("slot" + std::to_string(slot) + "-" + stamp + "-stash-modern.d2i"), true);
+	}
 	if (slot == g_stashSlot && !joined) {  // the game holds this save's stash: it would follow into a new save here
 		g_confirmSlot = 0;
 		g_confirmStep = 0;
@@ -2346,6 +2351,14 @@ void DeleteSave(const D2RL::PluginContext* context, int slot) {
 	std::string error;
 	if (Camp::DeleteSlot(g_live, slot, stamp, error)) {
 		Log(context, "Camp: save %d was deleted (its files are kept in camp/trash).", slot);
+		if (modern) {
+			ModernStash::ForgetGold(g_live, slot);
+			auto wipes = StashFile::Wipes(g_live, true);
+			wipes.insert(slot);
+			if (g_stashSlot != 0 || !StashFile::BlankPages(g_live, slot, true)) {
+				StashFile::SetWipes(g_live, wipes, true);
+			}
+		}
 		if (joined) {
 			StashFile::ForgetJoinedGold(g_live, slot);
 			// While the game holds the stash, its pages are emptied when they are next opened (stash.cpp).
@@ -2546,6 +2559,29 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 				Log(context, "Camp: at start, %s", line.c_str());
 			}
 			g_openedAtStart = pending.open != 0 && Camp::ActiveSlot(g_live) == pending.open;
+		}
+		// The Warlock rules' stash file, the same way (modernstash.h). `laidOut`: asked before the other is joined.
+		{
+			const std::string stamp = std::to_string(static_cast<long long>(std::time(nullptr)));
+			const bool laidOut = Camp::StashJoined(g_live);
+			std::string said;
+			const bool done = ModernStash::Join(g_live, stamp, laidOut, said);
+			if (!said.empty()) {
+				Log(context, "Camp: Warlock stash: %s", said.c_str());
+			}
+			if (done) {
+				auto wipes = StashFile::Wipes(g_live, true);
+				for (const int slot : std::set<int>(wipes)) {
+					if (StashFile::BlankPages(g_live, slot, true)) {
+						wipes.erase(slot);
+					}
+				}
+				StashFile::SetWipes(g_live, wipes, true);
+			}
+			ModernStash::EmptyTabs(g_live, stamp, said);
+			if (!said.empty()) {
+				Log(context, "Camp: Warlock stash: %s", said.c_str());
+			}
 		}
 		// All three stashes in one file (stashfile.h), and the pages of saves deleted last session.
 		if (Camp::StashJoined(g_live)) {

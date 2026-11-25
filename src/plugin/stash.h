@@ -212,12 +212,6 @@ inline auto SerializeSafe(const Safe& safe) -> std::string {
 	return out;
 }
 
-// Is this what the Warlock rules' own tabs hold? Their items lie on shared pages whose number the
-// loader does not give (or past the mod's own pages).
-inline auto InWarlockTabs(bool shared, uint32_t page, int filePages, const std::string& code) -> bool {
-	return shared && page >= static_cast<uint32_t>(filePages) && SafeKindOf(code) != nullptr;
-}
-
 // ---- The save's state ---------------------------------------------------------------------
 enum class Buy { Bought, AlreadyOwned, Locked, NotEnoughPoints, Unknown };
 

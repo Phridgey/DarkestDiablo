@@ -349,13 +349,18 @@ inline constexpr const char* StashName = "SharedStashSoftCoreV2.d2i";
 inline auto JoinedFile(const fs::path& live) -> fs::path { return live / "camp" / "stash-joined.txt"; }
 inline auto StashJoined(const fs::path& live) -> bool { return ReadFile(JoinedFile(live)).rfind("done", 0) == 0; }
 
+// The same for the stash file of heroes with the Warlock rules (modernstash.h).
+inline constexpr const char* ModernStashName = "ModernSharedStashSoftCoreV2.d2i";
+inline auto ModernJoinedFile(const fs::path& live) -> fs::path { return live / "camp" / "stash-joined-modern.txt"; }
+inline auto ModernStashJoined(const fs::path& live) -> bool { return ReadFile(ModernJoinedFile(live)).rfind("done", 0) == 0; }
+
 // The files of the live slot: everything at the top of the live folder except shared files.
 inline auto SlotFiles(const fs::path& live) -> std::vector<fs::path> {
 	std::vector<fs::path> out;
 	std::error_code ec;
-	const bool joined = StashJoined(live);
+	const bool joined = StashJoined(live), modern = ModernStashJoined(live);
 	for (const auto& entry : fs::directory_iterator(live, ec)) {
-		if (entry.is_regular_file(ec) && !IsSharedFile(entry.path()) && !(joined && entry.path().filename() == StashName)) {
+		if (entry.is_regular_file(ec) && !IsSharedFile(entry.path()) && !(joined && entry.path().filename() == StashName) && !(modern && entry.path().filename() == ModernStashName)) {
 			out.push_back(entry.path());
 		}
 	}
@@ -406,9 +411,9 @@ inline auto SwitchSlot(const fs::path& live, int to, std::string& error) -> bool
 	}
 	std::vector<fs::path> incoming;
 	std::error_code ec;
-	const bool joined = StashJoined(live);
+	const bool joined = StashJoined(live), modern = ModernStashJoined(live);
 	for (const auto& entry : fs::directory_iterator(parkNew, ec)) {
-		if (entry.is_regular_file(ec) && !(joined && entry.path().filename() == StashName)) {
+		if (entry.is_regular_file(ec) && !(joined && entry.path().filename() == StashName) && !(modern && entry.path().filename() == ModernStashName)) {
 			incoming.push_back(entry.path());
 		}
 	}
