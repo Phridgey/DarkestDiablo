@@ -3,7 +3,7 @@
 // The hero starts in town and goes to the arena at once ("goto"). From the first step inside, the
 // save says "fight" (legacy.h): leaving the game in any way is a death. Stepping out (Town Portal)
 // leads straight back. The boss comes out once the hero is near its spot. Its death writes "won",
-// spills the loot and opens a portal; walking up to the portal asks whether to ascend.
+// spills the loot and brings Tyrael; walking up to Tyrael asks whether to ascend.
 //
 // One background thread polls the game-state API every 200 ms; console commands run on the UI
 // thread.
@@ -35,7 +35,7 @@ namespace {
 
 struct Cell { int x, y; };
 // Spots are map cells of src/maps/ascend<act>.json, read off the rooms; not yet checked in game.
-struct Arena { int level, originX, originY; Cell hero, boss, portal; int advised; };
+struct Arena { int level, originX, originY; Cell hero, boss, guide; int advised; };
 constexpr Arena Arenas[5] = {
 	{ 36,  4500, 1600, { 9, 19 },  { 9, 6 },   { 9, 11 },  15 },
 	{ 56,  3000, 1300, { 16, 27 }, { 15, 12 }, { 16, 21 }, 33 },
@@ -44,8 +44,9 @@ constexpr Arena Arenas[5] = {
 	{ 130, 2500, 2684, { 27, 40 }, { 25, 36 }, { 27, 37 }, 87 },
 };
 constexpr int SpawnReach   = 50;  // sub-tiles; the game only spawns near the hero
-constexpr int PortalRow    = 60;  // objects.txt: PortalPermanent (red, stays open)
-constexpr int PortalReach  = 4;
+// Tyrael (990_ascension.py) can't be clicked himself; a click on him walks the hero there. A portal
+// object crashed the game when clicked (2026-11-25): it leads to level 0.
+constexpr int GuideReach   = 5;
 constexpr int AttackSpeed = 150, CastSpeed = 135;  // percent; the speed of movement is in the boss's row
 constexpr char PromptPanel[] = "AscendPrompt";
 
@@ -60,8 +61,8 @@ std::string g_hero;        // planned or ascending
 int  g_act = 0;            // 1-5; 0 = nothing planned
 bool g_ready = false;      // the planned hero is in the game
 bool g_inside = false;     // the fight has begun
-bool g_seen = false, g_boosted = false, g_won = false, g_portalUp = false, g_armed = true;
-int  g_level = -1, g_tries = 0, g_tick = 0, g_portalX = 0, g_portalY = 0;
+bool g_seen = false, g_boosted = false, g_won = false, g_guideUp = false, g_armed = true;
+int  g_level = -1, g_tries = 0, g_tick = 0, g_guideX = 0, g_guideY = 0, g_guideTries = 0, g_guideRow = -1;
 std::atomic<uintptr_t> g_game { 1 };
 std::atomic<bool> g_active { false };
 
@@ -201,44 +202,50 @@ void __cdecl SpillLoot(const D2RL::PluginContext* context, void*) noexcept {
 	Later(context, 700, KillSpoils);
 }
 
-void __cdecl NotePortal(const D2RL::PluginContext* context, void*) noexcept {
-	const std::lock_guard lock(g_mutex);
-	if (g_act == 0 || !g_won) {
-		return;
-	}
-	for (const Game::Unit& o : Game::Objects(-1, static_cast<uint32_t>(PortalRow))) {
-		if (o.placed && Distance(o.x, o.y, g_portalX, g_portalY) <= 30) {
-			g_portalX = o.x, g_portalY = o.y;
-			g_portalUp = true;
-			g_armed = false;  // the question waits until the hero has stepped away once
-			Log(context, "Ascend: portal at %d,%d.", o.x, o.y);
-			return;
-		}
-	}
-	context->LogWarn("Ascend: the portal did not appear; Save and Exit still ascends.");
-}
+void __cdecl NoteGuide(const D2RL::PluginContext* context, void*) noexcept;
 
-// UI thread. Objects appear at the hero's feet, so the hero goes there and back (zone.cpp).
-void __cdecl OpenPortal(const D2RL::PluginContext* context, void*) noexcept {
-	int x = 0, y = 0;
-	const Game::Unit hero = Game::Hero();
+// Where the guide comes out: the middle of the room, or beside the hero if that is too far away for
+// the game to spawn anything, or refused it (second try). UI thread.
+void __cdecl CallGuide(const D2RL::PluginContext* context, void*) noexcept {
+	char command[96];
 	{
 		const std::lock_guard lock(g_mutex);
-		if (g_act == 0 || !g_won || !hero) {
+		const Game::Unit hero = Game::Hero();
+		if (g_act == 0 || !g_won || g_guideUp || !hero) {
 			return;
 		}
 		const Arena& a = Arenas[g_act - 1];
-		g_portalX = x = X(a, a.portal), g_portalY = y = Y(a, a.portal);
+		int x = X(a, a.guide), y = Y(a, a.guide);
+		if (g_guideTries++ > 0 || Distance(hero.x, hero.y, x, y) > SpawnReach) {
+			x = hero.x + 5, y = hero.y - 5;
+		}
+		std::snprintf(command, sizeof(command), "cheat mspawn dd_ascendguide,1 @ %d,%d", x, y);
 	}
-	char command[64];
-	std::snprintf(command, sizeof(command), "location %d,%d", x, y);
 	RunConsole(context, command);
-	std::snprintf(command, sizeof(command), "cheat ospawn %d", PortalRow);
-	RunConsole(context, command);
-	std::snprintf(command, sizeof(command), "location %d,%d", hero.x, hero.y);
-	RunConsole(context, command);
-	context->WriteConsoleMessage("The way is open. Take what you want, then step up to the portal to ascend.");
-	Later(context, 500, NotePortal);
+	Later(context, 700, NoteGuide);
+}
+
+void __cdecl NoteGuide(const D2RL::PluginContext* context, void*) noexcept {
+	{
+		const std::lock_guard lock(g_mutex);
+		if (g_act == 0 || !g_won) {
+			return;
+		}
+		for (const auto& m : Game::Monsters(-1, false)) {
+			if (g_guideRow >= 0 && static_cast<int>(m.unit.row) == g_guideRow) {
+				g_guideX = m.unit.x, g_guideY = m.unit.y;
+				g_guideUp = true;
+				g_armed = false;  // the question waits until the hero has stepped away once
+				Log(context, "Ascend: Tyrael stands at %d,%d.", m.unit.x, m.unit.y);
+				return;
+			}
+		}
+		if (g_guideTries >= 4) {
+			context->LogWarn("Ascend: Tyrael did not appear; Save and Exit still ascends.");
+			return;
+		}
+	}
+	Later(context, 500, CallGuide);
 }
 
 void __cdecl ShowPrompt(const D2RL::PluginContext* context, void*) noexcept {
@@ -285,7 +292,7 @@ void Win(const D2RL::PluginContext* context, const std::string& hero) {
 	Campfire::AscensionWon(hero);
 	Log(context, "Ascend: the boss is dead; %s has won.", hero.c_str());
 	Later(context, 1200, SpillLoot);
-	Later(context, 3500, OpenPortal);
+	Later(context, 3500, CallGuide);
 }
 
 void Tick(const D2RL::PluginContext* context) noexcept {
@@ -305,11 +312,11 @@ void Tick(const D2RL::PluginContext* context) noexcept {
 				lock.unlock();
 				Win(context, name);
 			}
-		} else if (g_portalUp) {
-			const double d = Distance(hero.x, hero.y, g_portalX, g_portalY);
-			if (!g_armed && d > PortalReach + 4) {
+		} else if (g_guideUp) {
+			const double d = Distance(hero.x, hero.y, g_guideX, g_guideY);
+			if (!g_armed && d > GuideReach + 3) {
 				g_armed = true;
-			} else if (g_armed && d <= PortalReach) {
+			} else if (g_armed && d <= GuideReach) {
 				g_armed = false;
 				g_threads->runOnUiThread(context, ShowPrompt, nullptr);
 			}
@@ -335,6 +342,8 @@ void ReadLines(const D2RL::PluginContext* context) {
 			g_classes[act - 1].push_back(n);
 		} else if (key == "ascendhp" && words >> n) {
 			g_life[act - 1] = n;
+		} else if (key == "ascendguide" && words >> n) {
+			g_guideRow = n;
 		}
 	}
 	Log(context, "Ascend: %d bosses, %d of them in Act I.", static_cast<int>(g_supers[0].size() + g_supers[1].size() + g_supers[2].size() + g_supers[3].size() + g_supers[4].size()),
@@ -416,9 +425,9 @@ void Plan(const std::string& hero, int act) noexcept {
 	const bool able = g_threads != nullptr && act >= 1 && act <= 5 && !g_supers[act - 1].empty() && !hero.empty();
 	g_hero = able ? hero : std::string();
 	g_act = able ? act : 0;
-	g_ready = g_inside = g_seen = g_boosted = g_won = g_portalUp = false;
+	g_ready = g_inside = g_seen = g_boosted = g_won = g_guideUp = false;
 	g_armed = true;
-	g_tries = 0;
+	g_tries = g_guideTries = 0;
 }
 
 void OnReady(const D2RL::PluginContext* context, const std::string& hero) noexcept {
