@@ -397,7 +397,8 @@ inline constexpr double NodeScale = 0.65;
 inline constexpr int    SideW = 275, SideH = 70, SideY = 151, SidePitch = 76;  // the Caravan / Stash button at a window's right edge
 
 // The caravan window, in the stash's place (the inventory stays beside it): the page tiers down its left side, the passive tree beside them.
-inline auto TreeLayout(const State& state) -> std::string {
+// `note`: what became of the last payment, under the Pay buttons.
+inline auto TreeLayout(const State& state, const std::string& note = {}) -> std::string {
 	using namespace Ui;
 	std::string out = Catcher(TreeW, TreeH) + "," + Box("Edge", { 0, 0, TreeW, TreeH }, Bronze) + "," +
 		Box("Sheet", { 4, 4, TreeW - 8, TreeH - 8 }, "[0.035,0.03,0.028,1.0]") + "," + CloseButton(TreeW - 90, "closebank") + "," +
@@ -428,6 +429,9 @@ inline auto TreeLayout(const State& state) -> std::string {
 		add(Text("PagesDone", { 40, 1320, 340, 60 }, "Every page is unlocked", TextGreen, "$MediumFontSize"));
 	}
 
+	if (!note.empty()) {
+		add(Text("PayNote", { 14, 1470, 390, 28 }, note, TextBeige, "18"));
+	}
 	add(Box("Divider", { 408, 40, 3, TreeH - 80 }, Bronze));
 	add(Text("TreeTitle", { TreeX, 50, 1470, 50 }, "Caravan Passives", TextGold, "$LargeFontSize"));
 	add(Text("Points", { TreeX, 100, 1470, 40 }, std::to_string(state.Points()) + (state.Points() == 1 ? " point" : " points") + " to spend  (" +

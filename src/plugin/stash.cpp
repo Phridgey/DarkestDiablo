@@ -14,6 +14,7 @@
 #include "journal.h"
 #include "campfire.h"
 #include "gameapi.h"
+#include "gamestate.h"
 #include <D2RLPlugin/core_exports.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -59,7 +60,7 @@ std::atomic<uintptr_t> g_visit { 0 };       // counts stash openings, so an old 
 std::atomic<int>       g_page { 1 };        // the shared page we believe is showing (from 1)
 std::atomic<bool>      g_autoTab { false }; // dd-stash autotab: try to open the stash on the shared pages
 std::atomic<bool>      g_treeWanted { false }, g_tabWanted { false };
-std::atomic<bool>      g_journalWanted { true };  // not minimized; stays as it is between visits
+std::atomic<bool>      g_journalWanted { false };  // starts minimized; stays as it is between visits
 std::atomic<int>       g_journalRune { -1 }, g_journalPage { 0 };
 std::atomic<bool>      g_jumping { false };  // dd-stash jump: the page lock lets these arrows through
 std::atomic<bool>      g_refresh { false };
@@ -68,6 +69,7 @@ std::atomic<bool>      g_paying { false };
 // A payment on its way: what the hero had, and what should be left.
 struct Payment { long long total = 0; int gold = 0, bank = 0, goldAfter = 0, bankAfter = 0; };
 Payment g_payment;
+std::string g_payNote;  // under the Pay buttons
 
 void Log(const D2RL::PluginContext* context, const char* format, ...) noexcept {
 	char message[512] {};
@@ -248,7 +250,7 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 			CloseRow(context, g_tab);
 		}
 		if (g_treeWanted.load()) {
-			ShowRow(context, g_tree, Stash::TreeLayout(g_state));
+			ShowRow(context, g_tree, Stash::TreeLayout(g_state, g_payNote));
 		} else {
 			CloseRow(context, g_tree);
 		}
@@ -532,6 +534,7 @@ void StartSweeping(const D2RL::PluginContext* context) noexcept {
 void SyncActs(const D2RL::PluginContext* context) noexcept {
 	try {
 		const fs::path progress = Campfire::RouteProgressFile();
+		GameState::Ready();  // finds the hero: nothing else may have looked yet (a game that starts outside Act I, 0.20.5)
 		const int cls = Game::HeroInfo().classId;
 		const Lock lock(g_mutex);
 		if (progress.empty() || progress.stem() == "_unknown" || !Current(progress)) {
@@ -561,10 +564,11 @@ void __cdecl FinishPayment(const D2RL::PluginContext* context, void*) noexcept {
 		if (taken > 0 && Current(progress)) {
 			const bool unlocked = g_state.Pay((std::min)(taken, g_payment.total));
 			Save(context);
+			g_payNote = unlocked ? "Page unlocked" : "Paid " + Stash::Commas((std::min)(taken, g_payment.total)) + " gold";
 			Log(context, "Stash: %lld gold paid in%s; %d page(s), %lld toward the next.", taken, unlocked ? " and a page unlocked" : "", g_state.Pages(), g_state.fund);
 		} else {
 			Log(context, "Stash: the gold did not change (%d and %d); nothing was paid.", gold, bank);
-			context->WriteConsoleMessage("Stash: the payment did not go through; no gold was counted.");
+			g_payNote = "Gold did not change, not paid";
 		}
 	} catch (...) {
 		context->LogWarn("Stash: the payment failed.");
@@ -576,9 +580,16 @@ void __cdecl FinishPayment(const D2RL::PluginContext* context, void*) noexcept {
 // UI thread. Pays up to `wanted` gold (negative: all) toward the next page: first what lies in
 // the hero's old stash purse, then what it carries.
 void Pay(const D2RL::PluginContext* context, long long wanted) {
+	GameState::Ready();
 	const Game::HeroDetails hero = Game::HeroInfo();
 	const long long owing = g_state.Owing();
-	if (!hero.unit || owing <= 0 || g_paying.exchange(true)) {
+	if (!hero.unit) {
+		g_payNote = "Hero not found yet, try again";
+		Log(context, "Stash: nothing paid, the hero can't be read (%s).", GameState::Status().c_str());
+		return;
+	}
+	if (owing <= 0 || g_paying.exchange(true)) {
+		Log(context, "Stash: nothing paid (%lld owing).", owing);
 		return;
 	}
 	Payment pay;
@@ -587,9 +598,11 @@ void Pay(const D2RL::PluginContext* context, long long wanted) {
 	pay.total = (std::min)({ owing, wanted < 0 ? owing : wanted, static_cast<long long>(pay.gold) + pay.bank });
 	if (pay.total <= 0) {
 		g_paying = false;
-		context->WriteConsoleMessage("Stash: this hero carries no gold. Gold on the shared pages has to be withdrawn first.");
+		g_payNote = "This hero carries no gold";
+		Log(context, "Stash: nothing paid, the hero carries no gold.");
 		return;
 	}
+	Log(context, "Stash: paying %lld of %lld (the hero has %d and %d).", pay.total, owing, pay.gold, pay.bank);
 	const int fromBank = static_cast<int>((std::min)(pay.total, static_cast<long long>(pay.bank)));
 	const int fromGold = static_cast<int>(pay.total - fromBank);
 	pay.bankAfter = pay.bank - fromBank;
@@ -625,6 +638,7 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 		return;
 	}
 	if (std::strcmp(action, "tree") == 0) {
+		g_payNote.clear();
 		g_treeWanted = !RowOpen(context, g_tree);
 		SyncActs(context);
 	} else if (std::strcmp(action, "upgrades") == 0) {

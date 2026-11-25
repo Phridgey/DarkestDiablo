@@ -60,5 +60,6 @@ its pages one after another (each with its own header and length), and D2RLoader
 So all three saves could live in one file of 30 pages, each save seeing only its own 10; nothing would
 have to be read again. Open questions, tested with `dd-stash jump <n>` (turns that many pages):
 1. Does the stash turn pages when the plugin sends its arrow messages?
-2. Does the page number on the window show the real page (11-20 for the second save)?
+2. Does the page number on the window show the real page? Every save must show 1-10 (decided
+   2026-11-24): hide `CurrentSharedStashText` and draw our own.
 3. Is gold kept per page, or one purse for all pages? One purse would be shared between saves.
