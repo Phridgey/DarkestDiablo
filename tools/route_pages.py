@@ -67,7 +67,7 @@ PAGES = {
                            ("Fork5Swampy", "Swampy Pit", 90, "mf", ""),
                            ("Fork5LowerKurast", "Lower Kurast", 95, "craft", "Runes up to Lem")]),
         (None, [("NodeTravincal", "Travincal", 96, "story", "")]),
-        (None, [("NodeDurance", "Durance of Hate", 102, "boss", "")]),
+        (None, [("NodeDurance", "Durance of Hate", 99, "boss", "")]),
     ]),
     4: ("Act IV - Choose your path", 103, [
         (None, [("NodePlains", "Plains of Despair", 105, "xp", "+4 skill points")]),
