@@ -240,6 +240,37 @@ auto SetStateStat(const std::vector<uintptr_t>& copies, int state, uint16_t stat
 	return changed;
 }
 
+auto SelectRight(const std::vector<uintptr_t>& copies, int skill) -> std::vector<RightSkill> {
+	struct Change { uintptr_t at, to; };
+	std::vector<Change>     changes;
+	std::vector<RightSkill> undo;
+	for (const uintptr_t copy : copies) {
+		const auto places = Game::SkillsOf(copy);
+		const uintptr_t to = places ? places->Find(skill) : 0;
+		int before = -1;
+		if (to != 0) {
+			for (const auto& [id, node] : places->skills) {
+				before = node == places->right ? id : before;
+			}
+		}
+		if (to == 0 || before < 0) {
+			return {};
+		}
+		changes.push_back({ places->rightAt, to });
+		undo.push_back({ copy, before, skill });
+	}
+	if (changes.size() < 2) {
+		return {};
+	}
+	for (const auto& change : changes) {
+		if (!Put<uint64_t>(change.at, change.to)) {
+			RestoreRight(undo);
+			return {};
+		}
+	}
+	return undo;
+}
+
 void RestoreRight(const std::vector<RightSkill>& saved) {
 	for (const auto& s : saved) {
 		const auto places = Game::SkillsOf(s.copy);
@@ -268,7 +299,7 @@ auto LooksSkillKeys(const unsigned char* table) -> bool {
 	return any;
 }
 
-auto FindSkillKeys() -> std::vector<uintptr_t> {
+auto FindSkillKeys(std::vector<std::string>* nearMisses) -> std::vector<uintptr_t> {
 	std::vector<uintptr_t> found;
 	if (!GameMemory::BuildMatches()) {
 		return found;
@@ -293,6 +324,21 @@ auto FindSkillKeys() -> std::vector<uintptr_t> {
 				for (SIZE_T i = 0; i + SkillKeyBytes <= got && i < Step; i += 4) {
 					uint32_t mark[2] {};
 					std::memcpy(mark, buffer.data() + i + 12, 8);
+					uint32_t next[2] {};
+					std::memcpy(next, buffer.data() + i + 12 + SkillKeySize, 8);
+					if (nearMisses != nullptr && nearMisses->size() < 8 && mark[0] == 4 && mark[1] == 255 && next[0] == 4 && next[1] == 255 &&
+					    !LooksSkillKeys(buffer.data() + i) && !(block + i >= own && block + i < own + buffer.size())) {
+						char text[40] {};
+						std::snprintf(text, sizeof(text), "%llx:", static_cast<unsigned long long>(block + i));
+						std::string line = text;
+						for (std::size_t k = 0; k < 24; ++k) {
+							uint32_t word = 0;
+							std::memcpy(&word, buffer.data() + i + 4 * k, 4);
+							std::snprintf(text, sizeof(text), " %x", word);
+							line += text;
+						}
+						nearMisses->push_back(line);
+					}
 					if (mark[0] == 4 && mark[1] == 255 && LooksSkillKeys(buffer.data() + i) && !(block + i >= own && block + i < own + buffer.size())) {
 						found.push_back(block + i);
 					}

@@ -1,7 +1,8 @@
 """Throwing a potion from its slot (docs/potions.md): one skill per throwing potion, cast for the hero by
 the plugin (potions.cpp). It is a plain missile skill made from Fire Bolt: the potion's own missile
-toward the cursor, its own damage (missiles.txt), no mana, not for either mouse button's list, so only
-the plugin can use it. A short cooldown keeps one press one throw.
+toward the cursor, its own damage (missiles.txt), no mana. It is a right-button skill,
+because the game may refuse to cast one that is neither; so it also shows in the skill list once the
+hero has it, where using it takes no charge (docs/potions.md). A short cooldown keeps one press one throw.
 
 The base tables have fewer skills than global/excel, so they get placeholder rows first: the same skill
 has the same number in both. The plugin reads the numbers from loot_data.txt ("throwskill").
@@ -32,6 +33,6 @@ def patch(t):
                         "skilldesc": "throw", "srvmissile": missile, "cltmissile": missile, "stsound": "weapon_throw_1",
                         "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
                         "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": COOLDOWN,
-                        "leftskill": "0", "rightskill": "0"})
+                        "leftskill": "0", "rightskill": "1"})
         if t.excel.name == "excel":
             t.loot_lines.append(f"throwskill {row['code']} {number}")

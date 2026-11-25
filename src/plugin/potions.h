@@ -47,7 +47,6 @@ inline constexpr double ThrownCapacity  = 30;
 inline constexpr double KillCharge      = 0.5;    // a normal monster of the hero's level
 inline constexpr double SupportKillRate = 0.75;
 inline constexpr double RegenPerSecond  = 0.002;  // of the capacity
-inline constexpr int    ThrowReach      = 25;     // sub-tiles (994a_throwers.py: REACH)
 inline constexpr int    ThrownPerUse    = 5;      // dd-potions bag: throwing potions one use makes
 inline constexpr int    ThrownCarried   = 25;     // the most the hero may own of one kind for a use to make more
 inline constexpr double EchoStrength    = 0.5;    // a support potion set off by a healing or mana potion

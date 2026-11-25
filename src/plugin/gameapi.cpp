@@ -157,22 +157,7 @@ auto InCombatMode(uint32_t mode) -> bool {
 	return mode == 4 || (mode >= 7 && mode <= 16) || mode == 19;
 }
 
-static std::atomic<uint32_t> g_notEnemies[16] {};  // row + 1; 0: free
-void NotAnEnemy(uint32_t row) {
-	for (auto& slot : g_notEnemies) {
-		uint32_t free = 0;
-		if (slot.compare_exchange_strong(free, row + 1) || free == row + 1) {
-			return;
-		}
-	}
-}
-
 auto ClassOf(uint32_t row) -> MonsterClass {
-	for (const auto& slot : g_notEnemies) {
-		if (slot.load() == row + 1) {
-			return MonsterClass::Critter;
-		}
-	}
 	return row < std::size(Tables::MonsterClasses) ? Tables::MonsterClasses[row] : MonsterClass::Enemy;
 }
 

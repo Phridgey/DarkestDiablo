@@ -42,8 +42,13 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   first thing it hits (or at the end of its reach, not on the spot under the cursor); kills give
   experience. A charge is taken only when the cast is seen. Not in town, not with the bag open, not with
   the cursor over the HUD (so by key, not by clicking the slot).
-- If the skill keys aren't found, an invisible helper on the heroes' side throws at the nearest enemy
-  instead (`994a_throwers.py`; its kills give no experience). `dd-potions bag` (until the game closes)
+- If that casts nothing, the skill goes on the right button for a moment and that is pressed. A throw that
+  isn't seen takes no charge and says why in the console. Every step is in the game folder's
+  `d2rloader/logs/potion-throws.log`, which builds and restarts leave alone; `dd-potions throwtest` writes
+  how each step stands without throwing. Tried 2026-11-25 (0.22.4): nothing thrown, yet charges taken,
+  most likely by the invisible helper that was the fallback then (removed). The skills were on neither
+  mouse button then; now they are right-button skills, so once a hero has one it can also be picked in
+  the skill list and used without charges, until that is closed. `dd-potions bag` (until the game closes)
   puts 5 throwing potions in the bag instead.
 - **The game's belt is off the screen**, not gone, and its size is unchanged, so saved heroes load.
   Potions an older hero left in it can't be clicked.
