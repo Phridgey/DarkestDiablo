@@ -391,17 +391,22 @@ auto PromptLayout() -> std::string {
 	const std::string act = "PanelManager:OpenPanel:darkestdiablo/";
 	const auto button = [&](const char* name, int x, const char* text, const char* action) {
 		return std::string("{\"type\":\"ButtonWidget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x) +
-			",\"y\":330},\"filename\":\"FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonMed\",\"textString\":\"" + text + "\",\"onClickMessage\":\"" + act + action +
+			",\"y\":380},\"filename\":\"FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonMed\",\"textString\":\"" + text + "\",\"onClickMessage\":\"" + act + action +
 			"\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,\"text/style\":\"$StyleFEButtonText\",\"textColor\":\"$FontColorRed\"}}";
 	};
+	std::string lines;
+	int y = 150;
+	for (const std::string& part : Wrap("This hero leaves the camp for good. Everything it wears and carries goes to the camp's stash. Anything left on the ground is lost.", 48)) {
+		lines += "{\"type\":\"TextBoxWidget\",\"name\":\"Text" + std::to_string(y) + "\",\"fields\":{\"rect\":{\"x\":-780,\"y\":" + std::to_string(y) + ",\"width\":1560,\"height\":54},\"text\":\"" + part +
+			"\",\"style\":{\"fontColor\":\"$FontColorWhite\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
+		y += 54;
+	}
 	return std::string("{\"type\":\"Panel\",\"name\":\"darkestdiablo/") + PromptPanel + "\",\"fields\":{\"anchor\":{\"x\":0.5,\"y\":0.35},\"fitToParent\":true},\"children\":["
 		"{\"type\":\"NineTileImageWidget\",\"name\":\"Back\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\",\"backgroundColor\":[0.06,0.0,0.0,0.95],\"tileScale\":1.0,"
-		"\"rect\":{\"x\":-700,\"y\":0,\"width\":1400,\"height\":500}}},"
+		"\"rect\":{\"x\":-850,\"y\":0,\"width\":1700,\"height\":560}}},"
 		"{\"type\":\"TextBoxWidget\",\"name\":\"Title\",\"fields\":{\"rect\":{\"x\":-650,\"y\":40,\"width\":1300,\"height\":80},\"text\":\"Ascend?\","
 		"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$XExtraLargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},"
-		"{\"type\":\"TextBoxWidget\",\"name\":\"Text\",\"fields\":{\"rect\":{\"x\":-650,\"y\":140,\"width\":1300,\"height\":180},"
-		"\"text\":\"This hero leaves the camp for good. Everything it wears and carries goes to the camp's stash. Anything left on the ground is lost.\","
-		"\"style\":{\"fontColor\":\"$FontColorWhite\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}}," +
+		+ lines +
 		button("Yes", -560, "Ascend", "ascend-yes") + "," + button("No", 60, "Not yet", "ascend-no") + "]}";
 }
 

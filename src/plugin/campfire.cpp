@@ -923,28 +923,37 @@ auto AscendLayoutJson(const Camp::Hero& hero) -> std::string {
 	static constexpr const char* Bosses[] = { "Andariel", "Duriel", "Mephisto", "Diablo", "Baal" };
 	const int actNumber = ActOfHero(hero.name);
 	const int advised = Ascension::AdvisedLevel(actNumber);
-	std::string kids = "{\"type\":\"NineTileImageWidget\",\"name\":\"AskBack\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\","
-		"\"backgroundColor\":[0.07,0.0,0.0,0.94],\"tileScale\":1.0,\"rect\":{\"x\":-950,\"y\":420,\"width\":1900,\"height\":1180}}},";
-	int line = 0, y = 470;
+	// A letter of the large font is about 29 wide (measured in a screenshot), so 66 letters need
+	// about 1920 of the box's 2300.
+	constexpr int Top = 330, BoxW = 2300, Margin = 70, LineH = 54, Gap = 40;
+	constexpr size_t Letters = 66;
+	std::string kids;
+	int line = 0, y = Top + Margin;
 	const auto text = [&](const std::string& words, const char* color, const char* size, int height) {
-		kids += "{\"type\":\"TextBoxWidget\",\"name\":\"Ask" + std::to_string(line++) + "\",\"fields\":{\"rect\":{\"x\":-880,\"y\":" + std::to_string(y) +
-			",\"width\":1760,\"height\":" + std::to_string(height) + "},\"text\":\"" + words + "\",\"style\":{\"fontColor\":\"" + color +
-			"\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"" + size + "\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
-		y += height;
+		for (const std::string& part : Ascension::Wrap(words, Letters)) {
+			kids += "{\"type\":\"TextBoxWidget\",\"name\":\"Ask" + std::to_string(line++) + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(-BoxW / 2 + Margin) + ",\"y\":" + std::to_string(y) +
+				",\"width\":" + std::to_string(BoxW - 2 * Margin) + ",\"height\":" + std::to_string(height) + "},\"text\":\"" + part + "\",\"style\":{\"fontColor\":\"" + color +
+				"\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"" + size + "\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
+			y += height;
+		}
+		y += Gap;
 	};
-	text(hero.name + " seeks Ascension", "$FontColorRed", "$XExtraLargeFontSize", 110);
-	text(std::string(Bosses[actNumber - 1]) + " waits in Ascended form: more life, harder hits, faster, with four elite powers.", "$FontColorWhite", "$LargeFontSize", 100);
-	text("There is no way out. Dying, leaving or quitting before the boss is dead is a permanent death, and everything on this hero is lost.", "$FontColorRed", "$LargeFontSize", 130);
-	text("Win, and this hero leaves the camp for good. All it wears and carries, and what is in its Cube, waits in the camp's stash.", "$FontColorGoldYellow", "$LargeFontSize", 130);
-	text("Meant to be fought alone, one on one. A mercenary may come along, but its gear does NOT come home. Stash anything you want to keep from it first, and leave the mercenary behind.", "$FontColorWhite", "$LargeFontSize", 160);
+	text(hero.name + " seeks Ascension", "$FontColorRed", "$XExtraLargeFontSize", 90);
+	text(std::string(Bosses[actNumber - 1]) + " waits in Ascended form: more life, harder hits, faster, with four elite powers.", "$FontColorWhite", "$LargeFontSize", LineH);
+	text("There is no way out. Dying, leaving or quitting before the boss is dead is a permanent death, and everything on this hero is lost.", "$FontColorRed", "$LargeFontSize", LineH);
+	text("Win, and this hero leaves the camp for good. All it wears and carries, and what is in its Cube, waits in the camp's stash.", "$FontColorGoldYellow", "$LargeFontSize", LineH);
+	text("Meant to be fought alone, one on one. A mercenary may come along, but its gear does NOT come home. Stash anything you want to keep from it first, and leave the mercenary behind.", "$FontColorWhite", "$LargeFontSize", LineH);
 	if (hero.level < advised) {
-		text("WARNING: " + hero.name + " is level " + std::to_string(hero.level) + ". This fight is meant for level " + std::to_string(advised) + " and up. Good luck...", "$FontColorRed", "$LargeFontSize", 110);
+		text("WARNING: " + hero.name + " is level " + std::to_string(hero.level) + ". This fight is meant for level " + std::to_string(advised) + " and up. Good luck...", "$FontColorRed", "$LargeFontSize", LineH);
 	}
-	text("Are you sure?", "$FontColorWhite", "$LargeFontSize", 80);
+	text("Are you sure?", "$FontColorWhite", "$LargeFontSize", LineH);
 	const std::string act = "PanelManager:OpenPanel:darkestdiablo/";
-	kids += FireButton("AskYes", -560, 1440, "Ascend", act + "ascend-accept", Med, "$FontColorRed") + ",";
-	kids += FireButton("AskNo", 80, 1440, "Turn back", act + "ascend-cancel", Med, "$LightButtonTextColor") + ",";
+	kids += FireButton("AskYes", -560, y + 10, "Ascend", act + "ascend-accept", Med, "$FontColorRed") + ",";
+	kids += FireButton("AskNo", 80, y + 10, "Turn back", act + "ascend-cancel", Med, "$LightButtonTextColor") + ",";
 	kids += VersionWidgetJson();
+	// The box, as high as the text needs, behind everything.
+	kids = "{\"type\":\"NineTileImageWidget\",\"name\":\"AskBack\",\"fields\":{\"filename\":\"PANEL/TooltipBorder/TooltipBorder\",\"backgroundColor\":[0.07,0.0,0.0,0.97],\"tileScale\":1.0,"
+		"\"rect\":{\"x\":" + std::to_string(-BoxW / 2) + ",\"y\":" + std::to_string(Top) + ",\"width\":" + std::to_string(BoxW) + ",\"height\":" + std::to_string(y + 10 + 120 + Margin - Top) + "}}}," + kids;
 	return "{\"type\":\"Panel\",\"name\":\"@PANEL@\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
 }
 
@@ -1088,6 +1097,15 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 	SetVisible(context, panel.c_str(), "EnterIdle", !traveler && !g_createMode && !ready);
 	SetVisible(context, panel.c_str(), "EnterReady", !traveler && !g_createMode && ready);
 	SetVisible(context, panel.c_str(), "Ascend", !traveler && !g_createMode && !g_deleteMode && ready);
+	// The game's class name and description would shine through the question.
+	static bool infoWasHidden = false;
+	const bool infoHidden = g_ascendAsk >= 0;
+	if (infoHidden || infoWasHidden) {
+		for (const char* part : { "InfoContainer", "ClassTitle", "ClassDescription" }) {
+			SetVisible(context, "CharacterCreatePanel", part, !infoHidden);
+		}
+		infoWasHidden = infoHidden;
+	}
 	// The game's own name box, version picker and Create button.
 	// The game shows its name box again by itself, so each part of it is hidden too.
 	int found = 0;

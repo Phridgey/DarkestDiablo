@@ -4,7 +4,9 @@
 
 #include <D2RLPlugin/api.h>
 
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace Ascension {
 
@@ -13,6 +15,20 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool;
 
 // The Campfire is about to load this hero to ascend, in this act. An empty name calls it off.
 void Plan(const std::string& hero, int act) noexcept;
+
+// Cuts a text into lines of at most `width` letters: the game's text boxes don't wrap.
+inline auto Wrap(const std::string& words, size_t width) -> std::vector<std::string> {
+	std::vector<std::string> lines { "" };
+	std::istringstream in(words);
+	std::string word;
+	while (in >> word) {
+		if (!lines.back().empty() && lines.back().size() + 1 + word.size() > width) {
+			lines.emplace_back();
+		}
+		lines.back() += (lines.back().empty() ? "" : " ") + word;
+	}
+	return lines;
+}
 
 // A hero is on its way to ascend.
 auto Planned() noexcept -> bool;
