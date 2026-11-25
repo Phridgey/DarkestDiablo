@@ -42,12 +42,19 @@ auto SameUnit(uintptr_t copy, const Game::Unit& unit) -> bool;
 auto SetStateEnd(const std::vector<uintptr_t>& copies, int state, uint32_t endFrame) -> int;
 auto SetStateStat(const std::vector<uintptr_t>& copies, int state, uint16_t stat, int value) -> int;
 
-// The skill on the right mouse button (agreed 2026-11-25, CLAUDE.md), for throwing a potion: points every
-// copy at a skill it already has. All copies (two at least) or none. Restore puts the earlier skill
-// back where ours is still selected; a skill the player picked meanwhile stays.
+// Puts the right-button skill back where it became ours (agreed 2026-11-25, CLAUDE.md); a skill the
+// player picked meanwhile stays.
 struct RightSkill { uintptr_t copy = 0; int before = -1, ours = -1; };  // skills.txt rows
-auto SelectRight(const std::vector<uintptr_t>& copies, int skill, std::vector<RightSkill>& saved) -> bool;
 void RestoreRight(const std::vector<RightSkill>& saved);
+
+// The game's skill keys (agreed 2026-11-25 with SelectRight): the table of what each skill key holds, 32
+// records of 28 bytes, as the hero's .ctl file has it. Found by that shape (slow: scans memory, 1-2 s); more than 4
+// places that fit: none, to be safe. HoldSkill puts a skill on every key of every table and returns
+// what was there; GiveBack puts it back.
+struct SkillKeyTable { uintptr_t at = 0; std::vector<unsigned char> before {}; };
+auto FindSkillKeys() -> std::vector<uintptr_t>;
+auto HoldSkill(const std::vector<uintptr_t>& tables, int skill) -> std::vector<SkillKeyTable>;
+void GiveBack(const std::vector<SkillKeyTable>& tables, int skill);
 
 // One line per copy for the log: where it is, its stat list, life (to tell the copies apart).
 auto CopiesReport(const Game::Unit& unit, const std::vector<uintptr_t>& copies) -> std::string;

@@ -110,7 +110,8 @@ a named constant at the top of `gameapi.cpp`; all are mapped (from the map tools
 | Item quality, owner's unit number, flags, item level | item data + 0x00, + 0x0C, + 0x18, + 0x3C | 4 bytes each |
 | Item body slot (worn), page (stored) | item data + 0x54, + 0x55 | 1 byte each |
 | Skill list: { first, left, right } skill | unit + 0x100 tried first, else the first pointer in the unit's first 0x200 bytes that holds a skill list (Attack in it, no repeats, left and right in it) | pointers |
-| The right-button skill, also written (throwing a potion, `GameWrite::SelectRight`) | skill list + 0x10, in every copy of the hero | pointer |
+| The skill keys, also written (throwing a potion, `GameWrite::HoldSkill`) | found by shape: 32 records of 28 bytes as in the hero's .ctl file (skill, item, hand, 4, 255, 0, 0) | 896 bytes |
+| The right-button skill, also written (put back after a throw) | skill list + 0x10, in every copy of the hero | pointer |
 | A skill's skills.txt row; next skill; points | skill + 0x00 -> record + 0x00; skill + 0x08; skill + 0x40 | 2 bytes; pointer; 4 bytes |
 
 ## What uses them

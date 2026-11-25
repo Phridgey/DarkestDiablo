@@ -652,6 +652,16 @@ static void FullHeroesKeepTheirPotions() {
 	CHECK(!S::Pointless(Antidote, 240, 240, 171, 171) && !S::Pointless(None, 240, 240, 171, 171));
 }
 
+static void SkillKeysAreReadFromTheKeyFile() {
+	std::string file(2, '\x25');
+	const auto add = [&](int action, int key) {
+		file += std::string { static_cast<char>(action), 0, 0, 0, static_cast<char>(key & 0xFF), static_cast<char>(key >> 8), 1, 0, 0, 0 };
+	};
+	add(13, 0x54); add(14, 0x51); add(14, 0xFFFF); add(15, 0x101); add(16, 0x1045); add(21, 0x46); add(22, 0xC0);
+	CHECK(Potions::SkillKeys(file) == std::vector<int>({ 0x51, 0x46 }));
+	CHECK(Potions::SkillKeys("").empty() && Potions::SkillKeys("ab\x0e").empty());
+}
+
 static void PotionLoadoutSwapsAndGrades() {
 	using namespace Potions;
 	Potions::State s;
@@ -843,6 +853,7 @@ int main(int argc, char** argv) {
 	JournalListsARunesWordsByLevel();
 	PotionChargesFillAndAreSpent();
 	FullHeroesKeepTheirPotions();
+	SkillKeysAreReadFromTheKeyFile();
 	PotionLoadoutSwapsAndGrades();
 	PotionsConcoctIntoOne();
 	PotionAffixesLandOnOpenStopsOnce();

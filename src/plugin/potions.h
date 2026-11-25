@@ -366,14 +366,35 @@ inline auto Picture(int kind, const State& s, const Owner& o) -> std::string {
 
 inline auto Effect(int kind, const State& s, const Owner& o) -> std::string {
 	switch (kind) {
-	case Heal:     return "heals " + std::to_string(GradeAt(HealGrades, o.level).amount) + " life (more for some classes) over time";
-	case Mana:     return "restores " + std::to_string(GradeAt(ManaGrades, o.level).amount) + " mana (more for some classes) over time";
-	case Rejuv:    return s.blend == 2 ? "restores all life and mana at once" : "restores 35% of life and mana at once";
-	case Antidote: return "ends poison and keeps it off for 30 seconds";
-	case Thawing:  return "ends cold and freezing and keeps them off for 30 seconds";
-	case Stamina:  return "fills stamina and keeps it full for 30 seconds";
-	default:       return "thrown toward the cursor, with its key";
+	case Heal:     return "Heals " + std::to_string(GradeAt(HealGrades, o.level).amount) + " life over time\\n(more for some classes)";
+	case Mana:     return "Restores " + std::to_string(GradeAt(ManaGrades, o.level).amount) + " mana over time\\n(more for some classes)";
+	case Rejuv:    return s.blend == 2 ? "Restores all life and mana\\nat once" : "Restores 35% of life and mana\\nat once";
+	case Antidote: return "Ends poison and keeps it off\\nfor 30 seconds";
+	case Thawing:  return "Ends cold and freezing and\\nkeeps them off for 30 seconds";
+	case Stamina:  return "Fills stamina and keeps it\\nfull for 30 seconds";
+	default:       return "Press its key to throw it\\ntoward the cursor";
 	}
+}
+
+// What pointing at the potion shows: short lines, as a layout's JSON writes them.
+inline auto Tooltip(int kind, const State& s, const Owner& o) -> std::string {
+	return Name(kind, s, o) + "\\n" + Effect(kind, s, o) + "\\nCharges: " + std::to_string(static_cast<int>(s.Charge(kind) + 1e-6)) + " of " +
+		std::to_string(static_cast<int>(s.Capacity(kind, o))) + "\\n" + std::to_string(static_cast<int>(UseCost)) + " per use";
+}
+
+// The hero's key file (<hero>.key): after 2 bytes, records of 10: the action, its key, 4 bytes (1 in the
+// first: the main key). The game's skill keys 1-8 are actions 14 to 21. Returns the keyboard keys of those
+// (Windows key codes), without mouse buttons, unset ones and ones that need a modifier.
+inline auto SkillKeys(const std::string& file) -> std::vector<int> {
+	std::vector<int> keys;
+	for (size_t at = 2; at + 10 <= file.size(); at += 10) {
+		const auto byte = [&](size_t i) { return static_cast<unsigned>(static_cast<unsigned char>(file[at + i])); };
+		const unsigned action = byte(0) | byte(1) << 8 | byte(2) << 16 | byte(3) << 24, key = byte(4) | byte(5) << 8;
+		if (action >= 14 && action <= 21 && key >= 8 && key < 0xFF) {
+			keys.push_back(static_cast<int>(key));
+		}
+	}
+	return keys;
 }
 
 // ---- The file ---------------------------------------------------------------------------------
@@ -471,8 +492,7 @@ inline auto HudLayout(const State& s, const Owner& o, int picking) -> std::strin
 		const double cap = s.Capacity(kind, o);
 		add("{\"type\":\"ButtonWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":" + RectJson({ x, y, CellSize, CellSize }) + ",\"filename\":\"" + Picture(kind, s, o) +
 			"\",\"normalFrame\":0,\"pressedFrame\":0,\"hoveredFrame\":0,\"disabledFrame\":0" + (bright ? "" : ",\"tint\":{\"r\":0.35,\"g\":0.35,\"b\":0.35,\"a\":0.7}") +
-			",\"tooltipString\":\"" + Name(kind, s, o) + ": " + Effect(kind, s, o) + ". Holds " + std::to_string(static_cast<int>(cap)) + " charges, a use takes " +
-			std::to_string(static_cast<int>(UseCost)) + ".\",\"onClickMessage\":\"" + HudMessage + action + "\"}}");
+			",\"tooltipString\":\"" + Tooltip(kind, s, o) + "\",\"onClickMessage\":\"" + HudMessage + action + "\"}}");
 		const int barW = CellSize - 8;
 		const int bar = std::clamp(static_cast<int>(s.Charge(kind) / cap * barW + 1e-6), 0, barW);
 		add(Box(name + "Back", { x + 2, y + CellSize - 16, CellSize - 4, 16 }, Dark));
@@ -482,7 +502,6 @@ inline auto HudLayout(const State& s, const Owner& o, int picking) -> std::strin
 		for (int use = 1; use * UseCost < cap - 1e-6; ++use) {
 			add(Box(name + "Notch" + std::to_string(use), { x + 4 + static_cast<int>(use * UseCost / cap * barW), y + CellSize - 14, 2, 12 }, Dark));
 		}
-		add(Text(name + "Charges", { x + 34, y + 44, 62, 38 }, std::to_string(static_cast<int>(s.Charge(kind) + 1e-6)), bright ? TextWhite : TextGrey, "$MediumLargeFontSize", "right"));
 	};
 	if (picking >= 0) {
 		const int x = picking * CellPitch;

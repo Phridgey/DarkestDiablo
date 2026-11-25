@@ -332,9 +332,9 @@ auto HeroCopies(const D2RL::PluginContext* context) -> std::vector<uintptr_t> {
 }
 
 // ---- Throwing -----------------------------------------------------------------------------------
-// The hero casts a skill of ours at the cursor: the skill is put on the right mouse button, the button
-// is pressed for the player, and the skill that was there comes back. Only a cast that is seen takes a
-// charge. If the skill can't be selected, an invisible helper throws at the nearest enemy instead
+// The hero casts a skill of ours at the cursor: for a moment every skill key holds it, one of them is
+// pressed for the player (Quick Cast), and the keys hold what they held again. Only a cast that is
+// seen takes a charge. If that can't be done, an invisible helper throws at the nearest enemy instead
 // (994a_throwers.py).
 std::map<std::string, int> g_throwSkills;       // filled while the plugin loads
 std::atomic<bool>          g_throwing { false };
@@ -376,29 +376,53 @@ auto CursorOverWorld() noexcept -> bool {
 	return at.x >= 0 && at.y >= 0 && at.x < client.right && at.y < client.bottom * 88 / 100;
 }
 
-void PressRight(bool down) noexcept {
-	const bool swapped = GetSystemMetrics(SM_SWAPBUTTON) != 0;  // the button that counts as right
+void PressKey(int key, bool down) noexcept {
 	INPUT input {};
-	input.type = INPUT_MOUSE;
-	input.mi.dwFlags = swapped ? (down ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP) : (down ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP);
+	input.type = INPUT_KEYBOARD;
+	input.ki.wVk = static_cast<WORD>(key);
+	input.ki.wScan = static_cast<WORD>(MapVirtualKeyW(static_cast<UINT>(key), MAPVK_VK_TO_VSC));
+	input.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
 	SendInput(1, &input, sizeof(input));
 }
 
-// Whatever happens, the button comes up and the player's skill comes back.
-struct ThrowInHand {
-	std::vector<GameWrite::RightSkill> saved {};
-	bool held = false;  // the player holds the button: theirs to let go
-	bool pressed = false;
-	~ThrowInHand() {
-		if (pressed && !held) {
-			PressRight(false);
-		}
-		if (!saved.empty()) {
-			try {
-				std::this_thread::sleep_for(std::chrono::milliseconds(120));  // the game rules have taken the cast
-				GameWrite::RestoreRight(saved);
-			} catch (...) {
+std::vector<uintptr_t> g_keyTables;  // one throw at a time uses these
+Clock::time_point      g_keyScan {};
+
+// A skill key of the hero's that isn't held down (from <hero>.key, then Custom.key); 0: none.
+auto SkillKey() -> int {
+	const fs::path progress = Campfire::RouteProgressFile();  // <saves>/camp/slot<N>/progress/<hero>.txt
+	if (progress.empty()) {
+		return 0;
+	}
+	const fs::path saves = progress.parent_path().parent_path().parent_path().parent_path();
+	for (const fs::path& file : { saves / (progress.stem().string() + ".key"), saves / "Custom.key" }) {
+		std::error_code ec;
+		const auto keys = fs::exists(file, ec) ? Potions::SkillKeys(Camp::ReadFile(file)) : std::vector<int> {};
+		for (auto key = keys.rbegin(); key != keys.rend(); ++key) {
+			if ((GetAsyncKeyState(*key) & 0x8000) == 0) {
+				return *key;
 			}
+		}
+	}
+	return 0;
+}
+
+// Whatever happens, the key comes up, the skill keys hold what they held, and the player's right skill
+// is theirs again (with Quick Cast off a skill key selects instead of casting).
+struct ThrowInHand {
+	std::vector<GameWrite::SkillKeyTable> tables {};
+	std::vector<GameWrite::RightSkill>    right {};
+	int skill = 0;
+	int key = 0;  // pressed
+	~ThrowInHand() {
+		try {
+			if (key != 0) {
+				PressKey(key, false);
+				std::this_thread::sleep_for(std::chrono::milliseconds(120));  // the game has taken the cast
+			}
+			GameWrite::GiveBack(tables, skill);
+			GameWrite::RestoreRight(right);
+		} catch (...) {
 		}
 	}
 };
@@ -445,24 +469,43 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) 
 			std::this_thread::sleep_for(std::chrono::milliseconds(20));
 		}
 	}
-	ThrowInHand hand;
-	if (skill <= 0 || !g_inGame.load() || !GameWrite::SelectRight(copies, skill, hand.saved)) {
-		Log(context, "Potions: the throw skill %d could not be selected (%d copies, %s); the helper throws.", skill, static_cast<int>(copies.size()),
+	const auto tablesNow = [&] {
+		auto held = GameWrite::HoldSkill(g_keyTables, skill);
+		if (held.empty() && Clock::now() - g_keyScan >= std::chrono::milliseconds(RescanMs)) {
+			g_keyTables = GameWrite::FindSkillKeys();
+			g_keyScan = Clock::now();
+			Log(context, "Potions: %d skill key table(s) in memory.", static_cast<int>(g_keyTables.size()));
+			held = GameWrite::HoldSkill(g_keyTables, skill);
+		}
+		return held;
+	};
+	const int key = SkillKey();
+	if (skill <= 0 || key == 0 || !g_inGame.load() || !HaveSkill(copies, skill)) {
+		Log(context, "Potions: no throw by key (skill %d, key 0x%02x, %d copies, %s); the helper throws.", skill, key, static_cast<int>(copies.size()),
 			HaveSkill(copies, skill) ? "the hero has it" : "the hero does not have it");
 		return HelperThrows(context, code);
 	}
-	hand.held = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
-	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	ThrowInHand hand;
+	hand.skill = skill;
+	for (const uintptr_t copy : copies) {
+		const auto places = Game::SkillsOf(copy);
+		for (const auto& [id, node] : places ? places->skills : std::vector<std::pair<int, uintptr_t>> {}) {
+			if (node == places->right && id != skill) {
+				hand.right.push_back({ copy, id, skill });
+			}
+		}
+	}
+	hand.tables = tablesNow();
+	if (hand.tables.empty()) {
+		Log(context, "Potions: the skill keys were not found; the helper throws.");
+		return HelperThrows(context, code);
+	}
 	if (g_bag.load() != 0 || !CursorOverWorld()) {
 		return false;
 	}
 	bool wasOther = Game::Hero().mode != CastMode;  // an earlier cast still going on is not ours
-	if (hand.held) {
-		PressRight(false);
-		std::this_thread::sleep_for(std::chrono::milliseconds(20));
-	}
-	hand.pressed = true;
-	PressRight(true);
+	hand.key = key;
+	PressKey(key, true);
 	bool cast = false;
 	for (int i = 0; i < 60 && !cast; ++i) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -470,7 +513,7 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) 
 		cast = wasOther && mode == CastMode;
 		wasOther = wasOther || mode != CastMode;
 	}
-	Log(context, "Potions: %s thrown at the cursor: %s.", code.c_str(), cast ? "cast seen" : "no cast seen, no charge taken");
+	Log(context, "Potions: %s thrown at the cursor with key 0x%02x: %s.", code.c_str(), key, cast ? "cast seen" : "no cast seen, no charge taken");
 	return cast;
 }
 

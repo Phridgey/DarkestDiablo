@@ -282,8 +282,8 @@ GameWrite::AddStat(copies, Game::StatId::Life, Game::StatId::MaxLife, 256, 0.0);
 GameWrite::SetStateEnd(copies, 60, endFrame);              // a shorter or longer state
 ```
 
-`GameWrite::SelectRight` / `RestoreRight` change the right-button skill for a moment (throwing a potion;
-mapped, built on `Game::SkillsOf(copy)`).
+`GameWrite::HoldSkill` / `GiveBack` change what the skill keys hold for a moment, and `RestoreRight` puts the
+right-button skill back (throwing a potion; mapped).
 
 What it can and can't do (status: mapped, being tested with `dd-set`):
 

@@ -240,44 +240,106 @@ auto SetStateStat(const std::vector<uintptr_t>& copies, int state, uint16_t stat
 	return changed;
 }
 
-auto SelectRight(const std::vector<uintptr_t>& copies, int skill, std::vector<RightSkill>& saved) -> bool {
-	struct Change { uintptr_t at, to; RightSkill undo; };
-	std::vector<Change> changes;
-	for (const uintptr_t copy : copies) {
-		const auto places = Game::SkillsOf(copy);
-		const uintptr_t to = places ? places->Find(skill) : 0;
-		int before = -1;
-		if (to != 0) {
-			for (const auto& [id, node] : places->skills) {
-				before = node == places->right ? id : before;
-			}
-		}
-		if (to == 0 || before < 0) {
-			return false;
-		}
-		changes.push_back({ places->rightAt, to, { copy, before, skill } });
-	}
-	if (changes.size() < 2) {
-		return false;
-	}
-	saved.clear();
-	for (const auto& change : changes) {
-		if (!Put<uint64_t>(change.at, change.to)) {
-			RestoreRight(saved);
-			saved.clear();
-			return false;
-		}
-		saved.push_back(change.undo);
-	}
-	return true;
-}
-
 void RestoreRight(const std::vector<RightSkill>& saved) {
 	for (const auto& s : saved) {
 		const auto places = Game::SkillsOf(s.copy);
 		const uintptr_t to = places ? places->Find(s.before) : 0;
 		if (to != 0 && places->right == places->Find(s.ours)) {
 			Put<uint64_t>(places->rightAt, to);
+		}
+	}
+}
+
+constexpr std::size_t SkillKeyCount = 32, SkillKeySize = 28, SkillKeyBytes = SkillKeyCount * SkillKeySize;
+
+// Record: skill i32 (-1 none), item u32 (-1 none), right hand 0 / left hand 1 (1 byte, 3 unused), 4, 255, 0, 0.
+auto LooksSkillKeys(const unsigned char* table) -> bool {
+	bool any = false;
+	for (std::size_t i = 0; i < SkillKeyCount; ++i) {
+		int32_t skill = 0;
+		uint32_t tail[4] {};
+		std::memcpy(&skill, table + i * SkillKeySize, 4);
+		std::memcpy(tail, table + i * SkillKeySize + 12, 16);
+		if (skill < -1 || skill >= 2048 || table[i * SkillKeySize + 8] > 1 || tail[0] != 4 || tail[1] != 255 || tail[2] != 0 || tail[3] != 0) {
+			return false;
+		}
+		any = any || skill >= 0;
+	}
+	return any;
+}
+
+auto FindSkillKeys() -> std::vector<uintptr_t> {
+	std::vector<uintptr_t> found;
+	if (!GameMemory::BuildMatches()) {
+		return found;
+	}
+	constexpr SIZE_T Step = 4 * 1024 * 1024;
+	std::vector<unsigned char> buffer(Step + SkillKeyBytes);
+	MEMORY_BASIC_INFORMATION info {};
+	for (uintptr_t at = 0x10000; at < 0x7FFFFFFF0000ULL;) {
+		if (VirtualQuery(reinterpret_cast<LPCVOID>(at), &info, sizeof(info)) == 0) {
+			break;
+		}
+		const uintptr_t start = reinterpret_cast<uintptr_t>(info.BaseAddress), end = start + info.RegionSize;
+		if (info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && (info.Protect & PAGE_READWRITE) != 0 &&
+		    (info.Protect & (PAGE_GUARD | PAGE_NOCACHE | PAGE_WRITECOMBINE)) == 0) {
+			for (uintptr_t block = start; block < end; block += Step) {
+				const SIZE_T size = static_cast<SIZE_T>(std::min<uintptr_t>(Step + SkillKeyBytes, end - block));
+				SIZE_T got = 0;
+				if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(block), buffer.data(), size, &got) || got < SkillKeyBytes) {
+					continue;
+				}
+				const uintptr_t own = reinterpret_cast<uintptr_t>(buffer.data());
+				for (SIZE_T i = 0; i + SkillKeyBytes <= got && i < Step; i += 4) {
+					uint32_t mark[2] {};
+					std::memcpy(mark, buffer.data() + i + 12, 8);
+					if (mark[0] == 4 && mark[1] == 255 && LooksSkillKeys(buffer.data() + i) && !(block + i >= own && block + i < own + buffer.size())) {
+						found.push_back(block + i);
+					}
+				}
+			}
+		}
+		at = end > at ? end : at + 0x1000;
+	}
+	std::sort(found.begin(), found.end());
+	found.erase(std::unique(found.begin(), found.end()), found.end());
+	if (found.size() > 4) {
+		found.clear();
+	}
+	return found;
+}
+
+auto HoldSkill(const std::vector<uintptr_t>& tables, int skill) -> std::vector<SkillKeyTable> {
+	std::vector<SkillKeyTable> held;
+	for (const uintptr_t at : tables) {
+		SkillKeyTable table { at, std::vector<unsigned char>(SkillKeyBytes) };
+		if (!GameState::ReadBytes(at, table.before.data(), SkillKeyBytes) || !LooksSkillKeys(table.before.data())) {
+			continue;
+		}
+		held.push_back(table);
+		for (std::size_t i = 0; i < SkillKeyCount; ++i) {
+			Put<int32_t>(at + i * SkillKeySize, skill);
+			Put<uint32_t>(at + i * SkillKeySize + 4, 0xFFFFFFFF);
+			Put<uint8_t>(at + i * SkillKeySize + 8, 0);
+		}
+	}
+	return held;
+}
+
+void GiveBack(const std::vector<SkillKeyTable>& tables, int skill) {
+	for (const auto& table : tables) {
+		for (std::size_t i = 0; i < SkillKeyCount; ++i) {
+			const uintptr_t at = table.at + i * SkillKeySize;
+			int32_t now = 0, was = 0;
+			uint32_t item = 0;
+			if (!Get(at, now) || now != skill) {
+				continue;  // changed by the player meanwhile
+			}
+			std::memcpy(&was, table.before.data() + i * SkillKeySize, 4);
+			std::memcpy(&item, table.before.data() + i * SkillKeySize + 4, 4);
+			Put<int32_t>(at, was);
+			Put<uint32_t>(at + 4, item);
+			Put<uint8_t>(at + 8, table.before[i * SkillKeySize + 8]);
 		}
 	}
 }

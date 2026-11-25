@@ -18,7 +18,7 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 - A use takes 10 charges. Healing can't be used with full life, mana with full mana, Rejuvenation with
   both full.
 - Talking to a healer (Akara, Fara, Ormus, Jamella, Malah) fills every potion.
-- Each slot shows its charges and a bar with a notch per use.
+- Each slot shows a bar with a notch per use; pointing at it shows the charges.
 - A kill gives 0.5 charge, times the game's experience multipliers: champion x3; unique and minion x5;
   and the level gap's. Supporting potions get 75% of it.
 - Every potion refills 0.2% of what it holds a second.
@@ -36,12 +36,13 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   changing life, mana and stamina (`gamewrite.h`). Antidote and Thawing don't give the resistance the
   game's own do: a stat the hero doesn't have can't be added.
 - **Throwing.** The hero gets a skill per throwing potion (`131a_throw_skills.py`), which only the plugin
-  can use: it puts the skill on the right mouse button, presses that button, and puts the old skill
-  back. So it flies from the hero toward the cursor, bursts on the first thing it hits (or at the end of
-  its reach, not on the spot under the cursor), and kills give experience. A charge is taken only when
-  the cast is seen. Not in town, not with the bag open, not with the cursor over the HUD (so by key, not
-  by clicking the slot). Right-click must be the game's right-skill button.
-- If the skill can't be selected, an invisible helper on the heroes' side throws at the nearest enemy
+  can use. For a moment every skill key holds it, the plugin presses one of them (from the hero's
+  `.key` file), and the keys hold what they held again. It needs the game's **Quick Cast** option and at
+  least one skill key on the keyboard. The potion flies from the hero toward the cursor and bursts on the
+  first thing it hits (or at the end of its reach, not on the spot under the cursor); kills give
+  experience. A charge is taken only when the cast is seen. Not in town, not with the bag open, not with
+  the cursor over the HUD (so by key, not by clicking the slot).
+- If the skill keys aren't found, an invisible helper on the heroes' side throws at the nearest enemy
   instead (`994a_throwers.py`; its kills give no experience). `dd-potions bag` (until the game closes)
   puts 5 throwing potions in the bag instead.
 - **The game's belt is off the screen**, not gone, and its size is unchanged, so saved heroes load.
@@ -56,8 +57,8 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 3. Do healing and mana really fill, at the right pace? Log: "the hero has N copies in memory" (2 or more).
 4. Do Antidote and Thawing end poison, cold and freezing?
 5. Seen: the belt line shows the right number.
-6. Throwing: does it fly to the cursor, and does the old right skill come back? Log: "thrown at the
-   cursor: cast seen", or why not.
+6. Throwing: does it fly to the cursor, and does the old right skill come back, and the skill keys? Log:
+   "thrown at the cursor with key ...: cast seen", or why not.
 7. Does the route map show the affixes, and change after they are won?
 
 Console: `dd-potions` (what the hero has); for tests `dd-potions fill`, `give <antidote|thawing|stamina>`,
