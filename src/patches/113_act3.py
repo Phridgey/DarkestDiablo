@@ -14,7 +14,8 @@ Tier 12, the fork:
   chests. Kurast itself is an outdoor level the game places anew every game, so the stop borrows
   the spare temple level 95 (same tiles) and copies Lower Kurast's look and name onto it.
 Tier 13: Travincal (on level 96, borrowed the same way): the temple square with the High Council
-  and the Compelling Orb; MF loot. Smashing the orb with Khalim's Will clears it.
+  and the Compelling Orb; MF loot. Using the orb while carrying Khalim's Will clears it (the plugin
+  uses the Will up and says so; killing the waves alone doesn't).
 Tier 14: Durance of Hate 3 (on spare level 99, a temple level, with level 102's look): Mephisto's
   hall as the game has it; his death clears it. (On the real level 102 the game crashed on
   arrival, 2026-11-25, at the same spot as the Canyon's and the Arcane Sanctuary's real levels.)
