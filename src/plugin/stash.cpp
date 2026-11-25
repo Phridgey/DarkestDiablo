@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -75,6 +76,7 @@ enum class Moving { Pay, Deposit, Take };
 struct Payment { Moving kind = Moving::Pay; long long total = 0, purse = 0; int gold = 0, bank = 0, goldAfter = 0, bankAfter = 0; ULONGLONG started = 0; };
 Payment g_payment;
 std::string g_payNote;  // under the Pay buttons
+size_t      g_goldStep = 4;  // Stash::GoldSteps: 10,000
 
 void Log(const D2RL::PluginContext* context, const char* format, ...) noexcept {
 	char message[512] {};
@@ -275,7 +277,7 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 			CloseRow(context, g_wall);
 		}
 		if (!g_treeWanted.load() && !g_tabWanted.load()) {
-			ShowRow(context, g_pageRow, Stash::PageLayout(g_page.load(), g_state.legacyDone ? g_state.LastPage() : Stash::PageCount, g_state.purse));
+			ShowRow(context, g_pageRow, Stash::PageLayout(g_page.load(), g_state.legacyDone ? g_state.LastPage() : Stash::PageCount, g_state.purse, g_goldStep));
 		} else {
 			CloseRow(context, g_pageRow);
 		}
@@ -707,8 +709,12 @@ void Pay(const D2RL::PluginContext* context, long long wanted) {
 	StartPayment(context, pay);
 }
 
-// UI thread. All the hero's gold into the save's purse, or out of it as much as the hero may carry.
-void MoveGold(const D2RL::PluginContext* context, Moving kind) {
+// UI thread. `wanted` gold (0: all) of the hero's into the save's purse, or out of it as far as the
+// hero may carry it.
+void MoveGold(const D2RL::PluginContext* context, Moving kind, long long wanted) {
+	if (wanted <= 0) {
+		wanted = (std::numeric_limits<long long>::max)();
+	}
 	const Game::HeroDetails hero = PayingHero(context);
 	if (!hero.unit || g_paying.exchange(true)) {
 		return;
@@ -719,10 +725,12 @@ void MoveGold(const D2RL::PluginContext* context, Moving kind) {
 	pay.bank = (std::max)(0, hero.stashGold);
 	pay.bankAfter = pay.bank;
 	if (kind == Moving::Deposit) {
-		pay.total = static_cast<long long>(pay.gold) + pay.bank;
-		pay.goldAfter = pay.bankAfter = 0;
+		pay.total = (std::min)(wanted, static_cast<long long>(pay.gold) + pay.bank);
+		const int fromGold = static_cast<int>((std::min)(pay.total, static_cast<long long>(pay.gold)));
+		pay.goldAfter = pay.gold - fromGold;
+		pay.bankAfter = pay.bank - static_cast<int>(pay.total - fromGold);
 	} else {
-		pay.total = (std::min)(g_state.purse, (std::max)(0LL, static_cast<long long>(hero.level) * 10000 - pay.gold));
+		pay.total = (std::min)({ wanted, g_state.purse, (std::max)(0LL, static_cast<long long>(hero.level) * 10000 - pay.gold) });
 		pay.goldAfter = pay.gold + static_cast<int>((std::max)(0LL, pay.total));
 	}
 	if (pay.total <= 0) {
@@ -777,9 +785,13 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 			g_threads->runOnGameThread(context, StoreFromBag, reinterpret_cast<void*>(StoreAll));
 		}
 	} else if (std::strcmp(action, "goldin") == 0) {
-		MoveGold(context, Moving::Deposit);
+		MoveGold(context, Moving::Deposit, Stash::GoldSteps[g_goldStep]);
 	} else if (std::strcmp(action, "goldout") == 0) {
-		MoveGold(context, Moving::Take);
+		MoveGold(context, Moving::Take, Stash::GoldSteps[g_goldStep]);
+	} else if (std::strcmp(action, "goldless") == 0) {
+		g_goldStep -= g_goldStep > 0 ? 1 : 0;
+	} else if (std::strcmp(action, "goldmore") == 0) {
+		g_goldStep += g_goldStep + 1 < Stash::GoldSteps.size() ? 1 : 0;
 	} else if (std::strcmp(action, "journal") == 0) {
 		g_journalWanted = !g_journalWanted.load();
 	} else if (StartsWith(action, "jrune-")) {
@@ -887,25 +899,105 @@ auto __cdecl OnItemClick(const D2RL::PluginContext* context, const D2RL::ItemInt
 	return Decision::Continue;
 }
 
-void __cdecl SelectShared(const D2RL::PluginContext* context, void*) noexcept {
-	if (g_bankOpen.load()) {
-		Dispatch(context, "BankPanelMessage", "SelectTab", "1");
+// ---- Opening on the shared pages --------------------------------------------------------------
+// The game opens the stash on the hero's own (hidden) page, and its message for choosing a tab
+// carries a number that plugins can't send. So where the player clicks the Shared tab is
+// remembered, and when the stash opens that spot is clicked for the player and the mouse put back.
+// Another window size, or a click that chose no tab, and the spot is forgotten until the next click.
+std::atomic<bool> g_clicking { false }, g_tabChosen { false };
+std::atomic<int>  g_spotX { -1 }, g_spotY { -1 }, g_spotW { 0 }, g_spotH { 0 };
+
+auto GameWindow(RECT& area) noexcept -> HWND {
+	const HWND window = GetForegroundWindow();
+	DWORD pid = 0;
+	GetWindowThreadProcessId(window, &pid);
+	return window != nullptr && pid == GetCurrentProcessId() && GetClientRect(window, &area) ? window : nullptr;
+}
+
+auto SpotFile() -> fs::path {
+	return g_file.empty() ? fs::path() : g_file.parent_path().parent_path() / "stash-tab.txt";  // camp/
+}
+
+// UI thread: the player chose the Shared tab with the mouse.
+void NoteTabClick() noexcept {
+	g_tabChosen = true;
+	RECT area {};
+	POINT at {};
+	const HWND window = GameWindow(area);
+	if (g_clicking.load() || window == nullptr || !GetCursorPos(&at) || !ScreenToClient(window, &at) || !PtInRect(&area, at)) {
+		return;
+	}
+	try {
+		const Lock lock(g_mutex);
+		g_spotX = at.x, g_spotY = at.y, g_spotW = area.right, g_spotH = area.bottom;
+		if (const fs::path file = SpotFile(); !file.empty()) {
+			Camp::WriteFile(file, std::to_string(area.right) + " " + std::to_string(area.bottom) + " " + std::to_string(at.x) + " " + std::to_string(at.y) + "\n");
+		}
+	} catch (...) {
 	}
 }
 
-// UI thread. Turns `data` pages of the open stash (negative: back). A test for giving every save its
-// own pages in one stash file, so changing saves needs no restart (docs/stash.md).
-void __cdecl Jump(const D2RL::PluginContext* context, void* data) noexcept {
-	const auto pages = static_cast<int>(reinterpret_cast<intptr_t>(data));
-	if (!g_bankOpen.load()) {
-		context->WriteConsoleMessage("Stash: open the stash on its shared pages first.");
+void ClickShared(const D2RL::PluginContext* context) noexcept {
+	try {
+		const Lock lock(g_mutex);
+		if (g_spotX.load() < 0) {
+			std::istringstream in(Camp::ReadFile(SpotFile()));
+			int w = 0, h = 0, x = -1, y = -1;
+			if (in >> w >> h >> x >> y) {
+				g_spotX = x, g_spotY = y, g_spotW = w, g_spotH = h;
+			}
+		}
+	} catch (...) {
+	}
+	if (g_spotX.load() < 0 || g_clicking.exchange(true)) {
 		return;
 	}
-	g_jumping = true;
-	for (int i = 0; i < std::abs(pages); ++i) {
-		Dispatch(context, "BankPanelMessage", pages > 0 ? "SharedStashRight" : "SharedStashLeft", "");
+	g_tabChosen = false;
+	try {
+		std::thread([context, visit = g_visit.load()] {
+			const auto wait = [](int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); };
+			const auto mine = [&] { return g_bankOpen.load() && g_visit.load() == visit; };
+			wait(120);  // the window is up
+			for (int i = 0; i < 100 && mine() && ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0; ++i) {
+				wait(20);  // the player still holds the mouse
+			}
+			RECT area {};
+			POINT before {}, spot { g_spotX.load(), g_spotY.load() };
+			const HWND window = GameWindow(area);
+			if (mine() && !g_tabChosen.load() && window != nullptr && area.right == g_spotW.load() && area.bottom == g_spotH.load() && GetCursorPos(&before) &&
+				ClientToScreen(window, &spot)) {
+				const auto button = [](DWORD flags) {
+					INPUT input {};
+					input.type = INPUT_MOUSE;
+					input.mi.dwFlags = flags;
+					SendInput(1, &input, sizeof(input));
+				};
+				SetCursorPos(spot.x, spot.y);
+				wait(40);
+				if (mine()) {
+					button(MOUSEEVENTF_LEFTDOWN);
+					wait(30);
+					button(MOUSEEVENTF_LEFTUP);
+					wait(40);
+				}
+				SetCursorPos(before.x, before.y);
+				wait(250);
+				if (mine() && !g_tabChosen.load()) {
+					g_spotX = -1;
+					context->LogInfo("Stash: the Shared tab was not where it was before; the next click on it is remembered.");
+					try {
+						const Lock lock(g_mutex);
+						std::error_code ec;
+						fs::remove(SpotFile(), ec);
+					} catch (...) {
+					}
+				}
+			}
+			g_clicking = false;
+		}).detach();
+	} catch (...) {
+		g_clicking = false;
 	}
-	g_jumping = false;
 }
 
 void BankClosed(const D2RL::PluginContext* context) noexcept {
@@ -949,10 +1041,6 @@ auto StashCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 			}
 			Save(context);
 			QueueRefresh(context);
-		} else if (what == "jump") {
-			const auto pages = static_cast<intptr_t>(std::clamp(n, -static_cast<long long>(Stash::PageCount), static_cast<long long>(Stash::PageCount)));
-			g_threads->runOnUiThread(context, Jump, reinterpret_cast<void*>(pages));
-			return D2RL::ConsoleCommandResult::Handled;
 		} else if (what == "autotab") {
 			g_autoTab = !g_autoTab.load();
 			context->WriteConsoleMessage(g_autoTab.load() ? "Stash: tries to open on the shared pages." : "Stash: opens as the game does.");
@@ -1035,7 +1123,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		}
 		Log(context, "Stash: ready (%d + %d + %d panels, moving items between pages %s).", static_cast<int>(g_tree.panels.size()), static_cast<int>(g_tab.panels.size()), static_cast<int>(g_journal.panels.size()),
 			g_sharedWrite ? "works" : "is not offered");
-		return context->RegisterConsoleCommand("dd-stash", StashCommand, "Show the caravan stash. Tests: dd-stash points <n>, gold <n>, autotab, jump <n>.");
+		return context->RegisterConsoleCommand("dd-stash", StashCommand, "Show the caravan stash. Tests: dd-stash points <n>, gold <n>, autotab.");
 	} catch (...) {
 		g_panels = nullptr;
 		context->LogWarn("Stash: setting up failed; no caravan upgrades.");
@@ -1083,9 +1171,8 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 					SyncActs(context);
 					Later(context, 150, Refresh);
 					if (g_autoTab.load()) {
-						Later(context, 100, SelectShared);
+						ClickShared(context);
 					}
-					Later(context, 180, HomePage);
 				} else if (std::strcmp(command, "ClosePanel") == 0 || std::strcmp(command, "UnloadPanel") == 0) {
 					BankClosed(context);
 				}
@@ -1099,6 +1186,7 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			} else if (g_jumping.load()) {
 				return false;
 			} else if (std::strcmp(command, "SelectTab") == 0) {
+				NoteTabClick();
 				Later(context, 40, HomePage);
 			} else if (std::strcmp(command, "Withdraw") == 0) {
 				return true;  // the game's purse is one for all saves; gold is in the save's own

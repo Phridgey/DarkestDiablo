@@ -83,11 +83,14 @@ struct LivePanel {
 	int current = -1;
 	std::string content;
 };
-// 16 spares (was 24, 2026-11-22): a plugin may register at most 64 panels, and the wave counter
-// (waveoverlay.cpp) and the later acts' route pages need room. After 16 changes in one session the
-// row starts over, asking the game to forget the oldest panel first (PoolSet).
-LivePanel g_fire  { "Fire", 14 };  // two given to the potion slots (potions.cpp)
-LivePanel g_slots { "SaveSlots", 6 };  // was 14: the caravan stash (stash.cpp) needs 11 panels
+// Few spares, used over and over: a panel that was replaced is forgotten by the game at once, so it
+// reads the new layout when its turn comes again. (Until 0.23.0 parts were shown and hidden by name
+// instead, with 14 + 6 spares. After a few changes of save nothing could be hidden any more, as if
+// the loader only looks up so many widgets a session: every name, glow, retire button and the restart
+// notice showed at once. So what changes is now drawn anew, and almost nothing is hidden.)
+LivePanel g_fire  { "Fire", 4 };     // the figures and the corner buttons
+LivePanel g_top   { "FireTop", 3 };  // names, glow, Enter, the retire buttons: drawn anew for every state
+LivePanel g_slots { "SaveSlots", 3 };
 constexpr char PanelNameMark[] = "@PANEL@";
 D2RL::Panels::RegistrationHandle g_travelerPanel = D2RL::Panels::InvalidHandle;
 D2RL::Panels::RegistrationHandle g_campPanel     = D2RL::Panels::InvalidHandle;
@@ -133,9 +136,6 @@ int  g_chosenHero = -1;     // the hero picked at the Campfire; Enter loads it
 int  g_hoveredHero = -1;    // the class under the mouse at the Campfire (from the game's Hover messages)
 int  g_clickedHero = -1;    // the hero under the mouse when the left button went down (see WatchFireClicks)
 std::atomic<bool> g_watchingClicks { false };
-std::atomic<bool> g_shimmering { false };      // the Campfire's glow thread runs (see ShimmerFire)
-std::vector<std::string> g_shimmerShown;       // the glow widgets the last step showed
-bool g_shimmerReset = false;                   // a fresh Campfire panel: hide every glow widget first
 bool g_emptyFire = false;       // the hero screen is up with nobody at the fire, under the save slots
 bool g_travelerArrives = false; // the fire was used with a traveler waiting: portal and figure are showing
 bool g_travelerMode = false;
@@ -442,6 +442,46 @@ auto PoolOpen(const D2RL::PluginContext* context, LivePanel& pool, const char* w
 
 void PoolClose(const D2RL::PluginContext* context, const LivePanel& pool) noexcept {
 	Close(context, PoolHandle(pool));
+	if (&pool == &g_fire) {
+		Close(context, PoolHandle(g_top));
+	}
+}
+
+auto PoolIsOpen(const D2RL::PluginContext* context, const LivePanel& pool) noexcept -> bool {
+	D2RL::Panels::PanelInfo info { .structSize = D2RL::Panels::PanelInfoSize };
+	const auto panel = PoolHandle(pool);
+	return g_panels != nullptr && panel != D2RL::Panels::InvalidHandle && g_panels->getPanelInfo(context, panel, &info) == D2RL::Panels::Result::Success &&
+		info.presentationState == D2RL::Panels::PresentationState::Open;
+}
+
+// Shows the pool with this content. New content opens in the next panel before the old one closes,
+// so nothing blinks; the old one is forgotten at once.
+auto PoolSwap(const D2RL::PluginContext* context, LivePanel& pool, const std::string& json, const char* what) -> bool {
+	if (pool.current >= 0 && json == pool.content) {
+		return PoolIsOpen(context, pool) || PoolOpen(context, pool, what);
+	}
+	const int old = pool.current;
+	const std::string oldName = PoolName(pool);
+	const bool oldShown = old >= 0 && pool.shown[old];
+	const auto oldPanel = PoolHandle(pool);
+	if (oldShown) {  // PoolSet closes the panel it replaces; here that comes after the new one is up
+		pool.current = (old + 1) % static_cast<int>(pool.panels.size());
+		pool.content.clear();
+		if (pool.shown[pool.current]) {
+			Dispatch(context, "PanelManager", "UnloadPanel", PoolName(pool).c_str());
+			pool.shown[pool.current] = false;
+		}
+	}
+	if (!PoolSet(context, pool, json)) {
+		return false;
+	}
+	const bool opened = PoolOpen(context, pool, what);
+	if (oldShown && old != pool.current) {
+		Close(context, oldPanel);
+		Dispatch(context, "PanelManager", "UnloadPanel", oldName.c_str());
+		pool.shown[old] = false;
+	}
+	return opened;
 }
 
 // Runs `callback` on the UI thread after `delayMs`.
@@ -457,57 +497,29 @@ void Later(const D2RL::PluginContext* context, int delayMs, D2RL::Threads::Callb
 
 void __cdecl GoToFire(const D2RL::PluginContext* context, void*) noexcept;
 void RefreshFire(const D2RL::PluginContext* context);
-auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool;
 
 // ---- Save slots ---------------------------------------------------------------------------
 
-// Shows the right parts of the save slot screen: the three saves, or one of the two questions
-// asked before a save is deleted.
-void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
-	const std::string panel = PoolName(g_slots);
-	const bool asking = g_confirmSlot != 0 || g_slotNotice;
-	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
-		const std::string n = std::to_string(slot);
-		const bool started = slot == g_slot ? g_camp.started : Camp::LoadState(g_live, slot).started;
-		SetVisible(context, panel.c_str(), ("Slot" + n).c_str(), !asking);
-		SetVisible(context, panel.c_str(), ("Delve" + n).c_str(), !asking);
-		SetVisible(context, panel.c_str(), ("Slot" + n + "Last").c_str(), !asking && started && slot == g_slot);
-		SetVisible(context, panel.c_str(), ("Slot" + n + "Delete").c_str(), !asking && started);
-		SetVisible(context, panel.c_str(), ("Confirm" + n + "A").c_str(), !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 1);
-		SetVisible(context, panel.c_str(), ("Confirm" + n + "B").c_str(), !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 2);
-	}
-	SetVisible(context, panel.c_str(), "Exit", g_confirmSlot == 0);
-	SetVisible(context, panel.c_str(), "NoticeBack", g_slotNotice && Camp::ReadPending(g_live).deletes.empty());
-	// The answer buttons are shared by the three saves (a hidden button still takes clicks).
-	SetVisible(context, panel.c_str(), "AskYes", !g_slotNotice && g_confirmStep == 1);
-	SetVisible(context, panel.c_str(), "AskNo", !g_slotNotice && g_confirmStep == 1);
-	SetVisible(context, panel.c_str(), "SureNo", !g_slotNotice && g_confirmStep == 2);
-	SetVisible(context, panel.c_str(), "SureYes", !g_slotNotice && g_confirmStep == 2);
-	SetVisible(context, panel.c_str(), "RestartNotice", g_slotNotice);
-}
+auto SlotsJson() -> std::string;
 
-// The game ignores a layout's "visible": false, so every part of the slot screen (the three
-// saves, both delete questions, the restart notice) starts shown, and a panel opened for the
-// first time can't be found until the game has built it: hiding parts right after opening it
-// does nothing, and everything was drawn on top of each other (Sam, 0.15.5, after a delete gave
-// the screen a fresh panel). So the parts are set again a few times while the panel comes up.
-void __cdecl ReapplySlotWidgets(const D2RL::PluginContext* context, void*) noexcept {
-	const Lock lock(g_mutex);
-	if (g_slotsOpen) {
-		ShowSlotWidgets(context);
+// The save slot screen as it should look now: the three saves, one of the two questions asked before
+// a save is deleted, or the restart notice.
+void ShowSlotWidgets(const D2RL::PluginContext* context) noexcept {
+	try {
+		if (const std::string json = g_slotsOpen ? SlotsJson() : std::string(); !json.empty()) {
+			PoolSwap(context, g_slots, json, "save slot");
+		}
+	} catch (...) {
 	}
 }
 
 // Opens the slot screen as it should look now (see ShowSlotWidgets). Returns false if it can't.
 auto OpenSlotsPanel(const D2RL::PluginContext* context) -> bool {
-	if (!PoolOpen(context, g_slots, "save slot")) {
+	const std::string json = SlotsJson();
+	if (json.empty() || !PoolSwap(context, g_slots, json, "save slot")) {
 		return false;
 	}
 	g_slotsOpen = true;
-	ShowSlotWidgets(context);
-	for (const int delay : { 30, 100, 250, 600, 1200 }) {
-		Later(context, delay, ReapplySlotWidgets);
-	}
 	return true;
 }
 
@@ -516,7 +528,6 @@ void __cdecl ShowSlots(const D2RL::PluginContext* context, void*) noexcept {
 	if (g_inGame || g_slotsOpen) {
 		return;
 	}
-	RegisterSlotsLayout(context);
 	g_confirmSlot = 0;
 	g_confirmStep = 0;
 	g_slotNotice = false;
@@ -857,36 +868,23 @@ auto Allowed() -> std::vector<int> {
 }
 
 // The selection glow: one soft gold picture behind the picked hero's name and one around the lit
-// Enter button (src/patches/042_campfire_glow.py), slowly brightening and fading. The plugin can
-// only show and hide widgets, so each is drawn at GlowLevels brightnesses and ShimmerStep shows
-// one. (Until 0.20.3 this was an aurora of many patches, 288 widgets with four heroes. Part of
-// them could not be hidden and stayed lit: the last hero's and Enter's.)
-constexpr int GlowLevels = 5;
+// Enter button (src/patches/042_campfire_glow.py).
 // The name under each hero: plain text since 0.20.0 (was a framed plate, busy with neighbours).
 // The glow picture's size comes from 042_campfire_glow.py.
 constexpr int PlateW = 380, PlateH = 60, PlateY = 1440, PlateDrop = 70;
 constexpr int PlateGlowW = 392, PlateGlowH = 153;
 constexpr int EnterW = 824, EnterH = 196, EnterY = 1740, EnterMargin = 40;  // FrontEnd_ButtonLarge at 1.35, measured in the game
 
-auto GlowName(const std::string& whose, int level) -> std::string {
-	return "Glow" + whose + "_" + std::to_string(level);
-}
-
-// The glow widgets of one hero (or Enter), level 1..GlowLevels.
-auto GlowWidgets(const std::string& whose, const std::string& picture, int x, int y) -> std::string {
-	std::string out;
-	for (int k = 1; k <= GlowLevels; ++k) {
-		out += "{\"type\":\"ImageWidget\",\"name\":\"" + GlowName(whose, k) + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y) +
-			"},\"filename\":\"PANEL\\\\DarkestDiablo\\\\" + picture + std::to_string(k) + "\"}},";
-	}
-	return out;
+auto GlowWidget(const std::string& picture, int x, int y) -> std::string {
+	return "{\"type\":\"ImageWidget\",\"name\":\"" + picture + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y) +
+		"},\"filename\":\"PANEL\\\\DarkestDiablo\\\\" + picture + "\"}},";
 }
 
 // The Fire panel's layout for the camp as it is now: each living hero as a figure in its gear
-// where its class stands, a name plate under it, and the Options, Delete and Exit buttons.
+// where its class stands, and the Options, Retire and Exit buttons. What changes while the screen is up
+// (names, glow, Enter...) is in FireTopJson.
 auto FireLayoutJson() -> std::string {
 	static constexpr char Med[]   = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonMed";
-	static constexpr char Plate[] = "Panel\\\\Modals\\\\ModalButton";
 	const std::string act = "PanelManager:OpenPanel:darkestdiablo/";
 	std::string kids;
 	// While a traveler waits, the screen holds only the offered classes, the question and its two
@@ -900,7 +898,7 @@ auto FireLayoutJson() -> std::string {
 			",\"width\":" + std::to_string(s.w) + ",\"height\":" + std::to_string(s.h) + "},\"player/playerClass\":\"" + cls +
 			"\",\"player/position\":[" + s.px + "," + s.py + "," + s.pz + "],\"player/yawDegrees\":" + s.yaw + look + ",\"focusIndicatorVisible\":false}},";
 	};
-	// The camp's heroes, each in what it was last seen wearing, with a name plate.
+	// The camp's heroes, each in what it was last seen wearing.
 	for (const auto& hero : g_camp.heroes) {
 		const Spot& s = g_spots[hero.cls];
 		if (!s.known || traveler) {
@@ -908,30 +906,6 @@ auto FireLayoutJson() -> std::string {
 		}
 		const std::string cls = Camp::ClassNames[hero.cls];
 		figure(hero.cls, GearFields(hero.gear));
-		const int plateX = s.x + (s.w - 300) / 2;
-		// The name: no frame, just the name in dim gold and "Lv N" small under it. Every other
-		// hero's, from left to right, stands lower, so neighbours' names don't run together (Sam).
-		const int plaqueX = s.x + (s.w - PlateW) / 2;
-		const int rank = static_cast<int>(std::count_if(g_camp.heroes.begin(), g_camp.heroes.end(),
-			[&](const auto& other) { return g_spots[other.cls].known && g_spots[other.cls].x < s.x; }));
-		const int plateY = PlateY + (rank % 2 == 1 ? PlateDrop : 0);
-		const int glowX = s.x + (s.w - PlateGlowW) / 2;
-		// The picked hero's name lies in a soft gold light, drawn at build time
-		// (src/patches/042_campfire_glow.py).
-		kids += GlowWidgets(cls, "HeroGlow", glowX, plateY + (PlateH - PlateGlowH) / 2);
-		const auto text = [&](const std::string& name, int y, int h, const std::string& value, const char* size, const char* color) {
-			return "{\"type\":\"TextBoxWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":" + std::to_string(y) + ",\"width\":" + std::to_string(PlateW) +
-				",\"height\":" + std::to_string(h) + "},\"text\":\"" + value + "\",\"style\":{\"pointSize\":" + size +
-				",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"" + color + "\",\"dropShadow\":\"$DefaultDropShadow\"}}}";
-		};
-		kids += "{\"type\":\"Widget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":" + std::to_string(plateY) +
-			",\"width\":" + std::to_string(PlateW) + ",\"height\":" + std::to_string(PlateH) + "}},\"children\":[" +
-			text("Name" + cls, 0, 34, hero.name, "28", "$FontColorDarkGrayGold") + "," +
-			// The same in white, shown instead of the dim ones while this hero is picked.
-			text("NameLit" + cls, 0, 34, hero.name, "28", "$FontColorWhite") + "," +
-			text("Rank" + cls, 34, 26, "Lv " + std::to_string(hero.level), "18", "$FontColorDarkGrayBlue") + "," +
-			text("RankLit" + cls, 34, 26, "Lv " + std::to_string(hero.level), "18", "$FontColorWhite") + "]},";
-		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, and a waiting traveler's offer, in the game's
 	// standard look.
@@ -945,29 +919,9 @@ auto FireLayoutJson() -> std::string {
 		kids += "{\"type\":\"TextBoxWidget\",\"name\":\"TravelerHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
 			"\"text\":\"A traveler joins your camp. Choose who stays by the fire.\","
 			"\"style\":{\"fontColor\":\"$FontColorGoldYellow\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
-		kids += FireButton("TravelerAccept", -420, 1760, "Accept", act + "traveler-accept", Med, "$LightButtonTextColor") + ",";
 		kids += FireButton("TravelerLater", 60, 1760, "Not now", act + "traveler-not-now", Med, "$LightButtonTextColor") + ",";
 		kids += VersionWidgetJson();
 		return "{\"type\":\"Panel\",\"name\":\"@PANEL@\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
-	}
-	kids += "{\"type\":\"TextBoxWidget\",\"name\":\"DeleteHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
-		"\"text\":\"Choose the hero to retire. This can't be undone. Press Retire again to keep everyone.\","
-		"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
-	static constexpr char Large[] = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonLarge";
-	if (!g_camp.heroes.empty()) {
-		// Enter: the game's largest button, drawn bigger. Grey until a hero is picked; then it is
-		// lit: warm stone, gold text and a soft gold glow behind it.
-		const auto enter = [&](const char* name, bool ready) {
-			std::string out = std::string("{\"type\":\"Widget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":0,\"y\":" + std::to_string(EnterY) + "}},\"children\":[";
-			out += std::string("{\"type\":\"ButtonWidget\",\"name\":\"Button\",\"fields\":{\"rect\":{\"x\":-412,\"y\":0,\"scale\":1.35},\"filename\":\"") + Large +
-				"\",\"textString\":\"ENTER\",\"onClickMessage\":\"" + act + "enter\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"
-				"\"text/style\":\"$StyleFEButtonText\",\"pointSize\":\"$XExtraLargeFontSize\"," +
-				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.94,\"b\":0.80,\"a\":1.0},\"textColor\":\"$FontColorGoldYellow\"" : "\"textColor\":\"$FontColorGray\"") + "}}]}";
-			return out;
-		};
-		// Under the button: an image over a button might take its clicks.
-		kids += GlowWidgets("Enter", "EnterGlow", -EnterW / 2 - EnterMargin, EnterY - EnterMargin);
-		kids += enter("EnterIdle", false) + "," + enter("EnterReady", true) + ",";
 	}
 	kids += "{\"type\":\"Widget\",\"name\":\"LeftButtons\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":1.0}},\"children\":[" +
 		FireButton("Options", 100, -500, "@d2r:OptionsHD", "PanelManager:OpenPanel:SettingsPanel", Med, "$LightButtonTextColor") + "," +
@@ -976,6 +930,72 @@ auto FireLayoutJson() -> std::string {
 	kids += ",{\"type\":\"Widget\",\"name\":\"ExitCorner\",\"fields\":{\"anchor\":{\"x\":-0.5,\"y\":0.0}},\"children\":[" +
 		FireButton("ExitGame", 100, 60, "@d2r:strexitentiregame", "FrontEndNavigation:ToExit", Med, "$LightButtonTextColor") + "]}";
 	kids += "," + VersionWidgetJson();
+	return "{\"type\":\"Panel\",\"name\":\"@PANEL@\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
+}
+
+// What lies over the figures right now: the names (the picked hero's in white in its light), Enter
+// (lit once a hero is picked), the retire buttons, or the traveler's Accept.
+auto FireTopJson() -> std::string {
+	static constexpr char Med[]   = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonMed";
+	static constexpr char Large[] = "FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonLarge";
+	static constexpr char Plate[] = "Panel\\\\Modals\\\\ModalButton";
+	const std::string act = "PanelManager:OpenPanel:darkestdiablo/";
+	std::string kids;
+	if (g_travelerMode) {
+		if (Camp::State::Has(g_camp.offer, g_selectedClass)) {
+			kids += FireButton("TravelerAccept", -420, 1760, "Accept", act + "traveler-accept", Med, "$LightButtonTextColor") + ",";
+		}
+	} else {
+		for (const auto& hero : g_camp.heroes) {
+			const Spot& s = g_spots[hero.cls];
+			if (!s.known) {
+				continue;
+			}
+			const std::string cls = Camp::ClassNames[hero.cls];
+			if (g_deleteMode) {
+				kids += FireButton("Bury" + cls, s.x + (s.w - 300) / 2, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
+				continue;
+			}
+			// No frame, just the name and "Lv N" small under it, dim unless picked. Every other hero's,
+			// from left to right, stands lower, so neighbours' names don't run together (Sam).
+			const bool picked = hero.cls == g_chosenHero && !g_createMode;
+			const int x = s.x + (s.w - PlateW) / 2;
+			const int rank = static_cast<int>(std::count_if(g_camp.heroes.begin(), g_camp.heroes.end(),
+				[&](const auto& other) { return g_spots[other.cls].known && g_spots[other.cls].x < s.x; }));
+			const int y = PlateY + (rank % 2 == 1 ? PlateDrop : 0);
+			if (picked) {
+				kids += GlowWidget("HeroGlow", s.x + (s.w - PlateGlowW) / 2, y + (PlateH - PlateGlowH) / 2);
+			}
+			const auto text = [&](const std::string& name, int top, int h, const std::string& value, const char* size, const char* color) {
+				kids += "{\"type\":\"TextBoxWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y + top) +
+					",\"width\":" + std::to_string(PlateW) + ",\"height\":" + std::to_string(h) + "},\"text\":\"" + value + "\",\"style\":{\"pointSize\":" + size +
+					",\"alignment\":{\"v\":\"center\",\"h\":\"center\"},\"fontColor\":\"" + color + "\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
+			};
+			text("Name" + cls, 0, 34, hero.name, "28", picked ? "$FontColorWhite" : "$FontColorDarkGrayGold");
+			text("Rank" + cls, 34, 26, "Lv " + std::to_string(hero.level), "18", picked ? "$FontColorWhite" : "$FontColorDarkGrayBlue");
+		}
+		if (g_deleteMode) {
+			kids += "{\"type\":\"TextBoxWidget\",\"name\":\"DeleteHint\",\"fields\":{\"rect\":{\"x\":-900,\"y\":210,\"width\":1800,\"height\":70},"
+				"\"text\":\"Choose the hero to retire. This can't be undone. Press Retire again to keep everyone.\","
+				"\"style\":{\"fontColor\":\"$FontColorRed\",\"alignment\":{\"h\":\"center\"},\"pointSize\":\"$LargeFontSize\",\"dropShadow\":\"$DefaultDropShadow\"}}},";
+		}
+		if (!g_camp.heroes.empty() && !g_createMode) {
+			// Enter: the game's largest button, drawn bigger. Grey until a hero is picked; then it is
+			// lit: warm stone, gold text and a soft gold light around it (under it: an image over a
+			// button might take its clicks).
+			const bool ready = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr && !g_deleteMode;
+			if (ready) {
+				kids += GlowWidget("EnterGlow", -EnterW / 2 - EnterMargin, EnterY - EnterMargin);
+			}
+			kids += std::string("{\"type\":\"ButtonWidget\",\"name\":\"Enter\",\"fields\":{\"rect\":{\"x\":-412,\"y\":") + std::to_string(EnterY) + ",\"scale\":1.35},\"filename\":\"" + Large +
+				"\",\"textString\":\"ENTER\",\"onClickMessage\":\"" + act + "enter\",\"pressedFrame\":1,\"hoveredFrame\":3,\"disabledFrame\":2,"
+				"\"text/style\":\"$StyleFEButtonText\",\"pointSize\":\"$XExtraLargeFontSize\"," +
+				(ready ? "\"tint\":{\"r\":1.0,\"g\":0.94,\"b\":0.80,\"a\":1.0},\"textColor\":\"$FontColorGoldYellow\"" : "\"textColor\":\"$FontColorGray\"") + "}},";
+		}
+	}
+	if (!kids.empty()) {
+		kids.pop_back();  // the last comma
+	}
 	return "{\"type\":\"Panel\",\"name\":\"@PANEL@\",\"fields\":{\"anchor\":{\"x\":0.5},\"fitToParent\":true},\"children\":[" + kids + "]}";
 }
 
@@ -989,33 +1009,13 @@ auto RegisterFireLayout(const D2RL::PluginContext* context) -> bool {
 
 // Shows the right widgets for where the Campfire is: picking a hero, Delete, or making a hero.
 void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
-	const std::string panel = PoolName(g_fire);
 	const bool traveler = g_travelerMode;
-	SetVisible(context, panel.c_str(), "DeleteHint", g_deleteMode && !traveler);
-	for (const auto& hero : g_camp.heroes) {
-		const std::string cls = Camp::ClassNames[hero.cls];
-		const bool picked = hero.cls == g_chosenHero && !g_deleteMode && !traveler && !g_createMode;
-		SetVisible(context, panel.c_str(), cls.c_str(), !traveler);
-		SetVisible(context, panel.c_str(), ("Plate" + cls).c_str(), !g_deleteMode && !traveler);
-		SetVisible(context, panel.c_str(), ("Name" + cls).c_str(), !picked);
-		SetVisible(context, panel.c_str(), ("NameLit" + cls).c_str(), picked);
-		SetVisible(context, panel.c_str(), ("Rank" + cls).c_str(), !picked);
-		SetVisible(context, panel.c_str(), ("RankLit" + cls).c_str(), picked);
-		SetVisible(context, panel.c_str(), ("Bury" + cls).c_str(), g_deleteMode && !traveler);
+	try {
+		if (g_atFire && PoolIsOpen(context, g_fire)) {
+			PoolSwap(context, g_top, FireTopJson(), "Campfire names");
+		}
+	} catch (...) {
 	}
-	// While the traveler waits only the offer stands by the fire; after the choice the classes
-	// not taken leave and the one taken stays.
-	for (const int c : g_camp.offer) {
-		SetVisible(context, panel.c_str(), Camp::ClassNames[c], traveler);
-	}
-	SetVisible(context, panel.c_str(), "TravelerHint", traveler);
-	SetVisible(context, panel.c_str(), "TravelerAccept", traveler && Camp::State::Has(g_camp.offer, g_selectedClass));
-	SetVisible(context, panel.c_str(), "TravelerLater", traveler);
-	SetVisible(context, panel.c_str(), "LeftButtons", !traveler);
-	SetVisible(context, panel.c_str(), "ExitCorner", !traveler);
-	const bool ready = g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr;
-	SetVisible(context, panel.c_str(), "EnterIdle", !traveler && !g_createMode && !ready);
-	SetVisible(context, panel.c_str(), "EnterReady", !traveler && !g_createMode && ready);
 	// The game's own name box, version picker and Create button.
 	// The game shows its name box again by itself, so each part of it is hidden too.
 	int found = 0;
@@ -1115,76 +1115,6 @@ void WatchFireClicks(const D2RL::PluginContext* context) {
 	}).detach();
 }
 
-// One moment of the glow behind the picked hero's name and around Enter.
-void __cdecl ShimmerStep(const D2RL::PluginContext* context, void*) noexcept {
-	const Lock lock(g_mutex);
-	if (!g_atFire) {
-		return;
-	}
-	const std::string panel = PoolName(g_fire);
-	if (g_shimmerReset) {  // everything starts shown; try again next time while something can't be hidden yet
-		g_shimmerShown.clear();
-		bool hidden = true;
-		const auto hideAll = [&](const std::string& whose) {
-			for (int k = 1; k <= GlowLevels; ++k) {
-				hidden = SetVisible(context, panel.c_str(), GlowName(whose, k).c_str(), false) && hidden;
-			}
-		};
-		if (!g_travelerMode) {
-			for (const auto& hero : g_camp.heroes) {
-				if (g_spots[hero.cls].known) {
-					hideAll(Camp::ClassNames[hero.cls]);
-				}
-			}
-			if (!g_camp.heroes.empty()) {
-				hideAll("Enter");
-			}
-		}
-		g_shimmerReset = !hidden;
-		if (!hidden) {
-			return;
-		}
-	}
-	std::vector<std::string> show;
-	if (g_chosenHero >= 0 && g_camp.HeroOf(g_chosenHero) != nullptr && !g_deleteMode && !g_travelerMode && !g_createMode) {
-		const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-		const double wave = 0.5 + 0.5 * std::sin(6.283185307179586 * std::fmod(t, 4.0) / 4.0);
-		const int k = std::clamp(1 + static_cast<int>(std::lround(wave * (GlowLevels - 1))), 1, GlowLevels);
-		show = { GlowName(Camp::ClassNames[g_chosenHero], k), GlowName("Enter", k) };
-	}
-	for (const auto& n : show) {  // the new ones first, so nothing blinks
-		if (std::find(g_shimmerShown.begin(), g_shimmerShown.end(), n) == g_shimmerShown.end()) {
-			SetVisible(context, panel.c_str(), n.c_str(), true);
-		}
-	}
-	for (const auto& n : g_shimmerShown) {
-		if (std::find(show.begin(), show.end(), n) == show.end()) {
-			SetVisible(context, panel.c_str(), n.c_str(), false);
-		}
-	}
-	g_shimmerShown = std::move(show);
-}
-
-// While the Campfire is up, moves the glow along every 80 ms.
-void ShimmerFire(const D2RL::PluginContext* context) {
-	if (g_shimmering.exchange(true) || g_threads == nullptr) {
-		return;
-	}
-	std::thread([context] {
-		for (;;) {
-			{
-				const Lock lock(g_mutex);
-				if (!g_atFire) {
-					break;
-				}
-			}
-			g_threads->runOnUiThread(context, ShimmerStep, nullptr);
-			std::this_thread::sleep_for(std::chrono::milliseconds(80));
-		}
-		g_shimmering = false;
-	}).detach();
-}
-
 // The hero screen has opened: lay the camp's figures over it.
 void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 	const Lock lock(g_mutex);
@@ -1201,8 +1131,6 @@ void __cdecl OpenFire(const D2RL::PluginContext* context, void*) noexcept {
 		g_clickedHero = -1;
 		g_selectedClass = -1;
 		WatchFireClicks(context);
-		g_shimmerReset = true;
-		ShimmerFire(context);
 		if (g_justRecruited >= 0) {             // after Accept: the new class steps in, name box ready
 			g_createMode = true;
 			g_selectedClass = g_justRecruited;
@@ -2155,14 +2083,70 @@ auto FindSaveFolder() -> fs::path {
 
 // The save slot screen, with who is by each fire written in. Its template is made by
 // tools/camp_layouts.py; the loader reads the layout when the panel opens.
-auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool {
-	if (g_resources == nullptr) {
-		return false;
+
+// Takes a widget (with everything in it) out of a layout made by tools/camp_layouts.py, where every
+// widget starts with its type and name.
+void RemoveWidget(std::string& json, const std::string& name) {
+	const size_t at = json.find("\", \"name\": \"" + name + "\"");
+	const size_t start = at == std::string::npos ? at : json.rfind("{\"type\"", at);
+	if (start == std::string::npos) {
+		return;
 	}
+	int depth = 0;
+	bool quoted = false;
+	for (size_t i = start; i < json.size(); ++i) {
+		const char c = json[i];
+		if (quoted) {
+			if (c == '\\') {
+				++i;
+			} else if (c == '"') {
+				quoted = false;
+			}
+		} else if (c == '"') {
+			quoted = true;
+		} else if (c == '{') {
+			++depth;
+		} else if (c == '}' && --depth == 0) {
+			size_t from = start, to = i + 1;
+			if (const size_t next = json.find_first_not_of(" \n\t", to); next != std::string::npos && json[next] == ',') {
+				to = next + 1;
+			} else if (const size_t before = json.find_last_not_of(" \n\t", from - 1); before != std::string::npos && json[before] == ',') {
+				from = before;
+			}
+			json.erase(from, to - from);
+			return;
+		}
+	}
+}
+
+auto SlotsJson() -> std::string {
 	std::string json = Camp::ReadFile(g_dataDir / "SaveSlots.layout.json");
 	if (json.empty()) {
-		return false;
+		return {};
 	}
+	const bool asking = g_confirmSlot != 0 || g_slotNotice;
+	const auto keep = [&](const std::string& name, bool shown) {
+		if (!shown) {
+			RemoveWidget(json, name);
+		}
+	};
+	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
+		const std::string n = std::to_string(slot);
+		const bool started = slot == g_slot ? g_camp.started : Camp::LoadState(g_live, slot).started;
+		keep("Slot" + n, !asking);
+		keep("Delve" + n, !asking);
+		keep("Slot" + n + "Last", !asking && started && slot == g_slot);
+		keep("Slot" + n + "Delete", !asking && started);
+		keep("Confirm" + n + "A", !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 1);
+		keep("Confirm" + n + "B", !g_slotNotice && g_confirmSlot == slot && g_confirmStep == 2);
+	}
+	keep("Exit", g_confirmSlot == 0);
+	keep("NoticeBack", g_slotNotice && Camp::ReadPending(g_live).deletes.empty());
+	keep("AskYes", !g_slotNotice && g_confirmStep == 1);
+	keep("AskNo", !g_slotNotice && g_confirmStep == 1);
+	keep("SureNo", !g_slotNotice && g_confirmStep == 2);
+	keep("SureYes", !g_slotNotice && g_confirmStep == 2);
+	keep("RestartNotice", g_slotNotice);
 	for (int slot = 1; slot <= Camp::SlotCount; ++slot) {
 		const Camp::State camp = slot == g_slot ? g_camp : Camp::LoadState(g_live, slot);
 		for (const auto& [mark, value] : Camp::DelveText(camp)) {
@@ -2184,7 +2168,7 @@ auto RegisterSlotsLayout(const D2RL::PluginContext* context) -> bool {
 	if (const size_t end = json.rfind("]}"); end != std::string::npos) {
 		json.insert(end, "," + VersionWidgetJson());
 	}
-	return PoolSet(context, g_slots, json);
+	return json;
 }
 
 // Registers a panel whose layout is a file of the mod (made by tools/camp_layouts.py). The file
@@ -2467,12 +2451,12 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		if (context->QueryService(&g_panels) == D2RL::ServiceQueryResult::Success && D2RL::HasPanelServiceField(g_panels, D2RL::PanelServiceRequiredSize)) {
 			g_resources = resources;
 			PoolRegister(context, g_slots, D2RL::Panels::PanelFlags::None);
-			RegisterSlotsLayout(context);
 			g_travelerPanel = RegisterPanel(context, resources, TravelerPanel);
 			g_campPanel     = RegisterPanel(context, resources, CampPanel);
 			g_resources = resources;
 			if (g_fireOn) {
 				PoolRegister(context, g_fire, D2RL::Panels::PanelFlags::None);
+				PoolRegister(context, g_top, D2RL::Panels::PanelFlags::None);
 			}
 			if (g_fireOn && RegisterFireLayout(context)) {
 				const D2RL::Resources::ResourceRegistration curtainLayout {

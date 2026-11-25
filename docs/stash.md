@@ -68,9 +68,12 @@ another). Changing saves needs no restart.
   pages (`HomePage`); the arrows stop at its ends; our own page number covers the game's. An item on
   another save's page can't be taken (the click is refused and the stash goes back).
 - **Gold.** The game has one purse for every page, so gold is kept per save in `stash.txt` (`purse`),
-  with Deposit and Take buttons. The game's own gold controls are moved out of the window and refused.
+  with Deposit and Take buttons for the amount between the arrows (100 to 100,000, or all). The game's own gold controls are moved out of the window and refused.
   The old purses were put in at the joining. Paying uses the hero's gold first, then the purse.
 - **Deleting a save** copies its pages to `camp/trash`. If the game holds the stash, they are emptied
   when the new save's stash is first opened (`camp/wipe.txt`), or at the next start.
 - **Going back** to a version before this: `python tools/split_stash.py "<save folder>"` first.
 - **Not for the controller layout:** it still shows the game's page number and gold.
+- **Opening on Shared.** The game opens the stash on the hero's own page and plugins can't choose a tab.
+  Where the player clicks Shared is remembered (`camp/stash-tab.txt`, for that window size) and clicked
+  for them from then on; `dd-stash autotab` turns it off.

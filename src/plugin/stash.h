@@ -556,16 +556,28 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
 }
 
+// How much gold Deposit and Take move at once; 0: all of it.
+inline constexpr std::array<long long, 8> GoldSteps = { 100, 500, 1000, 5000, 10000, 50000, 100000, 0 };
+
 // On the open stash, over the place of the game's own page number and gold (130_stash.py moves those
-// away): which of the save's pages shows (always from 1) and the save's own gold.
-inline auto PageLayout(int page, int pages, long long purse) -> std::string {
+// away): which of the save's pages shows (always from 1) and the save's own gold, with the amount
+// to move between arrows.
+inline auto PageLayout(int page, int pages, long long purse, size_t step) -> std::string {
 	using namespace Ui;
 	constexpr int X = 100, Y = 1200;
+	const auto arrow = [&](const char* name, int x, const char* picture, const char* action, const char* tip) {
+		return std::string("{\"type\":\"ButtonWidget\",\"name\":\"") + name + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(x - X) + ",\"y\":" + std::to_string(1346 - Y) +
+			",\"width\":64,\"height\":64},\"filename\":\"PANEL\\\\Stash\\\\" + picture + "\",\"normalFrame\":0,\"pressedFrame\":2,\"hoveredFrame\":1,\"disabledFrame\":3,\"tooltipString\":\"" +
+			tip + "\",\"onClickMessage\":\"" + ActionMessage + action + "\"}}";
+	};
+	const long long amount = GoldSteps[step < GoldSteps.size() ? step : GoldSteps.size() - 1];
 	std::string out = Text("Page", { 464 - X, 1224 - Y, 230, 64 }, "Page " + std::to_string(page) + " of " + std::to_string(pages), "$PanelTitleColor", "$MediumFontSize") + "," +
-		Text("GoldLabel", { 424 - X, 1330 - Y, 310, 28 }, "Caravan gold", TextBeige, "18") + "," +
-		Text("Gold", { 424 - X, 1358 - Y, 310, 44 }, Commas(purse), TextWhite, "$MediumLargeFontSize") + "," +
-		Button("GoldIn", 190 - X, 1352 - Y, 0.6, "Deposit", TextWhite, "goldin", "Put all the gold this hero carries in the stash.") + "," +
-		Button("GoldOut", 754 - X, 1352 - Y, 0.6, "Take", TextWhite, "goldout", "Take out as much gold as this hero can carry.");
+		Text("Gold", { 364 - X, 1302 - Y, 430, 40 }, "Gold " + Commas(purse), TextGold, "$MediumLargeFontSize") + "," +
+		arrow("Less", 400, "Stash_LeftArrow", "goldless", "A smaller amount") + "," +
+		Text("Amount", { 466 - X, 1356 - Y, 226, 44 }, amount == 0 ? std::string("All") : Commas(amount), TextWhite, "$MediumFontSize") + "," +
+		arrow("More", 694, "Stash_RightArrow", "goldmore", "A larger amount") + "," +
+		Button("GoldIn", 170 - X, 1350 - Y, 0.6, "Deposit", TextWhite, "goldin", "Put this much of the hero's gold in the stash.") + "," +
+		Button("GoldOut", 774 - X, 1350 - Y, 0.6, "Take", TextWhite, "goldout", "Take this much out, as far as the hero can carry it.");
 	return Panel({ 236 + X, -651 + Y, 1162 - 2 * X, 220 }, "$LeftPanelAnchor", 8540, out);
 }
 

@@ -583,7 +583,7 @@ static void WriteStashLayouts(const fs::path& dir) {
 	WriteFile(dir / "tab_full.json", Stash::UpgradesLayout(full));
 	WriteFile(dir / "wall_part.json", Stash::WallLayout(full, "Hero not found yet, try again"));
 	WriteFile(dir / "wall_fresh.json", Stash::WallLayout(fresh));
-	WriteFile(dir / "page.json", Stash::PageLayout(10, 10, 1234567));
+	WriteFile(dir / "page.json", Stash::PageLayout(10, 10, 1234567, 6));
 	WriteFile(dir / "side.json", Stash::SideLayout());
 	Potions::State potions;
 	Potions::Owner owner;

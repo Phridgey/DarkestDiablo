@@ -2,13 +2,12 @@
 one all around the Enter button (gold and soft, Sam, 2026-11-20; one clean picture each since
 0.20.3, before that an aurora of many patches).
 
-The pictures are drawn here at build time, so no art file sits in the repo. Each is drawn at LEVELS
-brightnesses; the plugin shows one at a time (ShimmerStep in src/plugin/campfire.cpp), so the light
-breathes. Keep the sizes below in step with the plugin.
+The pictures are drawn here at build time, so no art file sits in the repo. Keep the
+sizes below in step with the plugin (FireTopJson in src/plugin/campfire.cpp).
 
 Pictures (both graphics qualities; the low one is half size):
-  PANEL\\DarkestDiablo\\HeroGlow1..5   -> hd/global/ui/panel/darkestdiablo/heroglow1..5(.lowend).sprite
-  PANEL\\DarkestDiablo\\EnterGlow1..5  -> hd/global/ui/panel/darkestdiablo/enterglow1..5(.lowend).sprite
+  PANEL\\DarkestDiablo\\HeroGlow   -> hd/global/ui/panel/darkestdiablo/heroglow(.lowend).sprite
+  PANEL\\DarkestDiablo\\EnterGlow  -> hd/global/ui/panel/darkestdiablo/enterglow(.lowend).sprite
 """
 import math
 import struct
@@ -17,16 +16,10 @@ import struct
 TEMPLATE = "hd/global/ui/panel/inventory/background{}.sprite"
 OUT = "hd/global/ui/panel/darkestdiablo/{}{}.sprite"
 
-LEVELS = 5
 HERO = (392, 153)               # PlateGlowW, PlateGlowH
 ENTER = (824, 196, 10, 40)      # EnterW, EnterH (the button as it stands in the game), corner radius, EnterMargin
-HERO_PEAK, ENTER_PEAK = 0.42, 0.30
+HERO_PEAK, ENTER_PEAK = 0.38, 0.27
 GOLD = (226, 168, 66)
-
-
-def strength(level):
-    """How bright a level is, 0.7 to 1."""
-    return 0.7 + 0.3 * (level - 1) / (LEVELS - 1)
 
 
 def hero_alpha(x, y, w, h):
@@ -49,10 +42,10 @@ def picture(alpha, w, h, scale):
     return W, H, [alpha((x + 0.5) / scale, (y + 0.5) / scale, w, h) for y in range(H) for x in range(W)]
 
 
-def pixels(alphas, level):
+def pixels(alphas):
     out = bytearray()
     for a in alphas:
-        out += bytes((*GOLD, int(a * strength(level) * 255 + 0.5))) if a > 0 else bytes(4)
+        out += bytes((*GOLD, int(a * 255 + 0.5))) if a > 0 else bytes(4)
     return bytes(out)
 
 
@@ -78,6 +71,5 @@ def patch(t):
         template = t.game_file(TEMPLATE.format(suffix))
         for name, alpha, w, h in (("heroglow", hero_alpha, *HERO), ("enterglow", enter_alpha, bw + 2 * margin, bh + 2 * margin)):
             W, H, alphas = picture(alpha, w, h, scale)
-            for level in range(1, LEVELS + 1):
-                t.add_file(OUT.format(f"{name}{level}", suffix), sprite(template, W, H, pixels(alphas, level)))
-    print(f"  campfire glow: {2 * LEVELS} pictures, gold")
+            t.add_file(OUT.format(name, suffix), sprite(template, W, H, pixels(alphas)))
+    print(f"  campfire glow: 2 pictures, gold")
