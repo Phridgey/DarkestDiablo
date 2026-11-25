@@ -2803,8 +2803,9 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	}
 
 	ReadLootData(context);
-	// MercGear::Install(context, g_mercType.load());  // off since 0.17.28: with it on, nothing could be
-	// picked up (2026-11-23); its byte patterns came from an older game build and may match the wrong spot.
+	// Off in 0.17.28-0.17.35: looting broke (2026-11-23) right after it went in. Back on in 0.17.36 to
+	// test whether it was the cause; if looting breaks again, turn it off for good.
+	MercGear::Install(context, g_mercType.load());
 
 	// Route map panel and UI-message listener. Optional: without them the arenas still work.
 	const D2RL::ResourceService* resources = nullptr;
