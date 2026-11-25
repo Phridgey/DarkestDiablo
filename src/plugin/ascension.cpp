@@ -6,7 +6,7 @@
 // spills the loot and opens a portal; walking up to the portal asks whether to ascend.
 //
 // One background thread polls the game-state API every 200 ms; console commands run on the UI
-// thread, item work on the game thread.
+// thread.
 #include "ascension.h"
 #include "campfire.h"
 #include "gameapi.h"
@@ -47,18 +47,14 @@ constexpr int SpawnReach   = 50;  // sub-tiles; the game only spawns near the he
 constexpr int PortalRow    = 60;  // objects.txt: PortalPermanent (red, stays open)
 constexpr int PortalReach  = 4;
 constexpr int AttackSpeed = 150, CastSpeed = 135;  // percent; the speed of movement is in the boss's row
-constexpr int BonusLevel[5] = { 36, 54, 72, 90, 99 };  // item level of the plugin's drops: affixes of the next act
 constexpr char PromptPanel[] = "AscendPrompt";
 
 const D2RL::ThreadService*    g_threads   = nullptr;
 const D2RL::PanelService*     g_panels    = nullptr;
-const D2RL::InventoryService* g_inventory = nullptr;
-const D2RL::ItemService*      g_items     = nullptr;
 D2RL::Panels::RegistrationHandle g_prompt = D2RL::Panels::InvalidHandle;
 
 std::mutex g_mutex;  // guards everything below
 std::vector<int>      g_supers[5], g_classes[5];
-std::vector<uint32_t> g_bases[5];
 int                   g_life[5] {};
 std::string g_hero;        // planned or ascending
 int  g_act = 0;            // 1-5; 0 = nothing planned
@@ -66,7 +62,6 @@ bool g_ready = false;      // the planned hero is in the game
 bool g_inside = false;     // the fight has begun
 bool g_seen = false, g_boosted = false, g_won = false, g_portalUp = false, g_armed = true;
 int  g_level = -1, g_tries = 0, g_tick = 0, g_portalX = 0, g_portalY = 0;
-int  g_bossX = 0, g_bossY = 0;
 std::atomic<uintptr_t> g_game { 1 };
 std::atomic<bool> g_active { false };
 
@@ -176,72 +171,34 @@ void Boost(const D2RL::PluginContext* context, Game::Unit boss, int life) noexce
 	}
 }
 
-auto Create(const D2RL::PluginContext* context, D2RL::PlayerHandle player, uint32_t code, D2RL::Items::Quality quality, int level, int x, int y) noexcept -> bool {
-	const D2RL::Items::ItemCreateSpec spec {
-		.structSize      = D2RL::Items::ItemCreateSpecSize,
-		.code            = code,
-		.quality         = quality,
-		.qualityRecordId = D2RL::Items::RandomQualityRecord,
-		.itemLevel       = static_cast<uint32_t>(level),
-		.seedMode        = D2RL::Items::SeedMode::Random,
-		.quantity        = D2RL::Items::DefaultValue,
-		.durability      = D2RL::Items::DefaultValue,
-		.destination     = {
-			.structSize = D2RL::Items::ItemDestinationSize,
-			.container  = D2RL::Items::ItemContainer::Ground,
-			.placement  = D2RL::Items::Placement::Exact,
-			.x          = static_cast<uint32_t>(x),
-			.y          = static_cast<uint32_t>(y),
-		},
-	};
-	D2RL::ItemHandle made = D2RL::InvalidItemHandle;
-	return g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success;
+// The drops a monster's six can't hold: "spoils" (990_ascension.py), helpless creatures that come out
+// around the hero and are killed at once, each dropping its own loot. If the kill misses one it
+// stands there with next to no life, to be smashed. (Making the items through the SDK, on the ground,
+// crashed the game 3 ms later, 2026-11-24.) UI thread.
+constexpr int Spoils = 2;  // of each of the two kinds
+
+void __cdecl KillSpoils(const D2RL::PluginContext* context, void*) noexcept {
+	for (int i = 0; i < 2 * Spoils; ++i) {
+		RunConsole(context, "cheat killmonster");
+	}
 }
 
-// Game thread: the drops a monster's six can't hold. Sets and uniques come from its own loot
-// (making one here crashed the game, CLAUDE.md).
 void __cdecl SpillLoot(const D2RL::PluginContext* context, void*) noexcept {
-	using D2RL::Items::Quality;
-	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
-	if (g_items == nullptr || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
-		context->LogWarn("Ascend: no item service; only the boss's own loot.");
-		return;
-	}
-	std::vector<uint32_t> bases;
-	int level = 0, x = 0, y = 0;
+	const Game::Unit hero = Game::Hero();
+	int act = 0;
 	{
 		const std::lock_guard lock(g_mutex);
-		if (g_act == 0) {
-			return;
-		}
-		bases = g_bases[g_act - 1];
-		level = BonusLevel[g_act - 1];
-		x = g_bossX, y = g_bossY;
+		act = g_act;
 	}
-	std::mt19937 rng { std::random_device {}() };
-	std::shuffle(bases.begin(), bases.end(), rng);
-	struct Drop { uint32_t code; Quality quality; };
-	std::vector<Drop> drops;
-	for (size_t i = 0; i < bases.size() && i < 9; ++i) {
-		drops.push_back({ bases[i], Quality::Rare });
+	if (act == 0 || !hero) {
+		return;
 	}
-	using D2RL::Items::MakeItemCode;
-	for (int i = 0; i < 2; ++i) {
-		drops.push_back({ MakeItemCode("rin"), Quality::Rare });
-		drops.push_back({ MakeItemCode("amu"), Quality::Rare });
-		drops.push_back({ MakeItemCode("jew"), Quality::Rare });
-		drops.push_back({ MakeItemCode("cm1"), Quality::Magic });
-		drops.push_back({ MakeItemCode("cm3"), Quality::Magic });
+	char command[96];
+	for (const char* kind : { "g", "j" }) {
+		std::snprintf(command, sizeof(command), "cheat mspawn dd_ascendloot%d_%s,%d @ %d,%d", act, kind, Spoils, hero.x + 2, hero.y + 2);
+		RunConsole(context, command);
 	}
-	drops.push_back({ MakeItemCode("cm2"), Quality::Magic });
-	int made = 0;
-	for (size_t i = 0; i < drops.size(); ++i) {  // a growing spiral around the corpse
-		const double angle = 2.4 * static_cast<double>(i), reach = 3.0 + 0.45 * static_cast<double>(i);
-		const int dx = static_cast<int>(reach * std::cos(angle)), dy = static_cast<int>(reach * std::sin(angle));
-		made += Create(context, player, drops[i].code, drops[i].quality, level, x + dx, y + dy) ||
-			Create(context, player, drops[i].code, drops[i].quality, level, x, y) ? 1 : 0;
-	}
-	Log(context, "Ascend: %d of %d extra items dropped at item level %d.", made, static_cast<int>(drops.size()), level);
+	Later(context, 700, KillSpoils);
 }
 
 void __cdecl NotePortal(const D2RL::PluginContext* context, void*) noexcept {
@@ -309,7 +266,6 @@ auto TickFight(const D2RL::PluginContext* context, const Game::Unit& hero) -> bo
 	}
 	if (boss != nullptr && boss->alive) {
 		g_seen = true;
-		g_bossX = boss->unit.x, g_bossY = boss->unit.y;
 		if (!g_boosted) {
 			g_boosted = true;
 			Log(context, "Ascend: the boss stands (class %u, level row, %d affixes seen).", boss->unit.row, static_cast<int>(boss->enchantments.size()));
@@ -328,8 +284,8 @@ auto TickFight(const D2RL::PluginContext* context, const Game::Unit& hero) -> bo
 void Win(const D2RL::PluginContext* context, const std::string& hero) {
 	Campfire::AscensionWon(hero);
 	Log(context, "Ascend: the boss is dead; %s has won.", hero.c_str());
-	g_threads->runOnGameThread(context, SpillLoot, nullptr);
-	Later(context, 1500, OpenPortal);
+	Later(context, 1200, SpillLoot);
+	Later(context, 3500, OpenPortal);
 }
 
 void Tick(const D2RL::PluginContext* context) noexcept {
@@ -367,7 +323,7 @@ void ReadLines(const D2RL::PluginContext* context) {
 	std::string line;
 	while (std::getline(in, line)) {
 		std::istringstream words(line);
-		std::string key, code;
+		std::string key;
 		int act = 0, n = 0;
 		words >> key;
 		if (key.rfind("ascend", 0) != 0 || !(words >> act) || act < 1 || act > 5) {
@@ -379,8 +335,6 @@ void ReadLines(const D2RL::PluginContext* context) {
 			g_classes[act - 1].push_back(n);
 		} else if (key == "ascendhp" && words >> n) {
 			g_life[act - 1] = n;
-		} else if (key == "ascenditem" && words >> code && code.size() == 3) {
-			g_bases[act - 1].push_back(D2RL::Items::MakeItemCode(code[0], code[1], code[2]));
 		}
 	}
 	Log(context, "Ascend: %d bosses, %d of them in Act I.", static_cast<int>(g_supers[0].size() + g_supers[1].size() + g_supers[2].size() + g_supers[3].size() + g_supers[4].size()),
@@ -418,10 +372,6 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 			g_threads = nullptr;
 			context->LogWarn("Ascend: thread service missing; nobody can ascend.");
 			return true;
-		}
-		if (context->QueryService(&g_inventory) != D2RL::ServiceQueryResult::Success || !D2RL::HasInventoryServiceField(g_inventory, D2RL::InventoryServiceRequiredSize) ||
-			context->QueryService(&g_items) != D2RL::ServiceQueryResult::Success || !D2RL::HasItemServiceField(g_items, D2RL::ItemServiceRequiredSize)) {
-			g_items = nullptr;
 		}
 		const D2RL::ResourceService* resources = nullptr;
 		if (context->QueryService(&g_panels) == D2RL::ServiceQueryResult::Success && D2RL::HasPanelServiceField(g_panels, D2RL::PanelServiceRequiredSize) &&

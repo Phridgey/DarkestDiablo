@@ -164,7 +164,7 @@ inline auto ReadItem(const Bytes& b, size_t at, const Shapes& shapes, Item& out,
 		if (r.Get(1) != 0) {
 			r.Skip(128);
 		}
-		last = r.Get(1) != 0;
+		if (r.Get(1) != 0) { r.Skip(8); }  // a stack count (belt potions, seen 2026-11-24)
 	} else {
 		children = r.Get(3);
 		r.Skip(32 + 7);

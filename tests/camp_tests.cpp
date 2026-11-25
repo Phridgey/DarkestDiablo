@@ -632,6 +632,11 @@ static void AscendMovesItems() {
 	for (size_t i = 0; i < was.size(); ++i) {
 		if (i < 4 || i > 6) { CHECK(was[i] == is[i]); }
 	}
+	// A belt potion with a stack count (27 bytes) reads, and the item after it too.
+	const Bytes belt = AscendSave("4a4d0200" "0000a0001500004fa6cf6e6437ddff475ea3e6c35a65dd3dea0100" + potion + tail);
+	shapes.items["hp2"] = {};
+	Ascend::Hero belted;
+	CHECK(ReadHero(belt, shapes, belted, error) && belted.items.size() == 2 && belted.items[0].bytes.size() == 27 && belted.items[1].code == "hp1");
 	// A stash page in use, a cut-off file and an unknown item are refused, with the save untouched.
 	const Bytes before = heir;
 	CHECK(!Inject(heir, legacy, shapes, error) && heir == before);

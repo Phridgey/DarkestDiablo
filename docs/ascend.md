@@ -14,8 +14,8 @@ A hero's last fight. Rules decided 2026-11-24. Code: `src/plugin/ascension.cpp` 
   the build stops if any affixes could add up to an immunity.
 - **No way out.** Dying, quitting or crashing before the boss is dead is a death. A Town Portal
   leads straight back.
-- The boss drops 3 sets or uniques and 3 of its own; the plugin adds 9 rares, 2 rings, 2 amulets,
-  2 jewels and 5 charms, with item levels of the next act.
+- The boss drops 3 sets or uniques and 3 of its own. Around 22 more (rare gear, rare rings, amulets and
+  jewels, magic charms, affixes of the next act) burst out around the hero a moment later.
 - A portal opens in the middle. Walking up to it asks "Ascend?". Not yet: carry on looting. Yes, or
   leaving the game in any way: the hero ascends.
 - The class locks and comes back with the traveler, as after a death. What the hero wore and carried
@@ -31,14 +31,19 @@ A hero's last fight. Rules decided 2026-11-24. Code: `src/plugin/ascension.cpp` 
 - The page is one of 4 extra shared pages (`add_shared_tabs = 11`). More than one page of items, or
   more than 4 heroes, waits for a free page.
 - A superunique takes 3 affixes: the 4th is part of the boss's numbers and shown in its name.
-- A monster drops 6 items at most.
+- A monster drops 6 items at most. The rest comes from 4 helpless creatures spawned and killed at once.
+  Making the items with the SDK's `createItem` on the ground crashed the game (2026-11-24, client
+  item packet, Spirit Mask suspected).
 
-## Not yet tried in the game (nothing here is)
+## Seen in the game (2026-11-24)
+Act II: the arena loads, the boss comes out with its affixes, its death is noticed and the win recorded.
+
+## Not yet tried in the game
 1. Does each arena load, and is the hero's, boss's and portal's spot open floor?
 2. Does the boss come out, tinted, with 3 affixes? The log says its life before and after.
 3. Attack and cast speed: the log says how many values were written. Which of the two rates casts
    follow isn't known; if casts follow the attack rate they get +50% too.
-4. Do the extra items land on the ground?
+4. Are the spoils killed at once (else they can be smashed), and do they drop their loot?
 5. Does the game load a save with added items, and does the page fill? Are the arrows right?
 6. Does the game write the hero's save before the Campfire reads it?
 7. Does the game allow 14 shared pages?

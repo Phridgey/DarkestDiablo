@@ -8,7 +8,7 @@
 - The exact life and speed bonuses are written by the plugin once the boss stands
   ("ascendhp" lines); movement and damage are in the copy.
 - Loot: a monster drops at most 6 items, so the boss drops 3 sets or uniques and 3 more of its
-  own; the plugin adds the rest ("ascenditem" lines).
+  own; the rest comes from the "spoils" (dd_ascendloot<act>_g/_j).
 
 Runs after the monster levels of the route (004) and before the superunique copies and class list.
 """
@@ -126,7 +126,7 @@ def patch(t):
         # A monster's life is a share (minHP, percent) of its level's life in monlvl.txt.
         level_life = int(t.table("monlvl").first("Level", source["Level"])["HP"])
         t.loot_lines.append(f"ascendhp {act} {round(level_life * num(source, 'minHP') / 100 * HP)}")
-        bonus_items(t, act)
+        spoils(t, loot, act, stats, models)
     if t.excel.name != "excel":
         return
     strings = t.data("local/lng/strings/monsters.json")
@@ -148,12 +148,32 @@ def boss_loot(t, loot, act, source):
     return name
 
 
-def bonus_items(t, act):
-    """Base items worth wearing at the act's end: the plugin drops them as rares."""
+def spoils(t, loot, act, stats, models):
+    """Two helpless creatures the plugin spawns and kills after the boss: one drops rare gear made for the
+    act's end, the other rare rings, amulets and jewels and magic charms. Items take the level of
+    what drops them, so their level gives affixes of the next act."""
     top = TARGET[act]
-    for table in ("weapons", "armor"):
-        for r in t.table(table).rows:
-            level = num(r, "level")
-            if r.get("spawnable") == "1" and r.get("quest", "") in ("", "0") and r.get("stackable", "") != "1" and level is not None \
-                    and top - 14 <= level <= top and len(r.get("code", "")) == 3:
-                t.loot_lines.append(f"ascenditem {act} {r['code']}")
+    gear = sorted({r["code"] for table in ("weapons", "armor") for r in t.table(table).rows
+                   if r.get("spawnable") == "1" and r.get("quest", "") in ("", "0") and r.get("stackable", "") != "1"
+                   and len(r.get("code", "")) == 3 and num(r, "level") is not None and top - 14 <= num(r, "level") <= top})
+    blank = {k: "" for k in loot.tcs.rows[0] if k != "__width__"}
+    rare = {"Rare": "1024", "Magic": "1024"}
+    for kind, picks, tree in (("g", 5, loot.code_tree(f"DD Ascend G{act}", gear, rare)),
+                              ("j", 6, loot.code_tree(f"DD Ascend J{act}", ["rin", "amu", "jew", "cm1", "cm2", "cm3"], rare))):
+        name = f"DD Ascend S{act}{kind}"
+        row = dict(blank)
+        row.update({"Treasure Class": name, "Picks": str(picks), "NoDrop": "0", "Item1": tree, "Prob1": "1", **rare})
+        loot.tcs.rows.append(row)
+        loot.by_name[name] = row
+        cls = len([r for r in stats.rows if r.get("*hcIdx", "").strip().isdigit()])
+        mid = f"dd_ascendloot{act}_{kind}"
+        m = stats.add_copy("Id", "fallen1", Id=mid, NextInClass="", minion1="", minion2="", AI="Idle", MinGrp="1", MaxGrp="1",
+                           Velocity="0", Run="0", Level=str(min(99, top + 18)), **{"*hcIdx": str(cls)})
+        for col in list(m):
+            if col.startswith("TreasureClass"):
+                m[col] = name
+            elif col.startswith(("minHP", "maxHP")):
+                m[col] = "1"
+            elif col.startswith("Exp"):
+                m[col] = "0"
+        models[mid] = models["fallen1"]
