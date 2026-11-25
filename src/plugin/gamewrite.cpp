@@ -155,6 +155,48 @@ auto Copies(const Game::Unit& unit) -> std::vector<uintptr_t> {
 	return out;
 }
 
+auto MissilesInMemory(const std::vector<int>& rows) -> std::vector<std::pair<int, int>> {
+	std::vector<std::pair<int, int>> counts;
+	for (const int row : rows) {
+		counts.emplace_back(row, 0);
+	}
+	constexpr SIZE_T Step = 4 * 1024 * 1024, Head = 0x40;
+	std::vector<unsigned char> buffer(Step + Head);
+	MEMORY_BASIC_INFORMATION info {};
+	for (uintptr_t at = 0x10000; at < 0x7FFFFFFF0000ULL;) {
+		if (VirtualQuery(reinterpret_cast<LPCVOID>(at), &info, sizeof(info)) == 0) {
+			break;
+		}
+		const uintptr_t start = reinterpret_cast<uintptr_t>(info.BaseAddress), end = start + info.RegionSize;
+		if (info.State == MEM_COMMIT && info.Type == MEM_PRIVATE && (info.Protect & PAGE_READWRITE) != 0 &&
+		    (info.Protect & (PAGE_GUARD | PAGE_NOCACHE | PAGE_WRITECOMBINE)) == 0) {
+			for (uintptr_t block = start; block < end; block += Step) {
+				const SIZE_T size = static_cast<SIZE_T>(std::min<uintptr_t>(Step + Head, end - block));
+				SIZE_T got = 0;
+				if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(block), buffer.data(), size, &got) || got < Head) {
+					continue;
+				}
+				for (SIZE_T i = 0; i + Head <= got && i < Step; i += 8) {
+					uint32_t head[4] {};  // kind, row, id, mode
+					std::memcpy(head, buffer.data() + i, sizeof(head));
+					uint64_t data = 0, path = 0;
+					std::memcpy(&data, buffer.data() + i + 0x10, 8);
+					std::memcpy(&path, buffer.data() + i + 0x38, 8);
+					if (head[0] != 3 || head[2] == 0 || head[3] > 4 || !LooksPointer(data) || !LooksPointer(path)) {
+						continue;
+					}
+					for (auto& [row, count] : counts) {
+						count += head[1] == static_cast<uint32_t>(row) ? 1 : 0;
+					}
+				}
+			}
+		}
+		at = end > at ? end : at + 0x1000;
+	}
+	std::erase_if(counts, [](const auto& c) { return c.second == 0; });
+	return counts;
+}
+
 auto SetStat(const std::vector<uintptr_t>& copies, uint16_t stat, int value, uint16_t param) -> int {
 	const bool fixedPoint = stat >= Game::StatId::Life && stat <= Game::StatId::MaxStamina;
 	const int32_t stored = fixedPoint ? value * 256 : value;
@@ -353,6 +395,68 @@ auto FindSkillKeys(std::vector<std::string>* nearMisses) -> std::vector<uintptr_
 		found.clear();
 	}
 	return found;
+}
+
+auto SkillKeysHeld(uintptr_t table) -> std::vector<int> {
+	std::vector<unsigned char> now(SkillKeyBytes);
+	std::vector<int> held;
+	if (GameState::ReadBytes(table, now.data(), SkillKeyBytes) && LooksSkillKeys(now.data())) {
+		for (std::size_t i = 0; i < SkillKeyCount; ++i) {
+			int32_t skill = -1;
+			std::memcpy(&skill, now.data() + i * SkillKeySize, 4);
+			held.push_back(skill);
+		}
+	}
+	return held;
+}
+
+auto MissileColumns(const Game::SkillTable& table, const std::vector<std::pair<int, int>>& known) -> std::vector<std::size_t> {
+	std::vector<std::size_t> columns;
+	if (table.rows == 0 || table.size < 16 || table.size > 8192 || known.size() < 4) {
+		return columns;
+	}
+	std::vector<std::vector<unsigned char>> rows;
+	for (const auto& [row, missile] : known) {
+		std::vector<unsigned char> bytes(table.size);
+		if (row < 0 || static_cast<uint32_t>(row) >= table.count || !GameState::ReadBytes(table.rows + static_cast<uintptr_t>(row) * table.size, bytes.data(), table.size)) {
+			return columns;
+		}
+		rows.push_back(std::move(bytes));
+	}
+	for (std::size_t at = 0; at + 2 <= table.size; at += 2) {
+		bool all = true;
+		for (std::size_t i = 0; all && i < known.size(); ++i) {
+			uint16_t value = 0;
+			std::memcpy(&value, rows[i].data() + at, 2);
+			all = value == static_cast<uint16_t>(known[i].second);
+		}
+		if (all) {
+			columns.push_back(at);
+		}
+	}
+	if (columns.size() != 2) {
+		columns.clear();
+	}
+	return columns;
+}
+
+auto SetMissile(const Game::SkillTable& table, int row, const std::vector<std::size_t>& columns, int missile, const std::vector<int>& ours) -> bool {
+	const auto mine = [&](int value) { return std::find(ours.begin(), ours.end(), value) != ours.end(); };
+	if (columns.size() != 2 || row < 0 || static_cast<uint32_t>(row) >= table.count || !mine(missile)) {
+		return false;
+	}
+	const uintptr_t at = table.rows + static_cast<uintptr_t>(row) * table.size;
+	for (const std::size_t column : columns) {
+		uint16_t now = 0;
+		if (!Get(at + column, now) || !mine(now)) {
+			return false;
+		}
+	}
+	bool done = true;
+	for (const std::size_t column : columns) {
+		done = Put<uint16_t>(at + column, static_cast<uint16_t>(missile)) && done;
+	}
+	return done;
 }
 
 auto HoldSkill(const std::vector<uintptr_t>& tables, int skill) -> std::vector<SkillKeyTable> {

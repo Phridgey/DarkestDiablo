@@ -208,11 +208,11 @@ static void ReadLootData(const D2RL::PluginContext* context) noexcept {
 					if (words >> id >> cls) {
 						g_monsterClasses[id] = cls;
 					}
-				} else if (kind == "throwskill") {  // 131a_throw_skills.py
-					std::string code;
-					int row = 0;
-					if (words >> code >> row && row > 0) {
-						PotionsGame::SetThrowSkill(code, row);
+				} else if (kind == "throwskill" || kind == "throwmissile" || kind == "throwref") {  // 131a_throw_skill.py
+					std::string name;
+					int number = 0;
+					if (words >> name >> number && number > 0) {
+						PotionsGame::SetThrowData(kind, name, number);
 					}
 				} else if (kind == "merctype") {
 					int number = -1;

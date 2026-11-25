@@ -661,8 +661,12 @@ static void SkillKeysAreReadFromTheKeyFile() {
 		file += std::string { static_cast<char>(action), 0, 0, 0, static_cast<char>(key & 0xFF), static_cast<char>(key >> 8), 1, 0, 0, 0 };
 	};
 	add(13, 0x54); add(14, 0x51); add(14, 0xFFFF); add(15, 0x101); add(16, 0x1045); add(21, 0x46); add(22, 0xC0);
-	CHECK(Potions::SkillKeys(file) == std::vector<int>({ 0x51, 0x46 }));
+	add(49, 0x3D); add(48, 0x39);
+	CHECK(Potions::SkillKeys(file) == (std::vector<std::pair<int, int>> { { 0, 0x51 }, { 7, 0x46 }, { 10, 0x39 } }));
 	CHECK(Potions::SkillKeys("").empty() && Potions::SkillKeys("ab\x0e").empty());
+	std::string ctl("\x01\0\0\0", 4);
+	ctl += std::string("\xad\x01\0\0", 4) + std::string(24, '\0') + std::string(28, '\xff') + "cut";
+	CHECK(Potions::SkillsOnKeys(ctl) == std::vector<int>({ 429, -1 }) && Potions::SkillsOnKeys("").empty());
 }
 
 static void PotionLoadoutSwapsAndGrades() {

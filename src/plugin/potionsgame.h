@@ -20,8 +20,9 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 // Server thread: a monster died.
 void OnMonsterDeath(const D2RL::Lifecycle::MonsterDeathEvent* event) noexcept;
 
-// The skills.txt row that throws this potion ("throwskill" in loot_data.txt).
-void SetThrowSkill(const std::string& code, int row);
+// Throwing, from loot_data.txt (131a_throw_skill.py): "throwskill" the skill's row; "throwmissile" a
+// potion's missile ("none": what the skill sends off otherwise); "throwref" another skill's row and missile.
+void SetThrowData(const std::string& kind, const std::string& name, int number);
 
 // A stop was cleared and counted.
 void OnStopCleared(const D2RL::PluginContext* context, const char* stop) noexcept;

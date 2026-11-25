@@ -71,6 +71,10 @@ inline constexpr Node Nodes[] = {
 	{ "potthaw",   "potmana",  1, 5.0f, 2, "Warm Blood",    "Using a mana potion also uses the hero's Thawing Potion at 50% effect, for no charge." },
 	{ "potkill",   "potthaw",  1, 5.0f, 3, "Harvest",       "Kills give potions 25% more charges." },
 	{ "potregen2", "potkill",  1, 5.0f, 4, "Rolling Boil",  "Potions refill three times as fast by themselves (0.6% a second)." },
+	{ "potfire",   "",         2, 3.5f, 5, "Fire Pots",     "Every hero gets the Fulminating Potion for a potion slot: thrown toward the cursor." },
+	{ "potgas",    "potfire",  2, 4.5f, 6, "Gas Pots",      "Every hero gets the Strangling Gas Potion for a potion slot: thrown toward the cursor." },
+	{ "potstrong", "potfire",  2, 3.5f, 6, "Strong Pots",   "Throwing potions become Exploding (level 12) and Choking Gas (level 16) Potions." },
+	{ "potmaster", "potstrong", 2, 3.5f, 7, "Master Pots",  "Throwing potions become Oil (level 20) and Rancid Gas (level 24) Potions." },
 };
 
 inline auto FindNode(const std::string& id) -> const Node* {

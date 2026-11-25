@@ -38,9 +38,8 @@ inline auto KindFromId(const std::string& id) -> int {
 inline constexpr auto Support(int kind) -> bool { return kind == Antidote || kind == Thawing || kind == Stamina; }
 inline constexpr auto Thrown(int kind) -> bool { return kind == Fire || kind == Gas; }
 
-// Throwing potions are off until a throw works in the game (docs/potions.md): no hero has them, and the
-// caravan's nodes for them are out of the tree (stash.h). The skills are in shelved/throwing.
-inline constexpr bool ThrowingOn = false;
+// Switch for throwing potions (docs/potions.md). Off, no hero has them, whatever the caravan's tree says.
+inline constexpr bool ThrowingOn = true;
 
 // ---- Numbers --------------------------------------------------------------------------------
 inline constexpr int    SlotCount       = 4;
@@ -386,18 +385,35 @@ inline auto Tooltip(int kind, const State& s, const Owner& o) -> std::string {
 }
 
 // The hero's key file (<hero>.key): after 2 bytes, records of 10: the action, its key, 4 bytes (1 in the
-// first: the main key). The game's skill keys 1-8 are actions 14 to 21. Returns the keyboard keys of those
-// (Windows key codes), without mouse buttons, unset ones and ones that need a modifier.
-inline auto SkillKeys(const std::string& file) -> std::vector<int> {
-	std::vector<int> keys;
+// first: the main key). The game's skill keys 1-8 are actions 14 to 21, 9-16 most
+// likely 46 to 53 (so those count only with a letter or digit key). Returns the
+// keyboard keys of those (Windows key codes) by skill key number (0 to 15), without mouse buttons, unset
+// ones and ones that need a modifier.
+inline auto SkillKeys(const std::string& file) -> std::vector<std::pair<int, int>> {
+	std::vector<std::pair<int, int>> keys;
 	for (size_t at = 2; at + 10 <= file.size(); at += 10) {
 		const auto byte = [&](size_t i) { return static_cast<unsigned>(static_cast<unsigned char>(file[at + i])); };
 		const unsigned action = byte(0) | byte(1) << 8 | byte(2) << 16 | byte(3) << 24, key = byte(4) | byte(5) << 8;
-		if (action >= 14 && action <= 21 && key >= 8 && key < 0xFF) {
-			keys.push_back(static_cast<int>(key));
+		const int number = action >= 14 && action <= 21 ? static_cast<int>(action) - 14 : action >= 46 && action <= 53 ? static_cast<int>(action) - 38 : -1;
+		const bool plain = (key >= 0x30 && key <= 0x39) || (key >= 0x41 && key <= 0x5A);
+		if (number >= 0 && key >= 8 && key < 0xFF && (number < 8 || plain)) {
+			keys.emplace_back(number, static_cast<int>(key));
 		}
 	}
 	return keys;
+}
+
+// What each skill key of a <hero>.ctl file holds (skills.txt row, -1 none): after 4 bytes, 32 records of 28.
+inline auto SkillsOnKeys(const std::string& file) -> std::vector<int> {
+	std::vector<int> held;
+	for (size_t at = 4; at + 28 <= file.size() && held.size() < 32; at += 28) {
+		unsigned value = 0;
+		for (size_t i = 0; i < 4; ++i) {
+			value |= static_cast<unsigned>(static_cast<unsigned char>(file[at + i])) << (8 * i);
+		}
+		held.push_back(static_cast<int>(value));
+	}
+	return held;
 }
 
 // ---- The file ---------------------------------------------------------------------------------

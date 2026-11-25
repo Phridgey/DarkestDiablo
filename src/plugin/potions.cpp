@@ -333,12 +333,14 @@ auto HeroCopies(const D2RL::PluginContext* context) -> std::vector<uintptr_t> {
 }
 
 // ---- Throwing -----------------------------------------------------------------------------------
-// The hero casts a skill of ours at the cursor: for a moment every skill key holds it, one of them is
-// pressed for the player (Quick Cast), and the keys hold what they held again. Only a cast that is
-// seen takes a charge. If that doesn't work, the skill goes on the right mouse button for a moment and
-// that is pressed. Every step is written to the game folder's d2rloader/logs/potion-throws.log, which
-// builds and restarts leave alone.
-std::map<std::string, int> g_throwSkills;       // filled while the plugin loads
+// Every hero has the skill Throw Potion (131a_throw_skill.py), which throws nothing by itself. A slot's
+// press puts the potion's missile in it and casts it at the cursor: with the skill key that holds it, or
+// the right button, or any skill key, which holds it for a moment. Only a cast that is seen takes a charge.
+// Every step is in the game folder's d2rloader/logs/potion-throws.log, which builds and restarts leave alone.
+// Filled while the plugin loads, from loot_data.txt.
+int                              g_throwSkill = 0;
+std::map<std::string, int>       g_throwMissiles;  // by potion; "none": what flies otherwise
+std::vector<std::pair<int, int>> g_throwRefs;      // skills and their missiles
 std::atomic<bool>          g_throwing { false };
 std::atomic<int>           g_bag { 0 };         // the inventory is open: a right click there would use an item
 constexpr uint32_t         CastMode = 10;
@@ -423,44 +425,195 @@ void PressKey(int key, bool down) noexcept {
 std::vector<uintptr_t> g_keyTables;  // one throw at a time uses these
 Clock::time_point      g_keyScan {};
 
-// A skill key of the hero's that isn't held down (from <hero>.key, then Custom.key); 0: none.
-auto SkillKey() -> int {
+// The skill keys on the keyboard (from <hero>.key, then Custom.key): number 0-15 and key; and the folder.
+auto SavesFolder() -> fs::path {
 	const fs::path progress = Campfire::RouteProgressFile();  // <saves>/camp/slot<N>/progress/<hero>.txt
-	if (progress.empty()) {
-		return 0;
-	}
-	const fs::path saves = progress.parent_path().parent_path().parent_path().parent_path();
-	for (const fs::path& file : { saves / (progress.stem().string() + ".key"), saves / "Custom.key" }) {
-		std::error_code ec;
-		const auto keys = fs::exists(file, ec) ? Potions::SkillKeys(Camp::ReadFile(file)) : std::vector<int> {};
-		for (auto key = keys.rbegin(); key != keys.rend(); ++key) {
-			if ((GetAsyncKeyState(*key) & 0x8000) == 0) {
-				return *key;
-			}
-		}
-	}
-	return 0;
+	return progress.empty() ? fs::path {} : progress.parent_path().parent_path().parent_path().parent_path();
 }
 
-// Whatever happens, the key comes up, the skill keys hold what they held, and the player's right skill
-// is theirs again (with Quick Cast off a skill key selects instead of casting).
+auto KeyboardSkillKeys() -> std::vector<std::pair<int, int>> {
+	const fs::path saves = SavesFolder();
+	if (saves.empty()) {
+		return {};
+	}
+	for (const fs::path& file : { saves / (Campfire::RouteProgressFile().stem().string() + ".key"), saves / "Custom.key" }) {
+		std::error_code ec;
+		auto keys = fs::exists(file, ec) ? Potions::SkillKeys(Camp::ReadFile(file)) : std::vector<std::pair<int, int>> {};
+		if (!keys.empty()) {
+			return keys;
+		}
+	}
+	return {};
+}
+
+auto IsDown(int key) noexcept -> bool { return (GetAsyncKeyState(key) & 0x8000) != 0; }
+
+// What our skill sends off (gamewrite.h, SetMissile). The tables are the game's, for one game.
+struct ThrowTable { Game::SkillTable table; std::vector<std::size_t> columns; };
+std::mutex              g_tablesMutex;
+std::vector<ThrowTable> g_throwTables;
+std::string             g_tablesSeen;
+
+// Game thread, when the hero is ready.
+void __cdecl FindThrowTables(const D2RL::PluginContext* context, void*) noexcept {
+	try {
+		const std::lock_guard<std::mutex> guard(g_tablesMutex);
+		g_throwTables.clear();
+		g_tablesSeen.clear();
+		std::vector<Game::SkillTable> tables;
+		const D2RL::DataTableService* service = nullptr;
+		if (context->QueryService(&service) == D2RL::ServiceQueryResult::Success && D2RL::HasDataTableServiceField(service, D2RL::DataTableServiceRequiredSize)) {
+			for (const auto bank : { D2RL::DataTables::Bank::Classic, D2RL::DataTables::Bank::Lod, D2RL::DataTables::Bank::Rotw }) {
+				D2RL::DataTables::TableView view { .structSize = D2RL::DataTables::TableViewSize, .bank = bank };
+				const auto result = service->getTable(context, bank, D2RL::DataTables::TableId::Skills, &view);
+				const Game::SkillTable table { reinterpret_cast<uintptr_t>(view.rows), view.rowCount, view.rowSize };
+				std::size_t columns = 0;
+				if (result == D2RL::DataTables::Result::Success && table.rows != 0 &&
+					std::none_of(tables.begin(), tables.end(), [&](const Game::SkillTable& t) { return t.rows == table.rows; })) {
+					tables.push_back(table);
+					const auto at = GameWrite::MissileColumns(table, g_throwRefs);
+					columns = at.size();
+					if (columns == 2 && g_throwSkill > 0 && static_cast<uint32_t>(g_throwSkill) < table.count) {
+						g_throwTables.push_back({ table, at });
+					}
+				}
+				g_tablesSeen += " [bank " + std::to_string(static_cast<int>(bank)) + ": " + std::to_string(static_cast<int>(result)) + ", " + std::to_string(view.rowCount) +
+					" rows of " + std::to_string(view.rowSize) + ", " + std::to_string(columns) + " missile columns]";
+			}
+		} else {
+			g_tablesSeen = " no table service";
+		}
+		Game::SetSkillTables(tables);
+		Log(context, "Potions: throw tables:%s", g_tablesSeen.c_str());
+	} catch (...) {
+	}
+}
+
+// Puts a potion's missile in our skill ("none": nothing is thrown). True when a table took it.
+auto LoadMissile(const std::string& code) -> bool {
+	const std::lock_guard<std::mutex> guard(g_tablesMutex);
+	const auto missile = g_throwMissiles.find(code);
+	std::vector<int> ours;
+	for (const auto& [name, id] : g_throwMissiles) {
+		ours.push_back(id);
+	}
+	int done = 0;
+	for (const auto& t : missile == g_throwMissiles.end() ? std::vector<ThrowTable> {} : g_throwTables) {
+		done += GameWrite::SetMissile(t.table, g_throwSkill, t.columns, missile->second, ours) ? 1 : 0;
+	}
+	return done > 0;
+}
+
+std::atomic<int> g_throwCount { 0 };
+
+// Whatever happens, the key comes up, the skill keys hold what they held, the player's right skill is
+// theirs again, and our skill throws nothing until the next press.
 struct ThrowInHand {
 	std::vector<GameWrite::SkillKeyTable> tables {};
 	std::vector<GameWrite::RightSkill>    right {};
 	int skill = 0;
 	int key = 0;  // pressed: a key, or -1 the right button
+	void LetGo() {
+		if (key != 0) {
+			key > 0 ? PressKey(key, false) : PressRight(false);
+			key = 0;
+			std::this_thread::sleep_for(std::chrono::milliseconds(120));  // the game has taken the cast
+		}
+		GameWrite::GiveBack(tables, skill);
+		tables.clear();
+		GameWrite::RestoreRight(right);
+		right.clear();
+	}
+	// The potion leaves the hand some way into the cast, and unselecting the skill before that can call the
+	// cast off: the button comes up at once, everything else is put back when the cast is over.
 	~ThrowInHand() {
 		try {
 			if (key != 0) {
 				key > 0 ? PressKey(key, false) : PressRight(false);
-				std::this_thread::sleep_for(std::chrono::milliseconds(120));  // the game has taken the cast
+				key = 0;
 			}
-			GameWrite::GiveBack(tables, skill);
-			GameWrite::RestoreRight(right);
+			for (int i = 0; i < 70 && Game::Hero().mode == CastMode; ++i) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(80));
+			LetGo();
+			// The potion stays in the skill a while longer, unless another throw has begun since.
+			const int mine = ++g_throwCount;
+			std::thread([mine] {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+				if (mine == g_throwCount.load() && g_inGame.load()) {
+					LoadMissile("none");
+				}
+			}).detach();
 		} catch (...) {
 		}
 	}
 };
+
+// What a throw did, for the log: the missiles in the air after it, and the monsters whose life fell.
+auto MonsterLives() -> std::map<uint32_t, int> {
+	std::map<uint32_t, int> lives;
+	for (const Game::Unit& u : GameState::Units(Game::Kind::Monster)) {
+		lives[u.id] = GameState::Life(u);
+	}
+	return lives;
+}
+
+auto HeldMissiles() -> std::string {
+	const std::lock_guard<std::mutex> guard(g_tablesMutex);
+	std::string text;
+	for (const auto& t : g_throwTables) {
+		for (const std::size_t column : t.columns) {
+			uint16_t value = 0;
+			(void)GameState::ReadBytes(t.table.rows + static_cast<uintptr_t>(g_throwSkill) * t.table.size + column, &value, 2);
+			text += " " + std::to_string(value) + "@" + std::to_string(column);
+		}
+	}
+	return text;
+}
+
+auto MissileRows() -> std::vector<int> {
+	std::vector<int> rows;
+	for (const auto& [name, id] : g_throwMissiles) {
+		rows.push_back(id);
+	}
+	return rows;
+}
+
+void WatchThrow(const D2RL::PluginContext* context, std::string code, int skill, std::map<uint32_t, int> before) noexcept {
+	try {
+		std::map<uint32_t, int> missiles;  // missiles.txt row: samples it was seen in
+		for (int i = 0; i < 80 && g_inGame.load(); ++i) {  // 2 s
+			for (const Game::Unit& u : GameState::Units(Game::Kind::Missile)) {
+				++missiles[u.row];
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(25));
+		}
+		std::string seen, hurt;
+		for (const auto& [row, samples] : missiles) {
+			seen += " " + std::to_string(row) + "x" + std::to_string(samples);
+		}
+		std::string memory;
+		for (const auto& [row, count] : GameWrite::MissilesInMemory(MissileRows())) {
+			memory += " " + std::to_string(row) + "x" + std::to_string(count);
+		}
+		const auto after = MonsterLives();
+		for (const auto& [id, life] : before) {
+			const auto now = after.find(id);
+			if (now == after.end() || now->second < life) {
+				hurt += " #" + std::to_string(id) + " " + std::to_string(life) + ">" + (now == after.end() ? "gone" : std::to_string(now->second));
+			}
+		}
+		int level = -2;
+		for (const auto& s : Game::HeroSkills().skills) {
+			level = s.id == skill ? s.baseLevel : level;
+		}
+		Note(context, "%s after the cast: missiles seen (row x times)%s; %d monsters, life fell:%s; skill points %d; our missiles anywhere in memory:%s; the skill holds%s", code.c_str(),
+			seen.empty() ? " none" : seen.c_str(), static_cast<int>(before.size()), hurt.empty() ? " none" : hurt.substr(0, 300).c_str(), level,
+			memory.empty() ? " none" : memory.c_str(), HeldMissiles().c_str());
+	} catch (...) {
+	}
+}
 
 auto HaveSkill(const std::vector<uintptr_t>& copies, int skill) -> bool {
 	return copies.size() >= 2 && std::all_of(copies.begin(), copies.end(), [&](uintptr_t copy) {
@@ -488,7 +641,7 @@ auto WaitForCast(uint32_t before, std::string& modes) -> bool {
 	bool wasOther = before != CastMode;  // an earlier cast still going on is not ours
 	uint32_t last = before;
 	modes = std::to_string(before);
-	for (int i = 0; i < 60; ++i) {
+	for (int i = 0; i < 40; ++i) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		const uint32_t mode = Game::Hero().mode;
 		if (mode != last) {
@@ -503,42 +656,55 @@ auto WaitForCast(uint32_t before, std::string& modes) -> bool {
 	return false;
 }
 
-// Returns true when a potion left the hand. `test`: only says how each step stands, presses nothing.
+std::atomic<bool> g_dumped { false };  // the skill list's surroundings are in the log (once a run)
+
+// Returns true when a potion left the hand.
 auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code, bool test = false) -> bool {
+	const auto lives = test ? MonsterLives() : std::map<uint32_t, int> {};
+	const auto watch = [&] {  // searches all memory, so only for a test
+		if (test) {
+			std::thread(WatchThrow, context, code, g_throwSkill, lives).detach();
+		}
+	};
 	const auto fail = [&](const std::string& why) {
 		ToUi(context, "Throw: " + why, false);
 		return false;
 	};
+	const int skill = g_throwSkill;
 	const int area = Game::World().area;
-	const bool town = area == 1 || area == 40 || area == 75 || area == 103 || area == 109;
-	if (!test && town) {
+	if (area == 1 || area == 40 || area == 75 || area == 103 || area == 109) {
 		return fail("not in town.");
 	}
-	if (!test && (g_bag.load() != 0 || !CursorOverWorld())) {
+	if (g_bag.load() != 0 || !CursorOverWorld()) {
 		return fail(Note(context, "bag %d, cursor over the world %d; nothing done", g_bag.load(), CursorOverWorld() ? 1 : 0));
 	}
-	const auto found = g_throwSkills.find(code);
-	const int skill = found == g_throwSkills.end() ? 0 : found->second;
 	const auto copies = HeroCopies(context);
-	if (skill <= 0 || copies.size() < 2) {
-		return fail(Note(context, "%s: skill %d, %d copies of the hero; nothing done", code.c_str(), skill, static_cast<int>(copies.size())));
-	}
-	for (const char* command : { "cheat skadd ddthrow", "cheat sklvl ddthrow" }) {
-		if (HaveSkill(copies, skill)) {
-			break;
+	const std::string hero = SkillReport(copies, skill);
+	if (hero.find("no list") != std::string::npos && !g_dumped.exchange(true)) {
+		for (const auto& line : Game::SkillSearchDump(Game::Hero().address)) {
+			Note(context, "search %s", line.substr(0, 640).c_str());
 		}
-		ToUi(context, command + code + ",1", true);
-		for (int i = 0; i < 40 && !HaveSkill(copies, skill); ++i) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+	if (hero.find("lacks it") != std::string::npos) {
+		return fail(Note(context, "the hero does not have skill %d (Throw Potion):%s", skill, hero.c_str()));
+	}
+	ThrowInHand hand;  // from here on everything is put back
+	hand.skill = skill;
+	++g_throwCount;
+	if (!LoadMissile(code)) {
+		return fail(Note(context, "%s could not be put in skill %d; tables:%s", code.c_str(), skill, g_tablesSeen.c_str()));
+	}
+	const auto keys = KeyboardSkillKeys();
+	// Where the skill keys are in memory, and what they hold.
+	std::vector<int> onKeys;
+	const auto look = [&] {
+		for (const uintptr_t at : g_keyTables) {
+			const auto held = GameWrite::SkillKeysHeld(at);
+			onKeys = onKeys.empty() ? held : onKeys;
 		}
-		Note(context, "%s%s,1 ->%s", command, code.c_str(), SkillReport(copies, skill).c_str());
-	}
-	if (!HaveSkill(copies, skill)) {
-		return fail(Note(context, "%s: the hero did not get skill %d:%s", code.c_str(), skill, SkillReport(copies, skill).c_str()));
-	}
-	const int key = SkillKey();
-	auto held = GameWrite::HoldSkill(g_keyTables, skill);
-	if (held.empty() && Clock::now() - g_keyScan >= std::chrono::milliseconds(RescanMs)) {
+	};
+	look();
+	if (onKeys.empty() && Clock::now() - g_keyScan >= std::chrono::milliseconds(RescanMs)) {
 		std::vector<std::string> misses;
 		g_keyTables = GameWrite::FindSkillKeys(&misses);
 		g_keyScan = Clock::now();
@@ -546,18 +712,58 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code, 
 		for (const auto& miss : misses) {
 			Note(context, "near miss %s", miss.c_str());
 		}
-		held = GameWrite::HoldSkill(g_keyTables, skill);
+		look();
 	}
-	if (test) {
-		GameWrite::GiveBack(held, skill);
-		return fail(Note(context, "test %s: skill %d, hero copies:%s, skill key 0x%02x, %d table(s), area %d, bag %d, cursor over the world %d, mode %u", code.c_str(), skill,
-			SkillReport(copies, skill).c_str(), key, static_cast<int>(held.size()), area, g_bag.load(), CursorOverWorld() ? 1 : 0, Game::Hero().mode));
+	const bool inMemory = !onKeys.empty();
+	if (!inMemory && !SavesFolder().empty()) {
+		onKeys = Potions::SkillsOnKeys(Camp::ReadFile(SavesFolder() / (Campfire::RouteProgressFile().stem().string() + ".ctl")));
 	}
 	std::string modes;
-	if (key != 0 && !held.empty()) {
-		ThrowInHand hand;
-		hand.skill = skill;
-		hand.tables = held;
+	const auto press = [&](int key, const char* how) {
+		const uint32_t before = Game::Hero().mode;
+		const bool already = IsDown(key);  // the potion slot's own key is the skill key too: the game casts by itself
+		if (!already) {
+			hand.key = key;
+			PressKey(key, true);
+		}
+		const bool cast = WaitForCast(before, modes);
+		Note(context, "%s by key 0x%02x (%s%s): modes %s, hero%s: %s", code.c_str(), key, how, already ? ", already down" : "", modes.c_str(),
+			SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
+		if (cast) {
+			watch();
+		}
+		return cast;
+	};
+	// The player has Throw Potion on a skill key: that one.
+	for (const auto& [number, key] : keys) {
+		if (static_cast<std::size_t>(number) < onKeys.size() && onKeys[static_cast<std::size_t>(number)] == skill) {
+			if (press(key, inMemory ? "the player's" : "the player's, from the file")) {
+				return true;
+			}
+			hand.LetGo();
+			break;
+		}
+	}
+	// Otherwise the right button, when the hero's skill list is known and the player isn't holding it.
+	if (HaveSkill(copies, skill) && g_bag.load() == 0 && CursorOverWorld() && !IsDown(VK_RBUTTON)) {
+		hand.right = GameWrite::SelectRight(copies, skill);
+		if (!hand.right.empty()) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(30));
+			const uint32_t before = Game::Hero().mode;
+			hand.key = -1;
+			PressRight(true);
+			const bool cast = WaitForCast(before, modes);
+			Note(context, "%s by the right button: modes %s, hero%s: %s", code.c_str(), modes.c_str(), SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
+			if (cast) {
+				watch();
+				return true;
+			}
+			hand.LetGo();
+		}
+	}
+	// Last, any of the first eight skill keys, which holds it for a moment.
+	const auto free = std::find_if(keys.rbegin(), keys.rend(), [](const auto& k) { return k.first < 8 && !IsDown(k.second); });
+	if (inMemory && free != keys.rend()) {
 		for (const uintptr_t copy : copies) {
 			const auto places = Game::SkillsOf(copy);
 			for (const auto& [id, node] : places ? places->skills : std::vector<std::pair<int, uintptr_t>> {}) {
@@ -566,40 +772,23 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code, 
 				}
 			}
 		}
-		const uint32_t before = Game::Hero().mode;
-		hand.key = key;
-		PressKey(key, true);
-		const bool cast = WaitForCast(before, modes);
-		Note(context, "%s by key 0x%02x: modes %s, copies%s: %s", code.c_str(), key, modes.c_str(), SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
-		if (cast) {
+		hand.tables = GameWrite::HoldSkill(g_keyTables, skill);
+		if (!hand.tables.empty() && press(free->second, "held for a moment")) {
 			return true;
 		}
+		hand.LetGo();
 	}
-	if (key == 0) {
-		GameWrite::GiveBack(held, skill);  // found, but no key to press
-	}
-	// The right button, unless the player is holding it.
-	if (g_bag.load() != 0 || !CursorOverWorld() || (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0) {
-		return fail("the skill key did nothing, and the right button can't be used now.");
-	}
-	ThrowInHand hand;
-	hand.skill = skill;
-	hand.right = GameWrite::SelectRight(copies, skill);
-	if (hand.right.empty()) {
-		return fail(Note(context, "%s: skill %d could not be put on the right button:%s", code.c_str(), skill, SkillReport(copies, skill).c_str()));
-	}
-	std::this_thread::sleep_for(std::chrono::milliseconds(30));
-	const uint32_t before = Game::Hero().mode;
-	hand.key = -1;
-	PressRight(true);
-	const bool cast = WaitForCast(before, modes);
-	Note(context, "%s by the right button: modes %s, copies%s: %s", code.c_str(), modes.c_str(), SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
-	return cast || fail("neither a skill key nor the right button threw it. No charge taken.");
+	Note(context, "%s not thrown: %d keyboard skill keys, keys in memory %d, hero%s, tables:%s", code.c_str(), static_cast<int>(keys.size()), inMemory ? 1 : 0, hero.c_str(), g_tablesSeen.c_str());
+	return fail("nothing was thrown, no charge taken. Put the skill Throw Potion on a skill key once and try again.");
 }
 
+// "dd-potions throwtest": a throw for no charge, in time to close the console and point at the ground.
 void ThrowTest(const D2RL::PluginContext* context, std::string code) noexcept {
 	try {
-		ThrowAtCursor(context, code, true);
+		std::this_thread::sleep_for(std::chrono::seconds(4));
+		if (g_inGame.load()) {
+			ThrowAtCursor(context, code, true);
+		}
 	} catch (...) {
 	}
 	g_throwing = false;
@@ -1040,9 +1229,17 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 			g_bag = 0;
 			LoadHero(context);
 			g_inGame = !g_file.empty();
+			if (Potions::ThrowingOn) {
+				g_threads->runOnGameThread(context, FindThrowTables, nullptr);
+			}
 			QueueHud(context);
 		} else if (event->kind == Kind::GameLeft) {
 			g_inGame = false;
+			{
+				const std::lock_guard<std::mutex> guard(g_tablesMutex);  // the tables go with the game
+				g_throwTables.clear();
+			}
+			Game::SetSkillTables({});
 			{
 				const Lock lock(g_mutex);
 				Save(context);
@@ -1082,8 +1279,14 @@ void OnMonsterDeath(const D2RL::Lifecycle::MonsterDeathEvent* event) noexcept {
 	}
 }
 
-void SetThrowSkill(const std::string& code, int row) {
-	g_throwSkills[code] = row;
+void SetThrowData(const std::string& kind, const std::string& name, int number) {
+	if (kind == "throwskill") {
+		g_throwSkill = number;
+	} else if (kind == "throwmissile") {
+		g_throwMissiles[name] = number;
+	} else {
+		g_throwRefs.emplace_back(std::atoi(name.c_str()), number);
+	}
 }
 
 void OnStopCleared(const D2RL::PluginContext* context, const char* stop) noexcept {

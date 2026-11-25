@@ -59,6 +59,19 @@ auto FindSkillKeys(std::vector<std::string>* nearMisses = nullptr) -> std::vecto
 auto HoldSkill(const std::vector<uintptr_t>& tables, int skill) -> std::vector<SkillKeyTable>;
 void GiveBack(const std::vector<SkillKeyTable>& tables, int skill);
 
+// The same without the hold: what each of the 32 keys holds (skills.txt row, -1 none); empty: not a table.
+auto SkillKeysHeld(uintptr_t table) -> std::vector<int>;
+
+// Which missile our own throw skill sends off (agreed 2026-11-25): two columns of ONE row of the compiled
+// skills table, our skill's. MissileColumns finds them by skills whose missile is known (exactly two
+// columns may fit); SetMissile writes only where one of `ours` (our own missiles) stands now.
+auto MissileColumns(const Game::SkillTable& table, const std::vector<std::pair<int, int>>& known) -> std::vector<std::size_t>;
+auto SetMissile(const Game::SkillTable& table, int row, const std::vector<std::size_t>& columns, int missile, const std::vector<int>& ours) -> bool;
+
+// Research: missile units of these missiles.txt rows anywhere in memory, live or just gone, the client's
+// own too (the unit lists hold only some). Slow (1-2 s).
+auto MissilesInMemory(const std::vector<int>& rows) -> std::vector<std::pair<int, int>>;
+
 // One line per copy for the log: where it is, its stat list, life (to tell the copies apart).
 auto CopiesReport(const Game::Unit& unit, const std::vector<uintptr_t>& copies) -> std::string;
 

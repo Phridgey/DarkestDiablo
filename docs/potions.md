@@ -13,7 +13,7 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 | Thawing | 20 | an Act III stop | ends cold and freezing, and keeps them off for 30 s |
 | Rejuvenation | 75% of the healing potion's | an Act IV stop | 35% life and mana at once |
 | Full Rejuvenation | 50% | an Act V stop, 5% of heroes | 100% life and mana at once |
-| Fire pots, gas pots | 30 | off for now (see Throwing) | thrown from the slot toward the cursor |
+| Fire pots, gas pots | 30 | "Fire Pots", "Gas Pots" in the caravan tree | thrown from the slot toward the cursor |
 
 - A use takes 10 charges. Healing can't be used with full life, mana with full mana, Rejuvenation with
   both full.
@@ -35,26 +35,25 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
   are drawn over the belt's place in three spare panels, and the plugin works their effects by
   changing life, mana and stamina (`gamewrite.h`). Antidote and Thawing don't give the resistance the
   game's own do: a stat the hero doesn't have can't be added.
-- **Throwing is off** (0.26.0, `ThrowingOn` in potions.h; its nodes are out of the caravan tree and its skills
-  in `shelved/throwing`). In 0.24.2 the hero's skill list was not found in either copy ("no list"), so no
-  throw got as far as a key: the list's place in memory has to be found first. The game also wrote a crash
-  report (access violation, 01:05) within a minute of a throw attempt; cause not known. The rest of this
-  point and the next say how it is meant to work.
-- **Throwing.** The hero gets a skill per throwing potion (`131a_throw_skills.py`), which only the plugin
-  can use. For a moment every skill key holds it, the plugin presses one of them (from the hero's
-  `.key` file), and the keys hold what they held again. It needs the game's **Quick Cast** option and at
-  least one skill key on the keyboard. The potion flies from the hero toward the cursor and bursts on the
-  first thing it hits (or at the end of its reach, not on the spot under the cursor); kills give
-  experience. A charge is taken only when the cast is seen. Not in town, not with the bag open, not with
-  the cursor over the HUD (so by key, not by clicking the slot).
-- If that casts nothing, the skill goes on the right button for a moment and that is pressed. A throw that
-  isn't seen takes no charge and says why in the console. Every step is in the game folder's
-  `d2rloader/logs/potion-throws.log`, which builds and restarts leave alone; `dd-potions throwtest` writes
-  how each step stands without throwing. Tried 2026-11-25 (0.22.4): nothing thrown, yet charges taken,
-  most likely by the invisible helper that was the fallback then (removed). The skills were on neither
-  mouse button then; now they are right-button skills, so once a hero has one it can also be picked in
-  the skill list and used without charges, until that is closed. `dd-potions bag` (until the game closes)
-  puts 5 throwing potions in the bag instead.
+- **Throwing** (seen in 0.27.3: it flies to the cursor and hurts monsters). Every hero has the skill Throw Potion from the start, like
+  Throw or Unsummon (`131a_throw_skill.py`, `charstats.txt`), so nothing has to be granted or equipped and
+  nothing can run out: the slot's charges are the only limit. By itself the skill sends off an invisible
+  missile that does nothing, so using it outside a slot throws nothing. A press of the slot's key puts the
+  potion's missile in the skill's row of the compiled table (`GameWrite::SetMissile`), casts the skill at
+  the cursor and puts the empty missile back.
+- The cast is tried in this order: the skill key the player put Throw Potion on (if that is the slot's own
+  key the game casts it by itself); the right button, which holds the skill until the cast is over; any of
+  skill keys 1-8 that has a keyboard key, the same way. It needs the game's **Quick Cast**. A charge is taken only
+  when the cast is seen. Not in town, not with the bag open, not with the cursor over the HUD.
+- The potion arcs to the spot under the cursor and bursts there ("lob", 0.27.3; without it, it flew straight on
+  past the cursor).
+- Every step is in the game folder's `d2rloader/logs/potion-throws.log`, which builds and restarts leave
+  alone. `dd-potions throwtest [fire|gas]` throws one for no charge 4 seconds later (any hero, no tree
+  node needed) and logs the missiles it made and the monsters whose life fell. `dd-potions bag` (until the game closes) puts 5 throwing potions in the bag instead.
+- Before: 0.22.4 took charges and threw nothing; 0.24.2 gave the skill with a guessed console command and
+  did not find the skill list ("no list"), and a crash report (01:05) fell within a minute of a throw,
+  cause not known. The list is now recognised by its pointers into the compiled skills table; if it still
+  isn't found, the log gets what lies around it.
 - **The game's belt is off the screen**, not gone, and its size is unchanged, so saved heroes load.
   Potions an older hero left in it can't be clicked.
 - Keys: "Use potion 1-4" under Darkest Diablo in the Controls menu, 1-4 by default.
@@ -67,8 +66,8 @@ game: `src/plugin/potions.cpp`; tables and HUD: `src/patches/131_potions.py`. De
 3. Do healing and mana really fill, at the right pace? Log: "the hero has N copies in memory" (2 or more).
 4. Do Antidote and Thawing end poison, cold and freezing?
 5. Seen: the belt line shows the right number.
-6. Throwing: does it fly to the cursor, and does the old right skill come back, and the skill keys? Log:
-   "thrown at the cursor with key ...: cast seen", or why not.
+6. Seen: fire potions are thrown from the slot. Not yet: the gas potions and the stronger grades; does the
+   old right skill come back?
 7. Does the route map show the affixes, and change after they are won?
 
 Console: `dd-potions` (what the hero has); for tests `dd-potions fill`, `give <antidote|thawing|stamina>`,
