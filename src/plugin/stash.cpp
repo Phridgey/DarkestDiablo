@@ -11,6 +11,7 @@
 
 #include "stash.h"
 #include "stashgame.h"
+#include "journal.h"
 #include "campfire.h"
 #include "gameapi.h"
 #include <D2RLPlugin/core_exports.h>
@@ -58,6 +59,8 @@ std::atomic<uintptr_t> g_visit { 0 };       // counts stash openings, so an old 
 std::atomic<int>       g_page { 1 };        // the shared page we believe is showing (from 1)
 std::atomic<bool>      g_autoTab { false }; // dd-stash autotab: try to open the stash on the shared pages
 std::atomic<bool>      g_treeWanted { false }, g_tabWanted { false };
+std::atomic<bool>      g_journalWanted { true };  // not minimized; stays as it is between visits
+std::atomic<int>       g_journalRune { 0 }, g_journalPage { 0 };
 std::atomic<bool>      g_refresh { false };
 std::atomic<bool>      g_paying { false };
 
@@ -139,8 +142,10 @@ struct Row {
 	int         current = -1;
 	std::string content {};
 };
-Row g_tree { "StashTree", 5 };
-Row g_tab  { "StashTab", 5 };
+// A plugin may register 64 panels in all; the whole plugin uses 63 now.
+Row g_tree { "StashTree", 3 };
+Row g_tab  { "StashTab", 4 };
+Row g_journal { "StashJournal", 3 };
 D2RL::Panels::RegistrationHandle g_side = D2RL::Panels::InvalidHandle;
 
 auto RowName(const Row& row, int i) -> std::string {
@@ -227,6 +232,7 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 		if (!g_bankOpen.load() || !Current(progress)) {
 			CloseRow(context, g_tree);
 			CloseRow(context, g_tab);
+			CloseRow(context, g_journal);
 			if (IsOpen(context, g_side)) {
 				g_panels->closePanel(context, g_side);
 			}
@@ -244,6 +250,11 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 			ShowRow(context, g_tree, Stash::TreeLayout(g_state));
 		} else {
 			CloseRow(context, g_tree);
+		}
+		if (g_journalWanted.load() && !g_treeWanted.load()) {  // the caravan window lies over its place
+			ShowRow(context, g_journal, Journal::Layout(g_journalRune.load(), g_journalPage.load()));
+		} else {
+			CloseRow(context, g_journal);
 		}
 	} catch (...) {
 		context->LogWarn("Stash: refreshing the panels failed.");
@@ -597,6 +608,12 @@ auto StartsWith(const char* text, const char* prefix) noexcept -> bool {
 	return std::strncmp(text, prefix, std::strlen(prefix)) == 0;
 }
 
+void LookUp(int rune) noexcept {
+	if (g_journalRune.exchange(rune) != rune) {
+		g_journalPage = 0;
+	}
+}
+
 void OnAction(const D2RL::PluginContext* context, const char* action) {
 	const fs::path progress = Campfire::RouteProgressFile();
 	const Lock lock(g_mutex);
@@ -621,6 +638,12 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 		if (g_state.Has("quick")) {
 			g_threads->runOnGameThread(context, StoreFromBag, reinterpret_cast<void*>(StoreAll));
 		}
+	} else if (std::strcmp(action, "journal") == 0) {
+		g_journalWanted = !g_journalWanted.load();
+	} else if (StartsWith(action, "jrune-")) {
+		LookUp(std::clamp(std::atoi(action + 6), 0, Journal::RuneCount - 1));
+	} else if (StartsWith(action, "jpage-")) {
+		g_journalPage = std::atoi(action + 6);
 	} else if (StartsWith(action, "pay-")) {
 		const long long amount = std::atoll(action + 4);
 		Pay(context, amount > 0 ? amount : -1);
@@ -635,6 +658,9 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 			Log(context, "Stash: the gem cutter made %d gem(s).", made);
 		}
 	} else if (StartsWith(action, "slot-")) {
+		if (const int rune = Journal::RuneIndex(action + 5); rune >= 0) {
+			LookUp(rune);
+		}
 		const auto& kinds = Stash::Kinds();
 		for (size_t i = 0; i < kinds.size(); ++i) {
 			if (kinds[i].code == action + 5) {
@@ -646,7 +672,8 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 }
 
 // UI thread. Ctrl+click on a bag item while the Upgrades tab is up stores it. A click on a shared
-// page tells which page is really showing.
+// page tells which page is really showing. A rune clicked in either is looked up in the journal;
+// Alt+click does only that (and opens the journal).
 auto __cdecl OnItemClick(const D2RL::PluginContext* context, const D2RL::ItemInteractions::ItemInteractionEvent* event, void*) noexcept
 	-> D2RL::ItemInteractions::Decision {
 	using Decision = D2RL::ItemInteractions::Decision;
@@ -657,6 +684,19 @@ auto __cdecl OnItemClick(const D2RL::PluginContext* context, const D2RL::ItemInt
 		D2RL::Items::ItemInfo info { .structSize = static_cast<uint32_t>(sizeof(D2RL::Items::ItemInfo)) };
 		if (g_items->getItemInfo(context, event->item, &info) != D2RL::Items::Result::Success) {
 			return Decision::Continue;
+		}
+		if (const int rune = Journal::RuneIndex(CodeText(info.code)); rune >= 0) {
+			const bool alt = (event->modifiers & D2RL::ItemInteractions::ModifierBit(D2RL::ItemInteractions::Modifier::Alt)) != 0;
+			if (alt) {
+				g_journalWanted = true;
+			}
+			if (g_journalWanted.load()) {
+				LookUp(rune);
+				QueueRefresh(context);
+			}
+			if (alt) {
+				return Decision::Consume;
+			}
 		}
 		if (event->container == Container::SharedStash && info.sharedStashPage < static_cast<uint32_t>(Stash::PageCount)) {
 			g_page = static_cast<int>(info.sharedStashPage) + 1;
@@ -737,12 +777,12 @@ auto StashCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command
 	}
 }
 
-void RegisterRow(const D2RL::PluginContext* context, Row& row) {
+void RegisterRow(const D2RL::PluginContext* context, Row& row, D2RL::Panels::PanelFlags flags) {
 	for (int i = 0; i < row.count; ++i) {
 		const std::string id = std::string(row.base) + std::to_string(i);
 		const D2RL::Panels::PanelRegistration registration {
 			.structSize = D2RL::Panels::PanelRegistrationSize,
-			.flags      = D2RL::Panels::PanelFlags::CloseOnEscape,
+			.flags      = flags,
 			.localId    = id.c_str(),
 		};
 		D2RL::Panels::RegistrationHandle panel = D2RL::Panels::InvalidHandle;
@@ -772,8 +812,9 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 			g_widgets = nullptr;
 		}
 		g_sharedWrite = D2RL::HasItemServiceCapability(g_items, D2RL::Items::ItemServiceCapability::SharedStashWrite);
-		RegisterRow(context, g_tree);
-		RegisterRow(context, g_tab);
+		RegisterRow(context, g_tree, D2RL::Panels::PanelFlags::CloseOnEscape);
+		RegisterRow(context, g_tab, D2RL::Panels::PanelFlags::CloseOnEscape);
+		RegisterRow(context, g_journal, D2RL::Panels::PanelFlags::None);  // Escape is for the stash
 		const D2RL::Panels::PanelRegistration side {
 			.structSize = D2RL::Panels::PanelRegistrationSize,
 			.flags      = D2RL::Panels::PanelFlags::None,
@@ -798,7 +839,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 				context->LogWarn("Stash: could not listen for item clicks; Ctrl+click won't store.");
 			}
 		}
-		Log(context, "Stash: ready (%d + %d panels, moving items between pages %s).", static_cast<int>(g_tree.panels.size()), static_cast<int>(g_tab.panels.size()),
+		Log(context, "Stash: ready (%d + %d + %d panels, moving items between pages %s).", static_cast<int>(g_tree.panels.size()), static_cast<int>(g_tab.panels.size()), static_cast<int>(g_journal.panels.size()),
 			g_sharedWrite ? "works" : "is not offered");
 		return context->RegisterConsoleCommand("dd-stash", StashCommand, "Show the caravan stash. Tests: dd-stash points <n>, gold <n>, autotab.");
 	} catch (...) {

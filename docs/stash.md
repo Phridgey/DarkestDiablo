@@ -10,6 +10,10 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   300,000 / 500,000 / 750,000 / 1,000,000 / 1,500,000 / 2,500,000 gold (6,875,000 in all). Gold is
   paid in parts, by any hero of the save (a hero can only carry 10,000 per level). Gold on the
   shared pages has to be withdrawn first; the hero's old personal stash gold is used up first.
+- **The Journal** (button under Caravan; click again or Minimize to fold it) is a small window beside the
+  stash with every rune. Clicking a rune there, in the bag, on a shared page or in the Upgrades tab lists its
+  runewords by level; pointing at a name shows what it does. Alt+click looks a rune up without picking it up.
+  Its data comes from the game's tables (`tools/gen_journal.py`); the window is `src/plugin/journal.h`.
 - **The Caravan button** on the stash's right edge puts the caravan window in the stash's place: page
   tiers on its left, passive tree beside them. Its **Stash** button goes back; the X closes both.
 - **Points.** 1 point the first time a class finishes an act in this save (8 classes x 5 acts: 40).
@@ -32,7 +36,7 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
   on item clicks), and stops the right arrow at the last open page. Anything that still lands on a
   locked page is moved to an open one, so a wrong count never gives free space or loses an item.
 - **Old saves.** Locked pages that already held items stay open until they are emptied.
-- **Panels.** Every change draws a new layout in the next spare panel (5 for the window, 5 for the
+- **Panels.** Every change draws a new layout in the next spare panel (3 for the window, 4 for the
   tab, 1 for the button). With the save slots' spares cut from 14 to 6, the plugin uses 63 of 64 panels.
 - The controller and legacy-graphics stash windows still show the personal tab and no Upgrades tab
   (items put there are moved all the same).

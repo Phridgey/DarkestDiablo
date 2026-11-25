@@ -12,7 +12,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EXE = ROOT / "build" / "plugin" / "camp_tests.exe"
-ACTIONS = ("tree", "upgrades", "shared", "closebank", "deposit", "pay-", "node-", "cut-", "slot-")
+ACTIONS = ("tree", "upgrades", "shared", "closebank", "deposit", "pay-", "node-", "cut-", "slot-",
+           "journal", "jrune-", "jpage-", "jnone")
 PREFIX = "PanelManager:OpenPanel:darkestdiablo/stash-"
 
 
@@ -46,7 +47,7 @@ def main():
     with tempfile.TemporaryDirectory(dir=ROOT / "build") as folder:
         subprocess.run([str(EXE), "layouts", folder], check=True)
         files = sorted(Path(folder).glob("*.json"))
-        assert len(files) == 6
+        assert len(files) >= 39
         for file in files:
             check(file.stem, json.loads(file.read_text(encoding="utf-8")))
     print("stash layouts passed")

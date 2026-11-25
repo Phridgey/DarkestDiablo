@@ -23,7 +23,7 @@ set_target_properties(darkestdiablo PROPERTIES
 
 # The camp rules have no game code in them, so they are tested on their own. tools\build-plugin.cmd runs them.
 add_executable(camp_tests ../../tests/camp_tests.cpp)
-target_include_directories(camp_tests PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(camp_tests PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/../../build/plugin-gen)
 target_compile_features(camp_tests PRIVATE cxx_std_20)
 set_target_properties(camp_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/../../build/plugin

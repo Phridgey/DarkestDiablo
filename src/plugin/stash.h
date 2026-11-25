@@ -368,12 +368,12 @@ inline auto Text(const std::string& name, const Rect& r, const std::string& text
 }
 inline constexpr int ButtonW = 366, ButtonH = 93;  // FrontEnd_ButtonSmall at full size
 inline auto Button(const std::string& name, int x, int y, double scale, const std::string& text, const char* color, const std::string& action,
-	const std::string& tooltip = {}) -> std::string {
+	const std::string& tooltip = {}, const char* size = "$LargeFontSize") -> std::string {
 	char rect[96] {};
 	std::snprintf(rect, sizeof(rect), "{\"x\":%d,\"y\":%d,\"scale\":%.2f}", x, y, scale);
 	return "{\"type\":\"ButtonWidget\",\"name\":\"" + name + "\",\"fields\":{\"rect\":" + rect +
 		",\"filename\":\"FrontEnd\\\\HD\\\\Final\\\\FrontEnd_ButtonSmall\",\"pressedFrame\":1,\"disabledFrame\":2,\"hoveredFrame\":3,\"textString\":\"" + text +
-		"\",\"pointSize\":\"$LargeFontSize\",\"textColor\":\"" + color + "\"" + (tooltip.empty() ? "" : ",\"tooltipString\":\"" + tooltip + "\"") +
+		"\",\"pointSize\":\"" + size + "\",\"textColor\":\"" + color + "\"" + (tooltip.empty() ? "" : ",\"tooltipString\":\"" + tooltip + "\"") +
 		",\"onClickMessage\":\"" + ActionMessage + action + "\"}}";
 }
 inline auto CloseButton(int x, const std::string& action) -> std::string {
@@ -394,7 +394,7 @@ inline auto Panel(const Rect& r, const char* anchor, int priority, const std::st
 
 inline constexpr int    TreeW = 1900, TreeH = 1507, TreeX = 420, TreeColumnW = 245, TreeRowY = 190, TreeRowH = 205;
 inline constexpr double NodeScale = 0.65;
-inline constexpr int    SideW = 275, SideH = 70, SideY = 151;  // the Caravan / Stash button at a window's right edge
+inline constexpr int    SideW = 275, SideH = 70, SideY = 151, SidePitch = 76;  // the Caravan / Stash button at a window's right edge
 
 // The caravan window, in the stash's place (the inventory stays beside it): the page tiers down its left side, the passive tree beside them.
 inline auto TreeLayout(const State& state) -> std::string {
@@ -543,10 +543,11 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
 }
 
-// The button attached to the stash's right side that shows the caravan window in its place.
+// The Journal button (journal.h), and the button attached to the stash's right side that shows the caravan window in its place.
 inline auto SideLayout() -> std::string {
 	using namespace Ui;
-	return Panel({ 1400, -651 + SideY, SideW, SideH }, "$LeftPanelAnchor", 8500, Button("Caravan", 0, 0, 0.75, "Caravan", TextGold, "tree", "Stash pages and passives"));
+	return Panel({ 1400, -651 + SideY, SideW, SidePitch + SideH }, "$LeftPanelAnchor", 8500, Button("Caravan", 0, 0, 0.75, "Caravan", TextGold, "tree", "Stash pages and passives") + "," +
+		Button("Journal", 0, SidePitch, 0.75, "Journal", TextGold, "journal", "Runewords of each rune"));
 }
 
 }

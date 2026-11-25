@@ -4,6 +4,7 @@
 #include "camp.h"
 #include "route.h"
 #include "stash.h"
+#include "journal.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -575,6 +576,23 @@ static void WriteStashLayouts(const fs::path& dir) {
 	WriteFile(dir / "tab_fresh.json", Stash::UpgradesLayout(fresh));
 	WriteFile(dir / "tab_full.json", Stash::UpgradesLayout(full));
 	WriteFile(dir / "side.json", Stash::SideLayout());
+	for (int rune = 0; rune < Journal::RuneCount; ++rune) {
+		for (int page = 0; page < Journal::PageCount(rune); ++page) {
+			WriteFile(dir / ("journal_" + std::to_string(rune) + "_" + std::to_string(page) + ".json"), Journal::Layout(rune, page));
+		}
+	}
+}
+
+static void JournalListsARunesWordsByLevel() {
+	CHECK(Journal::RuneIndex("r01") == 0 && Journal::RuneIndex("r33") == 32);
+	CHECK(Journal::RuneIndex("r34") == -1 && Journal::RuneIndex("rvs") == -1 && Journal::RuneIndex("") == -1);
+	for (int rune = 0; rune < Journal::RuneCount; ++rune) {
+		const auto words = Journal::WordsWith(rune);
+		CHECK(!words.empty());
+		for (size_t i = 1; i < words.size(); ++i) {
+			CHECK(words[i - 1]->level <= words[i]->level);
+		}
+	}
 }
 
 int main(int argc, char** argv) {
@@ -587,6 +605,7 @@ int main(int argc, char** argv) {
 	StashTreeNeedsParentsAndPoints();
 	StashSlotsTakeWhatIsUnlocked();
 	StashFileRoundTripAndBadLines();
+	JournalListsARunesWordsByLevel();
 	RouteUnlocksTierByTier();
 	ForkGivesTwoPicksSameOneAllowed();
 	ActTwoFollowsAndariel();
