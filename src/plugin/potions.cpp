@@ -335,7 +335,7 @@ auto HeroCopies(const D2RL::PluginContext* context) -> std::vector<uintptr_t> {
 // ---- Throwing -----------------------------------------------------------------------------------
 // Every hero has the skill Throw Potion (131a_throw_skill.py), which throws nothing by itself. A slot's
 // press puts the potion's missile in it and casts it at the cursor: with the skill key that holds it, or
-// any skill key that holds it for a moment, or the right button. Only a cast that is seen takes a charge.
+// the right button, or any skill key, which holds it for a moment. Only a cast that is seen takes a charge.
 // Every step is in the game folder's d2rloader/logs/potion-throws.log, which builds and restarts leave alone.
 // Filled while the plugin loads, from loot_data.txt.
 int                              g_throwSkill = 0;
@@ -522,18 +522,63 @@ struct ThrowInHand {
 		GameWrite::RestoreRight(right);
 		right.clear();
 	}
+	// The potion leaves the hand some way into the cast, and unselecting the skill before that can call the
+	// cast off: the button comes up at once, everything else is put back when the cast is over.
 	~ThrowInHand() {
 		try {
-			LetGo();
-			for (int i = 0; i < 60 && Game::Hero().mode == CastMode; ++i) {  // the missile leaves during the cast
+			if (key != 0) {
+				key > 0 ? PressKey(key, false) : PressRight(false);
+				key = 0;
+			}
+			for (int i = 0; i < 70 && Game::Hero().mode == CastMode; ++i) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(20));
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(80));
+			LetGo();
 			LoadMissile("none");
 		} catch (...) {
 		}
 	}
 };
+
+// What a throw did, for the log: the missiles in the air after it, and the monsters whose life fell.
+auto MonsterLives() -> std::map<uint32_t, int> {
+	std::map<uint32_t, int> lives;
+	for (const Game::Unit& u : GameState::Units(Game::Kind::Monster)) {
+		lives[u.id] = GameState::Life(u);
+	}
+	return lives;
+}
+
+void WatchThrow(const D2RL::PluginContext* context, std::string code, int skill, std::map<uint32_t, int> before) noexcept {
+	try {
+		std::map<uint32_t, int> missiles;  // missiles.txt row: samples it was seen in
+		for (int i = 0; i < 80 && g_inGame.load(); ++i) {  // 2 s
+			for (const Game::Unit& u : GameState::Units(Game::Kind::Missile)) {
+				++missiles[u.row];
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(25));
+		}
+		std::string seen, hurt;
+		for (const auto& [row, samples] : missiles) {
+			seen += " " + std::to_string(row) + "x" + std::to_string(samples);
+		}
+		const auto after = MonsterLives();
+		for (const auto& [id, life] : before) {
+			const auto now = after.find(id);
+			if (now == after.end() || now->second < life) {
+				hurt += " #" + std::to_string(id) + " " + std::to_string(life) + ">" + (now == after.end() ? "gone" : std::to_string(now->second));
+			}
+		}
+		int level = -2;
+		for (const auto& s : Game::HeroSkills().skills) {
+			level = s.id == skill ? s.baseLevel : level;
+		}
+		Note(context, "%s after the cast: missiles seen (row x times)%s; %d monsters, life fell:%s; skill points %d", code.c_str(),
+			seen.empty() ? " none" : seen.c_str(), static_cast<int>(before.size()), hurt.empty() ? " none" : hurt.substr(0, 300).c_str(), level);
+	} catch (...) {
+	}
+}
 
 auto HaveSkill(const std::vector<uintptr_t>& copies, int skill) -> bool {
 	return copies.size() >= 2 && std::all_of(copies.begin(), copies.end(), [&](uintptr_t copy) {
@@ -580,6 +625,7 @@ std::atomic<bool> g_dumped { false };  // the skill list's surroundings are in t
 
 // Returns true when a potion left the hand.
 auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) -> bool {
+	const auto lives = MonsterLives();
 	const auto fail = [&](const std::string& why) {
 		ToUi(context, "Throw: " + why, false);
 		return false;
@@ -642,6 +688,9 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) 
 		const bool cast = WaitForCast(before, modes);
 		Note(context, "%s by key 0x%02x (%s%s): modes %s, hero%s: %s", code.c_str(), key, how, already ? ", already down" : "", modes.c_str(),
 			SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
+		if (cast) {
+			std::thread(WatchThrow, context, code, skill, lives).detach();
+		}
 		return cast;
 	};
 	// The player has Throw Potion on a skill key: that one.
@@ -654,7 +703,24 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) 
 			break;
 		}
 	}
-	// Otherwise any skill key, which holds it for a moment.
+	// Otherwise the right button, when the hero's skill list is known and the player isn't holding it.
+	if (HaveSkill(copies, skill) && g_bag.load() == 0 && CursorOverWorld() && !IsDown(VK_RBUTTON)) {
+		hand.right = GameWrite::SelectRight(copies, skill);
+		if (!hand.right.empty()) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(30));
+			const uint32_t before = Game::Hero().mode;
+			hand.key = -1;
+			PressRight(true);
+			const bool cast = WaitForCast(before, modes);
+			Note(context, "%s by the right button: modes %s, hero%s: %s", code.c_str(), modes.c_str(), SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
+			if (cast) {
+				std::thread(WatchThrow, context, code, skill, lives).detach();
+				return true;
+			}
+			hand.LetGo();
+		}
+	}
+	// Last, any of the first eight skill keys, which holds it for a moment.
 	const auto free = std::find_if(keys.rbegin(), keys.rend(), [](const auto& k) { return k.first < 8 && !IsDown(k.second); });
 	if (inMemory && free != keys.rend()) {
 		for (const uintptr_t copy : copies) {
@@ -670,21 +736,6 @@ auto ThrowAtCursor(const D2RL::PluginContext* context, const std::string& code) 
 			return true;
 		}
 		hand.LetGo();
-	}
-	// The right button, when the hero's skill list is known and the player isn't holding it.
-	if (HaveSkill(copies, skill) && g_bag.load() == 0 && CursorOverWorld() && !IsDown(VK_RBUTTON)) {
-		hand.right = GameWrite::SelectRight(copies, skill);
-		if (!hand.right.empty()) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(30));
-			const uint32_t before = Game::Hero().mode;
-			hand.key = -1;
-			PressRight(true);
-			const bool cast = WaitForCast(before, modes);
-			Note(context, "%s by the right button: modes %s, hero%s: %s", code.c_str(), modes.c_str(), SkillReport(copies, skill).c_str(), cast ? "cast" : "no cast");
-			if (cast) {
-				return true;
-			}
-		}
 	}
 	Note(context, "%s not thrown: %d keyboard skill keys, keys in memory %d, hero%s, tables:%s", code.c_str(), static_cast<int>(keys.size()), inMemory ? 1 : 0, hero.c_str(), g_tablesSeen.c_str());
 	return fail("nothing was thrown, no charge taken. Put the skill Throw Potion on a skill key once and try again.");

@@ -63,7 +63,7 @@ def patch(t):
                     "srvmissile": NOTHING, "cltmissile": NOTHING, "stsound": "weapon_throw_1",
                     "reqlevel": "1", "maxlvl": "1", "reqskill1": "", "skpoints": "",
                     "mana": "0", "minmana": "0", "lvlmana": "0", "localdelay": COOLDOWN,
-                    "leftskill": "0", "rightskill": "1"})
+                    "leftskill": "0", "rightskill": "1", "ContinueCastUnselected": "1"})
 
     desc.add_copy("skilldesc", "throw", **{"skilldesc": DESC, "str name": "skillname_ddthrow", "str short": "skillsd_ddthrow",
                   "str long": "skillld_ddthrow", "str alt": "skillname_ddthrow"})
