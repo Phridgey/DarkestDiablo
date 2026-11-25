@@ -2281,11 +2281,53 @@ static void WatchAkaraRing(const D2RL::PluginContext* context, int townLevel) no
 	}).detach();
 }
 
+// The Jade Figurine (Golden Bird quest) drops from the Khalim stops' uniques every time (1 in 5),
+// so heroes piled them up (2026-11-24). A hero keeps one, and none once the bird is done (the
+// Golden Bird or the Potion of Life held, or the potion drunk); extras vanish. Game thread.
+struct JadeScan { std::vector<D2RL::ItemHandle> figurines; bool birdDone = false; };
+
+static auto __cdecl ScanJade(const D2RL::PluginContext*, const D2RL::Items::ItemInfo* item, void* out) noexcept -> D2RL::Inventory::IterationAction {
+	auto* scan = static_cast<JadeScan*>(out);
+	if (item != nullptr) {
+		if (item->code == ItemCode("j34")) {
+			scan->figurines.push_back(item->handle);
+		} else if (item->code == ItemCode("g34") || item->code == ItemCode("xyz")) {
+			scan->birdDone = true;
+		}
+	}
+	return D2RL::Inventory::IterationAction::Continue;
+}
+
+static void RemoveExtraFigurines(const D2RL::PluginContext* context, D2RL::PlayerHandle player) noexcept {
+	if (g_items == nullptr) {
+		return;
+	}
+	const D2RL::Inventory::ItemFilter filter {
+		.structSize    = D2RL::Inventory::ItemFilterSize,
+		.containerMask = D2RL::Items::AllItemContainers,
+	};
+	JadeScan scan;
+	g_inventory->forEachInventoryItem(context, player, &filter, ScanJade, &scan);
+	scan.birdDone = scan.birdDone || LoadProgress().Flag("goldenbird") != 0;
+	const size_t keep = scan.birdDone ? 0 : 1;
+	int removed = 0;
+	for (size_t i = keep; i < scan.figurines.size(); ++i) {
+		removed += g_items->destroyItem(context, player, scan.figurines[i], D2RL::Items::SocketedItemPolicy::RejectIfNotEmpty) ==
+			D2RL::Items::Result::Success ? 1 : 0;
+	}
+	if (removed > 0) {
+		char message[96] {};
+		std::snprintf(message, sizeof(message), "Golden Bird: %d extra Jade Figurine(s) removed.", removed);
+		Trace(context, message);
+	}
+}
+
 static void __cdecl CheckHeldRewards(const D2RL::PluginContext* context, void* periodic) noexcept {
 	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 	if (g_inventory == nullptr || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
 		return;
 	}
+	RemoveExtraFigurines(context, player);
 	const D2RL::Inventory::ItemFilter filter {
 		.structSize    = D2RL::Inventory::ItemFilterSize,
 		.containerMask = D2RL::Items::AllItemContainers,
