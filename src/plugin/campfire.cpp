@@ -947,7 +947,7 @@ auto FireLayoutJson() -> std::string {
 		const std::string cls = Camp::ClassNames[hero.cls];
 		figure(hero.cls, GearFields(hero.gear));
 		const int plateX = s.x + (s.w - 300) / 2;
-		// The name: no frame, just the name in gold and "Level N Class" small under it. Every other
+		// The name: no frame, just the name in dim gold and "Lv N" small under it. Every other
 		// hero's, from left to right, stands lower, so neighbours' names don't run together (Sam).
 		const int plaqueX = s.x + (s.w - PlateW) / 2;
 		const int rank = static_cast<int>(std::count_if(g_camp.heroes.begin(), g_camp.heroes.end(),
@@ -967,10 +967,11 @@ auto FireLayoutJson() -> std::string {
 		};
 		kids += "{\"type\":\"Widget\",\"name\":\"Plate" + cls + "\",\"fields\":{\"rect\":{\"x\":" + std::to_string(plaqueX) + ",\"y\":" + std::to_string(plateY) +
 			",\"width\":" + std::to_string(PlateW) + ",\"height\":" + std::to_string(PlateH) + "}},\"children\":[" +
-			text("Name" + cls, 0, 34, hero.name, "28", "$FontColorGoldYellow") + "," +
-			// The same name in white, shown instead of the gold one while this hero is picked.
+			text("Name" + cls, 0, 34, hero.name, "28", "$FontColorDarkGrayGold") + "," +
+			// The same in white, shown instead of the dim ones while this hero is picked.
 			text("NameLit" + cls, 0, 34, hero.name, "28", "$FontColorWhite") + "," +
-			text("Rank", 34, 26, "Level " + std::to_string(hero.level) + " " + cls, "18", "$FontColorLightGray") + "]},";
+			text("Rank" + cls, 34, 26, "Lv " + std::to_string(hero.level), "18", "$FontColorDarkGrayBlue") + "," +
+			text("RankLit" + cls, 34, 26, "Lv " + std::to_string(hero.level), "18", "$FontColorWhite") + "]},";
 		kids += FireButton("Bury" + cls, plateX, 1590, "Retire " + hero.name, act + "bury-" + cls, Plate, "$FontColorRed") + ",";
 	}
 	// The classes that may join right now, and a waiting traveler's offer, in the game's
@@ -1045,6 +1046,8 @@ void ShowDeleteMode(const D2RL::PluginContext* context) noexcept {
 		SetVisible(context, panel.c_str(), ("Glow" + cls).c_str(), picked);
 		SetVisible(context, panel.c_str(), ("Name" + cls).c_str(), !picked);
 		SetVisible(context, panel.c_str(), ("NameLit" + cls).c_str(), picked);
+		SetVisible(context, panel.c_str(), ("Rank" + cls).c_str(), !picked);
+		SetVisible(context, panel.c_str(), ("RankLit" + cls).c_str(), picked);
 		SetVisible(context, panel.c_str(), ("Bury" + cls).c_str(), g_deleteMode && !traveler);
 	}
 	// While the traveler waits only the offer stands by the fire; after the choice the classes
