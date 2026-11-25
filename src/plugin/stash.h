@@ -549,6 +549,12 @@ inline auto UpgradesLayout(const State& state) -> std::string {
 }
 
 // The Journal button (journal.h), and the button attached to the stash's right side that shows the caravan window in its place.
+// Over the stash, on an ascended hero's page.
+inline auto NameLayout(const std::string& hero) -> std::string {
+	using namespace Ui;
+	return Panel({ 200, -770, 1000, 60 }, "$LeftPanelAnchor", 8600, Text("Whose", { 0, 0, 1000, 60 }, hero + ", ascended (take only)", TextGold, "$LargeFontSize"));
+}
+
 inline auto SideLayout() -> std::string {
 	using namespace Ui;
 	return Panel({ 1400, -651 + SideY, SideW, SidePitch + SideH }, "$LeftPanelAnchor", 8500, Button("Caravan", 0, 0, 0.75, "Caravan", TextGold, "tree", "Stash pages and passives") + "," +

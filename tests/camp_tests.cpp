@@ -2,6 +2,7 @@
 //   g++ -std=c++20 -I src/plugin tests/camp_tests.cpp -o build/camp_tests && build/camp_tests
 // tools\build-plugin.cmd builds and runs them too.
 #include "ascend.h"
+#include "legacy.h"
 #include "camp.h"
 #include "route.h"
 #include "stash.h"
@@ -619,7 +620,7 @@ static void AscendMovesItems() {
 	Ascend::Hero hero;
 	std::string error;
 	CHECK(ReadHero(donor, shapes, hero, error) && hero.items.size() == 2 && hero.items[0].loc == 2 && hero.items[1].code == "box");
-	std::vector<Item> legacy = Legacy(hero);
+	std::vector<Item> legacy = Ascend::Legacy(hero);
 	CHECK(legacy.size() == 1 && legacy[0].code == "hp1");  // the Cube itself stays behind
 	std::vector<int> pages;
 	CHECK(Pack(legacy, 10, pages) == 1 && pages[0] == 0);
@@ -641,6 +642,52 @@ static void AscendMovesItems() {
 	// More than a page holds goes to a second page, nothing overlaps.
 	std::vector<Item> many(130, legacy[0]);
 	CHECK(Pack(many, 10, pages) == 2);
+}
+
+static void AscendedItemsTravel() {
+	namespace L = Legacy;
+	const fs::path live = fs::temp_directory_path() / "dd_ascend_test";
+	fs::remove_all(live);
+	fs::create_directories(Camp::SlotDir(live, 1));
+	Ascend::Shapes shapes;
+	std::istringstream lines("isave hp1 m 0 0 1 1\nssave 83 3 3\n");
+	shapes.Read(lines);
+	const std::string potion = "1000a200150000cf4f232869b703c888aa738b166ce19ee18b01", tail = "4a4d00006a666b6600";
+	L::WriteBytes(live / "Anna.d2s", AscendSave("4a4d0100" + potion + tail));
+	L::WriteBytes(live / "Bert.d2s", AscendSave("4a4d0000" + tail));
+	std::string who, error;
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::None);
+	L::WriteFight(live, 1, L::Fight::Fighting, "Anna");
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::Fighting && who == "Anna");
+	L::WriteFight(live, 1, L::Fight::Won, "Anna");
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::Won);
+	CHECK(L::Keep(live, 1, "Anna", "7", error));
+	L::WriteFight(live, 1, L::Fight::None, "");
+	who.clear();
+	CHECK(L::ReadFight(live, 1, who) == L::Fight::None);
+	CHECK(!L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());
+	CHECK(L::Load(live, 1).CarriedBy("bert") != nullptr);
+	Ascend::Hero bert;
+	CHECK(Ascend::ReadHero(L::ReadBytes(live / "Bert.d2s"), shapes, bert, error) && bert.items.size() == 1);
+	CHECK(L::Send(live, 1, "Bert", { "Bert" }, shapes).empty());  // never twice
+	// Bert dies on the way: the items go with the next hero.
+	L::WriteBytes(live / "Cleo.d2s", AscendSave("4a4d0000" + tail));
+	CHECK(!L::Send(live, 1, "Cleo", { "Cleo" }, shapes).empty());
+	L::State state = L::Load(live, 1);
+	L::Delivered(state, "Cleo");
+	CHECK(state.tabs.size() == 1 && state.tabs.begin()->second == "Anna" && state.CarriedBy("Cleo") == nullptr);
+	L::Save(live, 1, state);
+	CHECK(L::Send(live, 1, "Cleo", { "Cleo" }, shapes).empty());  // nothing left to send
+	CHECK(L::Load(live, 1).estates[0].done);
+	// Arrows: 2 open pages, a tab on page 11.
+	CHECK(L::Presses(1, 1, 2, 11, state) == 1 && L::Presses(2, 1, 2, 11, state) == 9 && L::Presses(11, 1, 2, 11, state) == 0);
+	CHECK(L::Presses(11, -1, 2, 11, state) == 9 && L::Presses(1, -1, 2, 11, state) == 0);
+	// Take only: what was taken out can't go back.
+	std::vector<int> known { 1, 2 };
+	CHECK(L::Strangers(known, std::vector<int> { 1, 2, 3 }) == std::vector<int> { 3 });
+	CHECK(L::Strangers(known, std::vector<int> { 1 }).empty());
+	CHECK(L::Strangers(known, std::vector<int> { 1, 2 }) == std::vector<int> { 2 });
+	fs::remove_all(live);
 }
 
 int main(int argc, char** argv) {
@@ -666,6 +713,7 @@ int main(int argc, char** argv) {
 	TravelerOffersThreeLockedClasses();
 	OfferShrinksWhenFewClassesAreLocked();
 	AscendMovesItems();
+	AscendedItemsTravel();
 	FallenClassIsAlwaysOffered();
 	EmptyFireGetsATraveler();
 	CampFileRoundTrip();

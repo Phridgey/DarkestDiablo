@@ -13,6 +13,7 @@
 #include "stashgame.h"
 #include "journal.h"
 #include "campfire.h"
+#include "legacy.h"
 #include "gameapi.h"
 #include "gamestate.h"
 #include <D2RLPlugin/core_exports.h>
@@ -25,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -39,7 +41,7 @@ using Container = D2RL::Items::ItemContainer;
 
 constexpr char ActionPrefix[] = "darkestdiablo/stash-";  // buttons send PanelManager:OpenPanel:darkestdiablo/stash-<action>
 constexpr char BankPanel[]    = "BankExpansionLayout";
-constexpr int  SweepMs        = 700;
+constexpr int  SweepMs        = 250;  // was 700: what is put on an ascended hero's page goes back at once
 constexpr int  PayCheckMs     = 700;
 
 const D2RL::ThreadService*    g_threads   = nullptr;
@@ -54,6 +56,15 @@ std::recursive_mutex g_mutex;  // guards the state below
 using Lock = std::lock_guard<std::recursive_mutex>;
 Stash::State g_state;
 fs::path     g_file;           // the stash.txt g_state came from
+
+Legacy::State g_legacy;        // ascended heroes' items (docs/ascend.md); read with g_state
+using ItemId = std::pair<uint64_t, uint32_t>;
+std::map<int, std::vector<ItemId>> g_known;  // what may lie on each ascended hero's page; empty until the first look of a visit
+std::atomic<bool>      g_delivering { false };
+
+// live folder and slot from camp/slot<N>/progress/<hero>.txt
+auto LiveOf(const fs::path& progress) -> fs::path { return progress.parent_path().parent_path().parent_path().parent_path(); }
+auto SlotOf(const fs::path& progress) -> int { return std::atoi(progress.parent_path().parent_path().filename().string().c_str() + 4); }
 
 std::atomic<bool>      g_bankOpen { false };
 std::atomic<uintptr_t> g_visit { 0 };       // counts stash openings, so an old sweeper stops
@@ -104,6 +115,7 @@ auto Current(const fs::path& progress) -> bool {
 		std::error_code ec;
 		g_state = fs::exists(file, ec) ? Stash::Parse(Camp::ReadFile(file)) : Stash::State {};
 		g_file = file;
+		g_legacy = Legacy::Load(LiveOf(progress), SlotOf(progress));
 	}
 	return true;
 }
@@ -149,6 +161,7 @@ struct Row {
 Row g_tree { "StashTree", 3 };
 Row g_tab  { "StashTab", 4 };
 Row g_journal { "StashJournal", 3 };
+Row g_name { "StashName", 2 };  // whose ascended items the page holds
 D2RL::Panels::RegistrationHandle g_side = D2RL::Panels::InvalidHandle;
 
 auto RowName(const Row& row, int i) -> std::string {
@@ -236,6 +249,7 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 			CloseRow(context, g_tree);
 			CloseRow(context, g_tab);
 			CloseRow(context, g_journal);
+			CloseRow(context, g_name);
 			if (IsOpen(context, g_side)) {
 				g_panels->closePanel(context, g_side);
 			}
@@ -243,6 +257,12 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 		}
 		if (g_side != D2RL::Panels::InvalidHandle && !IsOpen(context, g_side)) {
 			g_panels->openPanel(context, g_side);
+		}
+		const auto estate = g_legacy.tabs.find(g_page.load() - Stash::PageCount - 1);
+		if (estate != g_legacy.tabs.end() && !g_tabWanted.load() && !g_treeWanted.load()) {
+			ShowRow(context, g_name, Stash::NameLayout(estate->second));
+		} else {
+			CloseRow(context, g_name);
 		}
 		if (g_tabWanted.load() && g_state.Has("tab")) {
 			ShowRow(context, g_tab, Stash::UpgradesLayout(g_state));
@@ -425,6 +445,8 @@ void __cdecl ClickSlot(const D2RL::PluginContext* context, void* data) noexcept 
 	}
 }
 
+void __cdecl LeaveTab(const D2RL::PluginContext* context, void*) noexcept;
+
 // ---- Page locks ------------------------------------------------------------------------------
 auto MoveTo(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2RL::ItemHandle item, int page) -> bool {
 	D2RL::Items::ExistingItemOperation operation {};
@@ -445,6 +467,143 @@ auto MoveTo(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2RL:
 	return g_items->executeExistingItemTransaction(context, &transaction, &result) == D2RL::Items::Result::Success;
 }
 
+auto IdOf(const D2RL::Items::ItemInfo& item) -> ItemId {
+	return { static_cast<uint64_t>(item.generationSeed) << 32 | item.itemSeed, item.code };
+}
+
+auto MoveToBag(const D2RL::PluginContext* context, D2RL::PlayerHandle player, D2RL::ItemHandle item) -> bool {
+	D2RL::Items::ExistingItemOperation operation {};
+	operation.structSize                  = D2RL::Items::ExistingItemOperationSize;
+	operation.kind                        = D2RL::Items::ExistingItemOperationKind::Move;
+	operation.item                        = item;
+	operation.move.destination.structSize = D2RL::Items::ItemDestinationSize;
+	operation.move.destination.container  = Container::Inventory;
+	operation.move.destination.placement  = D2RL::Items::Placement::Automatic;
+	const D2RL::Items::ExistingItemTransaction transaction {
+		.structSize     = D2RL::Items::ExistingItemTransactionSize,
+		.player         = player,
+		.operationCount = 1,
+		.operations     = &operation,
+	};
+	D2RL::Items::ExistingItemTransactionResult result { .structSize = D2RL::Items::ExistingItemTransactionResultSize };
+	return g_items->executeExistingItemTransaction(context, &transaction, &result) == D2RL::Items::Result::Success;
+}
+
+// Game thread, locked. The ascended heroes' pages: only what was there may lie there; anything put
+// in goes back to the bag (else an open page), and an emptied page is gone.
+void GuardTabs(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::vector<D2RL::Items::ItemInfo>& items, const fs::path& progress) {
+	if (g_legacy.tabs.empty()) {
+		return;
+	}
+	std::vector<int> emptied;
+	for (const auto& [n, name] : g_legacy.tabs) {
+		std::vector<ItemId> now;
+		for (const auto& item : items) {
+			if (item.container == Container::SharedStash && item.sharedStashPage == static_cast<uint32_t>(Stash::PageCount + n)) {
+				now.push_back(IdOf(item));
+			}
+		}
+		const auto [known, first] = g_known.try_emplace(n, now);
+		for (const ItemId& id : first ? std::vector<ItemId> {} : Legacy::Strangers(known->second, now)) {
+			for (const auto& item : items) {
+				if (item.container != Container::SharedStash || item.sharedStashPage != static_cast<uint32_t>(Stash::PageCount + n) || IdOf(item) != id) {
+					continue;
+				}
+				bool moved = MoveToBag(context, player, item.handle);
+				for (int page = 0; page < g_state.Pages() && !moved; ++page) {
+					moved = MoveTo(context, player, item.handle, page);
+				}
+			}
+		}
+		if (now.empty()) {
+			emptied.push_back(n);
+		}
+	}
+	for (const int n : emptied) {
+		Log(context, "Stash: %s's page is empty and goes away.", g_legacy.tabs[n].c_str());
+		g_legacy.tabs.erase(n);
+		g_known.erase(n);
+		Legacy::Save(LiveOf(progress), SlotOf(progress), g_legacy);
+		if (g_page.load() == Stash::PageCount + 1 + n) {
+			g_threads->runOnUiThread(context, LeaveTab, nullptr);
+		}
+		QueueRefresh(context);
+	}
+}
+
+// Game thread, soon after a hero came in: the items of an ascended hero it carries in its own
+// (hidden) stash page go to their page. Tried until done; they lie safe in the hero's save meanwhile.
+int g_deliverTries = 0;
+
+void __cdecl Deliver(const D2RL::PluginContext* context, void*) noexcept {
+	try {
+		const fs::path progress = Campfire::RouteProgressFile();
+		const Lock lock(g_mutex);
+		D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+		std::vector<D2RL::Items::ItemInfo> items;
+		if (!Current(progress)) {
+			return;
+		}
+		const fs::path live = LiveOf(progress);
+		const int slot = SlotOf(progress);
+		const std::string hero = progress.stem().string();
+		const Legacy::Estate* estate = g_legacy.CarriedBy(hero);
+		if (estate == nullptr || !g_sharedWrite) {
+			g_delivering = false;
+			return;
+		}
+		if (!ItemsIn(context, D2RL::Items::ContainerBit(Container::PersonalStash), player, items)) {
+			return;
+		}
+		if (items.empty()) {
+			if (++g_deliverTries >= 20) {  // the page never came in: it is sent again
+				Log(context, "Stash: %s carries none of %s's items; they will be sent again.", hero.c_str(), estate->name.c_str());
+				g_legacy.CarriedBy(hero)->carrier.clear();
+				Legacy::Save(live, slot, g_legacy);
+				g_delivering = false;
+			}
+			return;
+		}
+		const int page = Stash::PageCount + estate->tab;
+		size_t moved = 0;
+		for (const auto& item : items) {
+			moved += MoveTo(context, player, item.handle, page) ? 1 : 0;
+		}
+		Log(context, "Stash: %d of %d item(s) of %s moved to their page.", static_cast<int>(moved), static_cast<int>(items.size()), estate->name.c_str());
+		if (moved == items.size()) {
+			g_known.erase(estate->tab);
+			Legacy::Delivered(g_legacy, hero);
+			Legacy::Save(live, slot, g_legacy);
+			g_delivering = false;
+			context->WriteConsoleMessage("An ascended hero's belongings wait in the stash.");
+			QueueRefresh(context);
+		} else if (++g_deliverTries >= 60) {
+			g_delivering = false;  // next game again
+		}
+	} catch (...) {
+		context->LogWarn("Stash: bringing an ascended hero's items failed.");
+	}
+}
+
+void StartDelivering(const D2RL::PluginContext* context) noexcept {
+	if (g_delivering.exchange(true)) {
+		return;
+	}
+	g_deliverTries = 0;
+	try {
+		std::thread([context] {
+			while (g_delivering.load()) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+				if (g_delivering.load()) {
+					g_threads->runOnGameThread(context, Deliver, nullptr);
+				}
+			}
+		}).detach();
+	} catch (...) {
+		g_delivering = false;
+	}
+}
+
 size_t g_stuck = 0;     // items the last sweep found no room for; game thread only
 int    g_restSweeps = 0;
 
@@ -459,6 +618,8 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 			!ItemsIn(context, D2RL::Items::ContainerBit(Container::PersonalStash) | D2RL::Items::ContainerBit(Container::SharedStash), player, items)) {
 			return;
 		}
+		GuardTabs(context, player, items, progress);
+		const bool carrying = g_legacy.CarriedBy(progress.stem().string()) != nullptr;  // not ours to move (Deliver)
 		std::set<int> used;
 		for (const auto& item : items) {
 			if (item.container == Container::SharedStash && item.sharedStashPage < static_cast<uint32_t>(Stash::PageCount)) {
@@ -487,13 +648,13 @@ void __cdecl Sweep(const D2RL::PluginContext* context, void*) noexcept {
 		}
 		std::vector<const D2RL::Items::ItemInfo*> out;
 		for (const auto& item : items) {
-			if (item.container == Container::PersonalStash ||
+			if ((item.container == Container::PersonalStash && !carrying) ||
 				(item.container == Container::SharedStash && item.sharedStashPage < static_cast<uint32_t>(Stash::PageCount) &&
 					!g_state.PageOpen(static_cast<int>(item.sharedStashPage)))) {
 				out.push_back(&item);
 			}
 		}
-		if (!out.empty() && out.size() == g_stuck && ++g_restSweeps < 8) {
+		if (!out.empty() && out.size() == g_stuck && ++g_restSweeps < 22) {
 			return;  // nothing changed since no room was found: try again a little later
 		}
 		g_restSweeps = 0;
@@ -719,7 +880,7 @@ auto __cdecl OnItemClick(const D2RL::PluginContext* context, const D2RL::ItemInt
 				return Decision::Consume;
 			}
 		}
-		if (event->container == Container::SharedStash && info.sharedStashPage < static_cast<uint32_t>(Stash::PageCount)) {
+		if (event->container == Container::SharedStash && info.sharedStashPage < static_cast<uint32_t>(Stash::PageCount + Legacy::TabCount)) {
 			g_page = static_cast<int>(info.sharedStashPage) + 1;
 			return Decision::Continue;
 		}
@@ -754,6 +915,33 @@ void __cdecl Jump(const D2RL::PluginContext* context, void* data) noexcept {
 		Dispatch(context, "BankPanelMessage", pages > 0 ? "SharedStashRight" : "SharedStashLeft", "");
 	}
 	g_jumping = false;
+}
+
+// UI thread. The shown page went away: back to the last open one.
+void __cdecl LeaveTab(const D2RL::PluginContext* context, void*) noexcept {
+	const Lock lock(g_mutex);
+	if (g_bankOpen.load()) {
+		Jump(context, reinterpret_cast<void*>(static_cast<intptr_t>((std::max)(1, g_state.LastPage()) - g_page.load())));
+	}
+}
+
+// UI thread, locked. An arrow was pressed. True: the game must not see it (nowhere to go, or the
+// plugin turned several pages itself, past the locked ones).
+auto TurnPage(const D2RL::PluginContext* context, int direction) -> bool {
+	const int last = g_state.legacyDone ? g_state.LastPage() : Stash::PageCount;
+	const int presses = Legacy::Presses(g_page.load(), direction, last, Stash::PageCount + 1, g_legacy);
+	if (presses == 0) {
+		Log(context, "Stash: no page %s of page %d.", direction > 0 ? "right" : "left", g_page.load());
+		return direction > 0;
+	}
+	if (presses > 1) {
+		Jump(context, reinterpret_cast<void*>(static_cast<intptr_t>(direction * presses)));
+		QueueRefresh(context);
+		return true;
+	}
+	g_page = g_page.load() + direction;
+	QueueRefresh(context);
+	return false;
 }
 
 void BankClosed(const D2RL::PluginContext* context) noexcept {
@@ -854,6 +1042,7 @@ auto Load(const D2RL::PluginContext* context) noexcept -> bool {
 		g_sharedWrite = D2RL::HasItemServiceCapability(g_items, D2RL::Items::ItemServiceCapability::SharedStashWrite);
 		RegisterRow(context, g_tree, D2RL::Panels::PanelFlags::CloseOnEscape);
 		RegisterRow(context, g_tab, D2RL::Panels::PanelFlags::CloseOnEscape);
+		RegisterRow(context, g_name, D2RL::Panels::PanelFlags::None);
 		RegisterRow(context, g_journal, D2RL::Panels::PanelFlags::None);  // Escape is for the stash
 		const D2RL::Panels::PanelRegistration side {
 			.structSize = D2RL::Panels::PanelRegistrationSize,
@@ -916,6 +1105,11 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 					g_treeWanted = false;
 					g_tabWanted = false;
 					if (!g_bankOpen.exchange(true)) {
+						{
+							const Lock lock(g_mutex);
+							g_known.clear();
+						}
+						g_threads->runOnGameThread(context, Sweep, nullptr);
 						StartSweeping(context);
 					}
 					SyncActs(context);
@@ -933,15 +1127,19 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 			} else if (std::strcmp(command, "SelectTab") == 0) {
 				g_page = 1;
 			} else if (std::strcmp(command, "SharedStashLeft") == 0) {
+				const fs::path progress = Campfire::RouteProgressFile();
+				const Lock lock(g_mutex);
+				if (!g_jumping.load() && Current(progress)) {
+					return TurnPage(context, -1);
+				}
 				g_page = (std::max)(1, g_page.load() - 1);
 			} else if (std::strcmp(command, "SharedStashRight") == 0) {
 				const fs::path progress = Campfire::RouteProgressFile();
 				const Lock lock(g_mutex);
-				if (!g_jumping.load() && Current(progress) && g_state.legacyDone && g_page.load() >= g_state.LastPage()) {
-					Log(context, "Stash: page %d is still locked.", g_page.load() + 1);
-					return true;
+				if (!g_jumping.load() && Current(progress)) {
+					return TurnPage(context, 1);
 				}
-				g_page = (std::min)(Stash::PageCount, g_page.load() + 1);
+				g_page = (std::min)(Stash::PageCount + Legacy::TabCount, g_page.load() + 1);
 			}
 		}
 	} catch (...) {
@@ -956,6 +1154,9 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 		return;
 	}
 	if (event->kind == Kind::LevelChanged) {
+		if (event->previousValue <= 0) {
+			StartDelivering(context);  // a hero just came in
+		}
 		SyncActs(context);
 		const int level = event->currentValue;
 		if (event->previousValue > 0 && (level == 1 || level == 40 || level == 75 || level == 103 || level == 109)) {
@@ -963,7 +1164,9 @@ void OnGameplayEvent(const D2RL::PluginContext* context, const D2RL::Lifecycle::
 		}
 	} else if (event->kind == Kind::GameLeft) {
 		BankClosed(context);
+		g_delivering = false;
 		const Lock lock(g_mutex);
+		g_known.clear();
 		g_file.clear();  // read again in the next game: the save may have been deleted or switched
 	}
 }

@@ -30,6 +30,7 @@
 #include "route.h"
 #include "zone.h"
 #include "andariel.h"
+#include "ascension.h"
 #include "stashgame.h"
 #include "waveoverlay.h"
 #include "mercgear.h"
@@ -1863,6 +1864,7 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 	}
 	Campfire::NoteDifficulty(context, event->difficulty);
 	g_difficulty = event->difficulty;
+	Ascension::OnMonsterDied(context, event->monster.classId);
 	{
 		char line[96];
 		std::snprintf(line, sizeof(line), "death: level %d class %u", event->levelId, event->monster.classId);
@@ -2915,7 +2917,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 	// The GM window's event list. A new event needs one line here (or a RegisterEvent call of its
 	// own before DevTools::Load); the window and "gm event <id>" pick it up by themselves.
 	DevTools::RegisterEvent({ .id = "traveler", .label = "A traveler joins the camp", .console = "dd-traveler" });
-	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) && StashGame::Load(context) && LoadWaveCounter(context) &&
+	return Campfire::Load(context) && DevTools::Load(context) && Zone::Load(context, GiveZoneTownPortal) && Andariel::Load(context) && Ascension::Load(context) && StashGame::Load(context) && LoadWaveCounter(context) &&
 		context->RegisterConsoleCommand("dd", InfoCommand, "Show that the Darkest Diablo plugin is running.") &&
 		context->RegisterConsoleCommand("dd-tp", TownPortalCommand, "Drop a Town Portal scroll at your feet (test).") &&
 		context->RegisterConsoleCommand("dd-waves", WavesCommand, "Restart the waves of the arena you stand in (test).") &&

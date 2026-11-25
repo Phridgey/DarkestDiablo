@@ -173,7 +173,7 @@ game: the numbers are for one player.
   (pushing vs farming). No out-of-run skill tree.
 - **Blaze of glory:** for a character that won't go further. One boss fight, no fleeing, uber
   difficulty for its level, huge rewards. Win: the character retires and brings its whole
-  inventory home, boss loot included. When it can be tried: not decided.
+  inventory home, boss loot included. Built as Ascend, at any time: `docs/ascend.md`.
 
 ## Technical approach
 - Data edits (tables, maps) for everything they can do.
@@ -186,7 +186,6 @@ game: the numbers are for one player.
 ## Open questions
 - Is Andariel (and each act boss) a forced final stop?
 - Examples of kiss and curse bonuses.
-- When can a character attempt a blaze of glory?
 
 ## Arena stops (decided 2026-11-17, updated)
 - Waves come on a timer: wave 1 shortly after arrival, then one every 10 s, whatever is still

@@ -366,11 +366,11 @@ inline auto Pack(std::vector<Item>& items, int size, std::vector<int>& pageOf) -
 	return static_cast<int>(pages.size());
 }
 
-// What an ascended hero leaves: everything on the hero, the mercenary and an unclaimed corpse, without the Cube itself
+// What an ascended hero leaves: everything on the hero and its corpse (not the mercenary's gear), without the Cube itself
 // (what lies in it stays).
 inline auto Legacy(const Hero& hero) -> std::vector<Item> {
 	std::vector<Item> out;
-	for (const auto* list : { &hero.items, &hero.merc, &hero.corpse }) {
+	for (const auto* list : { &hero.items, &hero.corpse }) {
 		for (const Item& item : *list) {
 			if (item.code != "box") {
 				out.push_back(item);
