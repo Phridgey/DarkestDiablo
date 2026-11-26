@@ -833,7 +833,7 @@ static constexpr Arena Arenas[] = {
 	{ "Halls of Vaught", 124, 2500, 1000, VaughtWaves, static_cast<int>(sizeof(VaughtWaves) / sizeof(VaughtWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 42, 79 }, false, -1, 1 },
 	{ "Cow Level", 39, 5000, 1148, CowWaves, static_cast<int>(sizeof(CowWaves) / sizeof(CowWaves[0])), false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 6, 24 }, false, -1, 1 },
 	{ "Arreat Summit", 120, 2000, 2508, AncientsWaves, 1, false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 11, 25 } },
-	{ "Durance of Hate", 102, 3500, 1600, nullptr, 0, false, { 0, 0 }, 0, MephistoClass, false, false, 1, nullptr, -1, { 29, 19 } },
+	{ "Durance of Hate", 99, 3000, 1620, nullptr, 0, false, { 0, 0 }, 0, MephistoClass, false, false, 1, nullptr, -1, { 29, 19 } },
 	{ "Chaos Sanctuary", 108, 1500, 1000, nullptr, 0, false, { 0, 0 }, 0, DiabloClass },
 	{ "Throne of Destruction", 131, 3000, 1000, nullptr, 0, false, { 0, 0 }, 0, AnyClass, false, false, 1, nullptr, -1, { 3, 48 } },
 	{ "Worldstone Chamber", 132, 3000, 1152, nullptr, 0, false, { 0, 0 }, 0, BaalClass },
@@ -1342,6 +1342,40 @@ static void QuestDone(const D2RL::PluginContext* context, void* run) noexcept {
 	}
 }
 
+// Khalim's Will (qf2) and the Compelling Orb (objects.txt row 404), 2026-11-25: Travincal clears
+// when the orb has been used and the hero carries the Will; the Will is used up, as in the game.
+// (The game's own smashing event crashed on our copy of Travincal, so the orb only changes state:
+// 113_act3.py, orb_without_event.)
+static constexpr int CompellingOrbRow = 404;
+struct WillScan { D2RL::ItemHandle will = D2RL::InvalidItemHandle; };
+
+static auto __cdecl ScanWill(const D2RL::PluginContext*, const D2RL::Items::ItemInfo* item, void* out) noexcept -> D2RL::Inventory::IterationAction {
+	if (item != nullptr && item->code == ItemCode("qf2")) {
+		static_cast<WillScan*>(out)->will = item->handle;
+		return D2RL::Inventory::IterationAction::Stop;
+	}
+	return D2RL::Inventory::IterationAction::Continue;
+}
+
+// Game thread. Uses up the hero's Khalim's Will; false when the hero has none.
+static auto UseKhalimsWill(const D2RL::PluginContext* context) noexcept -> bool {
+	D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
+	if (g_inventory == nullptr || g_items == nullptr || g_inventory->getLocalPlayer(context, &player) != D2RL::Inventory::Result::Success) {
+		return false;
+	}
+	const D2RL::Inventory::ItemFilter filter {
+		.structSize    = D2RL::Inventory::ItemFilterSize,
+		.containerMask = D2RL::Items::AllItemContainers,
+	};
+	WillScan scan;
+	g_inventory->forEachInventoryItem(context, player, &filter, ScanWill, &scan);
+	if (scan.will == D2RL::InvalidItemHandle) {
+		return false;
+	}
+	(void)g_items->destroyItem(context, player, scan.will, D2RL::Items::SocketedItemPolicy::RejectIfNotEmpty);
+	return true;
+}
+
 // Game thread.
 static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run) noexcept {
 	const int index = g_arena.load();
@@ -1370,6 +1404,19 @@ static void __cdecl QuestItemCheck(const D2RL::PluginContext* context, void* run
 				}
 			}
 		} catch (...) {
+		}
+		if (used >= arena.clearObjectCount && arena.clearOnObject == CompellingOrbRow) {
+			static uintptr_t s_warned = 0;
+			if (!UseKhalimsWill(context)) {
+				if (s_warned != reinterpret_cast<uintptr_t>(run)) {
+					s_warned = reinterpret_cast<uintptr_t>(run);
+					context->WriteConsoleMessage("The Compelling Orb holds. Only Khalim's Will can shatter it.");
+					Trace(context, "Travincal: orb used without Khalim's Will.");
+				}
+				Later(context, 500, QuestItemTick);
+				return;
+			}
+			context->WriteConsoleMessage("Khalim's Will shatters the Compelling Orb. The High Council's hold on Travincal is broken.");
 		}
 		if (used >= arena.clearObjectCount) {
 			char message[128] {};
@@ -1921,6 +1968,15 @@ static void __cdecl OnMonsterDeath(const D2RL::PluginContext* context, const D2R
 		g_wavesDone = true;
 		if (arena.clearOnItem != nullptr && !g_questDone.load()) {
 			Trace(context, "Waves done; the stop clears once the quest item is taken.");
+			return;
+		}
+		if (arena.clearOnObject == CompellingOrbRow) {
+			static uintptr_t s_told = 0;
+			if (s_told != g_run.load()) {
+				s_told = g_run.load();
+				Trace(context, "Waves done; Travincal clears once Khalim's Will shatters the orb.");
+				context->WriteConsoleMessage("Travincal's defenders are dead. Shatter the Compelling Orb with Khalim's Will.");
+			}
 			return;
 		}
 		g_threads->runOnUiThread(context, ClearArena, reinterpret_cast<void*>(g_run.load()));

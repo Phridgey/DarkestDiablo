@@ -10,7 +10,7 @@ Runs late (996), after every patch that makes copies.
 
 # Wave copies: Id prefix -> the stop's level (longest prefix wins).
 COPY_LEVELS = {
-    "dd_corpsefire": 3, "dd_den_": 3, "dd_tower_": 5,
+    "dd_corpsefire": 2, "dd_den_": 2, "dd_tower_": 5,
     "dd_mf_": 7, "dd_rakanishu": 7, "dd_treehead": 7, "dd_craft_": 7, "dd_xp_": 7,
     "dd_tris_": 10, "dd_pit_": 13, "dd_countess": 13, "dd_malus_": 13, "dd_andy_": 17,
     "dd_halls_": 20, "dd_xp_a2_": 23, "dd_craft_a2_": 23, "dd_maggot_": 27, "dd_viper_": 27,

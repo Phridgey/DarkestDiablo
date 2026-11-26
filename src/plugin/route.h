@@ -70,7 +70,7 @@ inline constexpr Stop Stops[] = {
 	{ "swampy",    "Fork5Swampy",   12, 90, 90 },  // MF run: one Swampy Pit room
 	{ "lowerkurast", "Fork5LowerKurast", 12, 95, 95 },  // crafting hunt: Lower Kurast's streets (on level 95)
 	{ "travincal", "NodeTravincal", 13, 96, 96 },  // Travincal (on level 96); smashing the Compelling Orb ends it
-	{ "durance",   "NodeDurance",   14, 102, 102 },  // Durance of Hate 3; Mephisto dies
+	{ "durance",   "NodeDurance",   14, 99, 99 },  // Durance of Hate 3 on spare level 99 (the real 102 crashed); Mephisto dies
 	// Act IV (docs/act4.md)
 	{ "plains",    "NodePlains",    15, 105, 105 },  // XP grind: Plains of Despair; Izual dies
 	{ "abaddon",   "Fork6Abaddon",  16, 125, 125 },  // XP grind (an Act V red portal)

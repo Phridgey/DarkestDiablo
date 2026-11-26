@@ -30,7 +30,7 @@ def _load(name, file):
 # Area level by levels.txt Id (the stops' arena and arrival levels, route.h).
 AREA_LEVELS = {
     # Act I: 1-18
-    13: 3,                       # Den of Evil (arena)
+    13: 2,                       # Den of Evil (arena; 2 since 2026-11-25)
     9: 5, 10: 5,                 # Burial Grounds and the crypt entry room
     11: 7, 12: 7, 14: 7, 15: 7,  # fork 1: Inifuss (arena and entry), Mausoleum, Crypt
     38: 10,                      # Tristram
@@ -46,7 +46,7 @@ AREA_LEVELS = {
     85: 40, 91: 40, 93: 40,      # Khalim's three parts
     94: 46, 90: 46, 95: 46,      # fork: Ruined Temple, Swampy Pit, Lower Kurast
     96: 50,                      # Travincal
-    102: 53,                     # Durance of Hate 3
+    99: 53,                      # Durance of Hate 3 (spare level 99)
     # Act IV: 54-72
     105: 57,                     # Plains of Despair
     125: 62, 126: 62, 127: 62,   # fork: the three red portals
