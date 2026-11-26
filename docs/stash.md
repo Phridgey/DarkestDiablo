@@ -97,7 +97,7 @@ another). Changing saves needs no restart.
   A file it doesn't know, or items past page 14, and nothing is touched (then changing saves still needs
   a restart).
 - **Always pages 1-10.** Opening the stash goes all the way back and then forward to the save's own
-  pages (`HomePage`); the arrows stop at its ends; our own page number covers the game's. An item on
+  pages (`HomePage`), with the grid covered until it gets there (0.28.6: save 1's page showed for a moment); the arrows stop at its ends; our own page number covers the game's. An item on
   another save's page can't be taken (the click is refused and the stash goes back).
 - **Gold.** The game has one purse for every page, so gold is kept per save in `stash.txt` (`purse`),
   with Deposit and Take buttons for the amount between the arrows (100 to 100,000, or all). The game's own gold controls are moved out of the window and refused.
