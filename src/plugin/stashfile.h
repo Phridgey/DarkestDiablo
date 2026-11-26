@@ -70,7 +70,8 @@ inline auto Pages(const std::string& file) -> std::optional<std::vector<std::str
 		}
 		const std::string head = file.substr(at, HeaderSize + 4);
 		const size_t length = Number(head, 16);
-		if (Number(head, 0) != 0xAA55AA55 || Number(head, 8) != Version || length < HeaderSize + 4 || length > file.size() - at || head.substr(HeaderSize, 2) != "JM") {
+		if (Number(head, 0) != 0xAA55AA55 || Number(head, 8) != Version || length < HeaderSize + 4 || length > file.size() - at ||
+			(head[20] != 2 && head.substr(HeaderSize, 2) != "JM")) {  // type 2, the Chronicle (modernstash.h), has no list
 			return std::nullopt;
 		}
 		pages.push_back(file.substr(at, length));
@@ -87,6 +88,26 @@ inline auto JoinPages(const std::vector<std::string>& pages) -> std::string {
 	return file;
 }
 
+// Is this a row of pages without a single item, of whatever version? (A DLC owner's old-rules file may
+// never have been opened by this build of the game.) `gold` is what they hold.
+inline auto HoldsNothing(const std::string& file, uint32_t& gold) -> bool {
+	gold = 0;
+	for (size_t at = 0; at < file.size();) {
+		if (file.size() - at < HeaderSize + 4) {
+			return false;
+		}
+		const std::string head = file.substr(at, HeaderSize + 4);
+		const size_t length = Number(head, 16);
+		if (Number(head, 0) != 0xAA55AA55 || length < HeaderSize + 4 || length > file.size() - at ||
+			(head[20] != 2 && (head.substr(HeaderSize, 2) != "JM" || length != HeaderSize + 4 || ItemCount(head) != 0))) {
+			return false;
+		}
+		gold += Gold(head);
+		at += length;
+	}
+	return true;
+}
+
 // One save's ten pages out of its own file (a missing file: blank pages), and its ascended heroes'
 // (pages 11-14 of it). `gold` is its purse.
 inline auto SavePages(const fs::path& file, std::vector<std::string>& out, std::vector<std::string>& tabs, uint32_t& gold, std::string& error) -> bool {
@@ -95,12 +116,24 @@ inline auto SavePages(const fs::path& file, std::vector<std::string>& out, std::
 	gold = 0;
 	std::error_code ec;
 	if (fs::exists(file, ec)) {
-		const auto pages = Pages(Camp::ReadFile(file));
+		const std::string text = Camp::ReadFile(file);
+		auto pages = Pages(text);
 		if (!pages) {
-			error = "not a stash file this version knows: " + file.string();
-			return false;
+			if (!HoldsNothing(text, gold)) {
+				error = "not a stash file this version knows: " + file.string() + " (" + std::to_string(text.size()) + " bytes, version " +
+					(text.size() >= 12 ? std::to_string(Number(text, 8)) : "?") + "); if the version is below 105, open the stash once with a hero without the Warlock rules";
+				return false;
+			}
+			pages.emplace();  // blank pages of this version instead
 		}
 		for (const auto& page : *pages) {
+			if (page[20] != 0) {  // not an ordinary page: the Warlock rules' own, which this file has no use for
+				if (page[20] != 2 && ItemCount(page) != 0) {
+					error = "items in a section this version does not know: " + file.string();
+					return false;
+				}
+				continue;
+			}
 			gold += Gold(page);
 			if (out.size() >= PagesPerSave && tabs.size() >= TabsPerSave) {
 				if (ItemCount(page) != 0) {
@@ -248,11 +281,12 @@ inline void ForgetJoinedGold(const fs::path& live, int slot) {
 }
 
 // ---- Deleting a save -----------------------------------------------------------------------
-inline auto WipeFile(const fs::path& live) -> fs::path { return live / "camp" / "wipe.txt"; }
+// `modern`: for the Warlock rules' file (modernstash.h), which the game keeps apart.
+inline auto WipeFile(const fs::path& live, bool modern = false) -> fs::path { return live / "camp" / (modern ? "wipe-modern.txt" : "wipe.txt"); }
 
-inline auto Wipes(const fs::path& live) -> std::set<int> {
+inline auto Wipes(const fs::path& live, bool modern = false) -> std::set<int> {
 	std::set<int> slots;
-	std::istringstream in(Camp::ReadFile(WipeFile(live)));
+	std::istringstream in(Camp::ReadFile(WipeFile(live, modern)));
 	int slot = 0;
 	while (in >> slot) {
 		if (slot >= 1 && slot <= Camp::SlotCount) {
@@ -262,22 +296,22 @@ inline auto Wipes(const fs::path& live) -> std::set<int> {
 	return slots;
 }
 
-inline auto SetWipes(const fs::path& live, const std::set<int>& slots) -> bool {
+inline auto SetWipes(const fs::path& live, const std::set<int>& slots, bool modern = false) -> bool {
 	std::error_code ec;
 	if (slots.empty()) {
-		fs::remove(WipeFile(live), ec);
+		fs::remove(WipeFile(live, modern), ec);
 		return !ec;
 	}
 	std::string text;
 	for (const int slot : slots) {
 		text += std::to_string(slot) + "\n";
 	}
-	return Camp::WriteFile(WipeFile(live), text);
+	return Camp::WriteFile(WipeFile(live, modern), text);
 }
 
 // Copies a save's pages to a file of their own (for the trash).
-inline auto CopyPages(const fs::path& live, int slot, const fs::path& to) -> bool {
-	const auto pages = Pages(Camp::ReadFile(live / Camp::StashName));
+inline auto CopyPages(const fs::path& live, int slot, const fs::path& to, bool modern = false) -> bool {
+	const auto pages = Pages(Camp::ReadFile(live / (modern ? Camp::ModernStashName : Camp::StashName)));
 	if (!pages || pages->size() < AllPages || slot < 1 || slot > Camp::SlotCount) {
 		return false;
 	}
@@ -291,8 +325,12 @@ inline auto CopyPages(const fs::path& live, int slot, const fs::path& to) -> boo
 }
 
 // Empties a save's pages in the file. Only while the game does not hold the stash in memory.
-inline auto BlankPages(const fs::path& live, int slot) -> bool {
-	auto pages = Pages(Camp::ReadFile(live / Camp::StashName));
+inline auto BlankPages(const fs::path& live, int slot, bool modern = false) -> bool {
+	const fs::path file = live / (modern ? Camp::ModernStashName : Camp::StashName);
+	if (std::error_code ec; modern && !fs::exists(file, ec)) {
+		return true;
+	}
+	auto pages = Pages(Camp::ReadFile(file));
 	if (!pages || pages->size() < AllPages || slot < 1 || slot > Camp::SlotCount) {
 		return false;
 	}
@@ -302,7 +340,7 @@ inline auto BlankPages(const fs::path& live, int slot) -> bool {
 	for (int i = 0; i < TabsPerSave && pages->size() >= FilePages; ++i) {
 		(*pages)[static_cast<size_t>(AllPages + (slot - 1) * TabsPerSave + i)] = BlankPage();
 	}
-	return Camp::WriteFile(live / Camp::StashName, JoinPages(*pages));
+	return Camp::WriteFile(file, JoinPages(*pages));
 }
 
 }

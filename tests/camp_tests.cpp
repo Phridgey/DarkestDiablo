@@ -10,6 +10,7 @@
 #include "routepages.h"
 #include "journal.h"
 #include "stashfile.h"
+#include "modernstash.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -539,8 +540,6 @@ static void StashSlotsTakeWhatIsUnlocked() {
 		CHECK(safe.size() == 2 && safe.at("r01") == 3 && safe.at("pk1") == 2);
 		CHECK(Stash::ParseSafe(Stash::SerializeSafe(safe)) == safe && Stash::SerializeSafe({}).empty());
 		CHECK(Stash::SafeKinds().size() == 35 + 33 + 23);
-		CHECK(Stash::InWarlockTabs(true, 0xFFFFFFFFu, 42, "r01") && Stash::InWarlockTabs(true, 42, 42, "pk1"));
-		CHECK(!Stash::InWarlockTabs(true, 41, 42, "r01") && !Stash::InWarlockTabs(false, 0xFFFFFFFFu, 42, "r01") && !Stash::InWarlockTabs(true, 0xFFFFFFFFu, 42, "cap"));
 	}
 	s.nodes.insert("gemskull");
 	CHECK(s.Room(skull) == Stash::SmallCap);
@@ -956,6 +955,148 @@ static void AscendedItemsTravel() {
 	fs::remove_all(live);
 }
 
+// The Warlock rules' stash file: joining, its old tabs, deleting a save.
+// A type 1 section with items as the game writes them (one Ral Rune stack of `n`).
+auto TabsPage(int n) -> std::string {
+	Ascend::Bytes b;
+	size_t bit = 0;
+	const auto put = [&](uint32_t v, int bits) {
+		for (int i = 0; i < bits; ++i, ++bit) {
+			if (bit / 8 >= b.size()) {
+				b.push_back(0);
+			}
+			b[bit / 8] = static_cast<uint8_t>(b[bit / 8] | (v >> i & 1U) << (bit % 8));
+		}
+	};
+	put(0x00A00010U, 32);
+	put(5, 3);
+	put(0, 18);
+	for (const char* code : { "11100", "11111011", "00010110", "10" }) {  // r, 0, 5, space
+		for (const char* c = code; *c != '\0'; ++c) {
+			put(*c == '1' ? 1 : 0, 1);
+		}
+	}
+	put(0, 1);
+	put(1, 1);
+	put(static_cast<uint32_t>(n), 8);
+	std::string page = StashPage(1, 0, std::string(b.begin(), b.end()));
+	page[20] = 1;
+	return page;
+}
+
+auto Chronicle() -> std::string {
+	std::string page = StashFile::BlankPage();
+	page.resize(StashFile::HeaderSize);
+	page[20] = 2;
+	page += std::string("\xC0\xED\xEA\xC0", 4) + std::string(80, '\1');
+	StashFile::SetNumber(page, 16, static_cast<uint32_t>(page.size()));
+	return page;
+}
+
+void TestModernStash(const fs::path& dir) {
+	std::string log;
+	const auto file = [](std::vector<std::pair<int, std::string>> pages, int count, int stack) {
+		std::vector<std::string> all(static_cast<size_t>(count), StashFile::BlankPage());
+		for (const auto& [i, page] : pages) {
+			all[static_cast<size_t>(i)] = page;
+		}
+		return StashFile::JoinPages(all) + TabsPage(stack) + Chronicle();
+	};
+	const auto a = StashPage(1, 5, "aaa"), b = StashPage(2, 7, "bbb"), c = StashPage(3, 0, "ccc"), d = StashPage(4, 0, "ddd"), e = StashPage(5, 0, "eee");
+	const auto at = [](const std::vector<std::string>& pages, int i, int count) { return StashFile::ItemCount(pages[static_cast<size_t>(i)]) == count; };
+	const auto fresh = [&](const char* name) {
+		const fs::path live = dir / name;
+		fs::remove_all(live);
+		fs::create_directories(live / "camp" / "slot2" / "files");
+		WriteFile(live / "camp" / "active.txt", "1\n");
+		return live;
+	};
+	{  // never played with the one-file stash: every file is its save's own
+		const fs::path live = fresh("modern1"), parked = live / "camp" / "slot2" / "files" / ModernStashName;
+		WriteFile(live / ModernStashName, file({ { 0, a }, { 11, c } }, 44, 20));
+		WriteFile(parked, file({ { 0, b } }, 9, 3));
+		CHECK(ModernStash::Join(live, "t", false, log) && ModernStashJoined(live));
+		const auto s = ModernStash::Split(ReadFile(live / ModernStashName));
+		CHECK(s && s->ordinary.size() == 44 && s->special.size() == 2 && ModernStash::Type(s->special[1]) == 2 && s->special[1] == Chronicle());
+		CHECK(at(s->ordinary, 0, 1) && at(s->ordinary, 10, 2) && at(s->ordinary, 31, 3) && StashFile::Gold(s->ordinary[0]) == 0);
+		CHECK(ModernStash::JoinedGold(live, 1) == 5 && ModernStash::JoinedGold(live, 2) == 7 && !fs::exists(parked));
+		ModernStash::ForgetGold(live, 2);
+		CHECK(ModernStash::JoinedGold(live, 2) == 0 && ModernStash::JoinedGold(live, 1) == 5 && ModernStashJoined(live));
+		CHECK(ModernStash::EmptyTabs(live, "t", log));
+		const auto safe = Stash::ParseSafe(ReadFile(live / "camp" / "safe.txt"));
+		CHECK(safe.size() == 1 && safe.at("r05") == 23);  // both saves' stacks
+		const auto after = ModernStash::Split(ReadFile(live / ModernStashName));
+		CHECK(after && after->ordinary == s->ordinary && StashFile::ItemCount(after->special[0]) == 0 && after->special[1] == Chronicle());
+		CHECK(ModernStash::EmptyTabs(live, "t2", log) && Stash::ParseSafe(ReadFile(live / "camp" / "safe.txt")) == safe);
+		// Stopped after the stash was written, before the safe was: finished. Stopped before: not doubled.
+		fs::rename(live / "camp" / "safe.txt", live / "camp" / "safe-next.txt");
+		CHECK(ModernStash::EmptyTabs(live, "t3", log) && Stash::ParseSafe(ReadFile(live / "camp" / "safe.txt")) == safe);
+		// Changing saves leaves the file where it is.
+		CHECK(SwitchSlot(live, 2, log) && fs::exists(live / ModernStashName) && SwitchSlot(live, 1, log) && fs::exists(live / ModernStashName));
+		CHECK(StashFile::BlankPages(live, 2, true) && StashFile::CopyPages(live, 1, live / "copy.d2i", true));
+		const auto blank = ModernStash::Split(ReadFile(live / ModernStashName));
+		CHECK(blank && at(blank->ordinary, 10, 0) && at(blank->ordinary, 0, 1) && blank->special.size() == 2);
+	}
+	{  // played with it: pages already lie right; save 1's page copied into save 2's file is not doubled
+		const fs::path live = fresh("modern2"), parked = live / "camp" / "slot2" / "files" / ModernStashName;
+		WriteFile(live / ModernStashName, file({ { 0, a }, { 10, b } }, 44, 1));
+		WriteFile(parked, file({ { 0, a }, { 1, d }, { 10, c }, { 43, e } }, 44, 1));
+		CHECK(ModernStash::Join(live, "t", true, log));
+		const auto s = ModernStash::Split(ReadFile(live / ModernStashName));
+		CHECK(s && at(s->ordinary, 0, 1) && at(s->ordinary, 10, 2));
+		int items = 0;
+		for (int i = 10; i < 20; ++i) {
+			items += StashFile::ItemCount(s->ordinary[static_cast<size_t>(i)]);
+		}
+		CHECK(items == 2 + 4 + 3 + 5 && at(s->ordinary, 1, 0));
+	}
+	{  // a DLC owner's: the tabs' section in the middle (after 12 pages), the Chronicle last, the same stash in two saves' folders
+		const fs::path live = fresh("modern5"), parked = live / "camp" / "slot2" / "files" / ModernStashName;
+		const auto big = StashPage(6, 9, std::string(100, 'x'));
+		std::vector<std::string> all(44, StashFile::BlankPage());
+		all[0] = big;
+		all[2] = c;
+		all[20] = d;
+		all.insert(all.begin() + 12, TabsPage(43));
+		const std::string text = StashFile::JoinPages(all) + Chronicle();
+		WriteFile(live / ModernStashName, text);
+		WriteFile(parked, text);
+		CHECK(ModernStash::Join(live, "t", false, log));
+		const auto s = ModernStash::Split(ReadFile(live / ModernStashName));
+		CHECK(s && s->ordinary.size() == 44 && s->special.size() == 2 && s->special[1] == Chronicle());
+		CHECK(at(s->ordinary, 0, 6) && at(s->ordinary, 2, 3) && at(s->ordinary, 10, 0));
+		CHECK(ModernStash::JoinedGold(live, 1) == 9 && ModernStash::JoinedGold(live, 2) == 0);
+		CHECK(ModernStash::EmptyTabs(live, "t", log) && Stash::ParseSafe(ReadFile(live / "camp" / "safe.txt")).at("r05") == 43);
+		CHECK(ReadFile(live / "camp" / "stash-backup-t-modern" / "slot2.d2i") == text);
+		// Its old-rules file of an older version: joined when it holds nothing, left alone when it holds something.
+		std::string old = StashFile::BlankPage();
+		StashFile::SetNumber(old, 8, 99);
+		StashFile::SetNumber(old, 12, 4);
+		WriteFile(live / StashName, old + Chronicle());
+		CHECK(StashFile::Join(live, "t", log) && StashFile::JoinedGold(live, 1) == 4);
+		fs::remove(JoinedFile(live));
+		std::string held = StashPage(1, 0, "zzz");
+		StashFile::SetNumber(held, 8, 99);
+		WriteFile(live / StashName, held);
+		CHECK(!StashFile::Join(live, "t", log) && ReadFile(live / StashName) == held && log.find("version 99") != std::string::npos);
+		WriteFile(live / StashName, StashPage(1, 0, "zzz") + Chronicle());
+		CHECK(StashFile::Join(live, "t", log));
+		const auto pages = StashFile::Pages(ReadFile(live / StashName));
+		CHECK(pages && pages->size() == StashFile::FilePages && at(*pages, 0, 1));
+	}
+	{  // none yet; and one that is not understood stays as it is
+		const fs::path none = fresh("modern3"), bad = fresh("modern4");
+		CHECK(ModernStash::Join(none, "t", true, log) && ModernStashJoined(none) && ModernStash::EmptyTabs(none, "t", log) && !fs::exists(none / ModernStashName));
+		WriteFile(bad / ModernStashName, "junk");
+		CHECK(!ModernStash::Join(bad, "t", true, log) && !ModernStashJoined(bad) && ReadFile(bad / ModernStashName) == "junk");
+		std::string odd = TabsPage(3);
+		odd[StashFile::HeaderSize + 4 + 2] = '\0';  // not a simple item
+		WriteFile(bad / ModernStashName, StashFile::BlankPage() + odd + Chronicle());
+		CHECK(!ModernStash::EmptyTabs(bad, "t", log) && ReadFile(bad / ModernStashName) == StashFile::BlankPage() + odd + Chronicle());
+	}
+	CHECK(!ModernStash::HasWarlockRules("") && !ModernStash::HasWarlockRules(std::string(300, '\3')));
+}
+
 int main(int argc, char** argv) {
 	if (argc == 3 && std::string(argv[1]) == "join") {  // joins the stashes of a COPY of a save folder
 		std::string log;
@@ -963,10 +1104,19 @@ int main(int argc, char** argv) {
 		std::cout << log << "\n";
 		return ok ? 0 : 1;
 	}
+	if (argc == 3 && std::string(argv[1]) == "join-modern") {  // the same for the Warlock rules' stash
+		std::string log;
+		const bool ok = ModernStash::Join(argv[2], "dry-run", true, log);
+		std::cout << log << "\n";
+		const bool emptied = ok && ModernStash::EmptyTabs(argv[2], "dry-run", log);
+		std::cout << log << "\n";
+		return emptied ? 0 : 1;
+	}
 	if (argc == 3 && std::string(argv[1]) == "layouts") {
 		WriteStashLayouts(argv[2]);
 		return 0;
 	}
+	TestModernStash(fs::temp_directory_path() / "dd-modern-tests");
 	StashPagesArePaidInParts();
 	StashPointsComeOncePerClassAndAct();
 	StashTreeNeedsParentsAndPoints();

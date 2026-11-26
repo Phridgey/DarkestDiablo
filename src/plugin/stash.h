@@ -212,12 +212,6 @@ inline auto SerializeSafe(const Safe& safe) -> std::string {
 	return out;
 }
 
-// Is this what the Warlock rules' own tabs hold? Their items lie on shared pages whose number the
-// loader does not give (or past the mod's own pages).
-inline auto InWarlockTabs(bool shared, uint32_t page, int filePages, const std::string& code) -> bool {
-	return shared && page >= static_cast<uint32_t>(filePages) && SafeKindOf(code) != nullptr;
-}
-
 // ---- The save's state ---------------------------------------------------------------------
 enum class Buy { Bought, AlreadyOwned, Locked, NotEnoughPoints, Unknown };
 
@@ -663,9 +657,17 @@ inline auto SafeLayout(const Safe& safe, bool upgrades) -> std::string {
 			kind.name + ": " + std::to_string(it->second) + "\",\"onClickMessage\":\"" + ActionMessage + "safe-" + kind.code + "\"}}");
 		add(Text("Count_" + kind.code, { x + 6, y + 2, 72, 26 }, std::to_string(it->second), TextWhite, "$SmallFontSize", "left"));
 	}
-	add(Text("Help1", { 84, 1300, 994, 36 }, "Click: take one out. Nothing can be put in.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
-	add(Text("Help2", { 84, 1340, 994, 36 }, "The safe is gone once it is empty.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
+	add(Text("Help1", { 84, 1300, 994, 36 }, "Click: take one out. Shift or Ctrl + click: as many as the bag holds.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
+	add(Text("Help2", { 84, 1340, 994, 36 }, "Nothing can be put in. The safe is gone once it is empty.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
+}
+
+// Over the shared page's grid while the stash turns to the save's own page: the file's first page
+// (save 1's) would show for a moment (HomePage in stash.cpp).
+inline auto CoverLayout() -> std::string {
+	using namespace Ui;
+	constexpr int X = 70, Y = 215, W = 1022, H = 985;
+	return Panel({ 236 + X, -651 + Y, W, H }, "$LeftPanelAnchor", 8600, Catcher(W, H) + "," + Box("Cover", { 0, 0, W, H }, "[0.035,0.03,0.028,1.0]"));
 }
 
 // How much gold Deposit and Take move at once; 0: all of it.
