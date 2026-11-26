@@ -30,7 +30,7 @@ def _load(name, file):
 # Area level by levels.txt Id (the stops' arena and arrival levels, route.h).
 AREA_LEVELS = {
     # Act I: 1-18
-    13: 3,                       # Den of Evil (arena)
+    13: 2,                       # Den of Evil (arena; 2 since 2026-11-25)
     9: 5, 10: 5,                 # Burial Grounds and the crypt entry room
     11: 7, 12: 7, 14: 7, 15: 7,  # fork 1: Inifuss (arena and entry), Mausoleum, Crypt
     38: 10,                      # Tristram
