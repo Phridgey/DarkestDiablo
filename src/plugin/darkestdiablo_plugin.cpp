@@ -167,6 +167,7 @@ struct TargetClass { int32_t levelId; uint32_t classId; };
 static std::vector<TargetClass> g_targetClasses;      // "targetclass <level id> <class>" (090_pit.py)
 static std::map<std::string, uint32_t> g_monsterClasses;  // "monclass <Id> <class>" (999_monster_classes.py)
 static std::map<int, int> g_superCopies;              // "superalt <row> <copy row>" (998_superunique_copies.py)
+static std::map<int, int> g_superFirst;               // "superfirst <row> <copy row>" (998b_inifuss_first_run.py)
 static std::set<int>      g_supersSpawned;            // superunique rows spawned in this game
 static std::mutex         g_supersLock;
 static std::vector<CraftStep> g_craftSteps;             // in the order of loot_data.txt (rising magic find)
@@ -223,6 +224,11 @@ static void ReadLootData(const D2RL::PluginContext* context) noexcept {
 					int row = 0, copy = 0;
 					if (words >> row >> copy) {
 						g_superCopies[row] = copy;
+					}
+				} else if (kind == "superfirst") {
+					int row = 0, copy = 0;
+					if (words >> row >> copy) {
+						g_superFirst[row] = copy;
 					}
 				} else if (kind == "targetclass") {
 					TargetClass target {};
@@ -1873,10 +1879,16 @@ static void __cdecl StartNextWave(const D2RL::PluginContext* context, void* run)
 		} else if (std::strncmp(group.what, "super:", 6) == 0) {
 			// A superunique appears once per game: the second time, spawn its copy's row.
 			int row = std::atoi(group.what + 6);
+			// A hero's first Tree of Inifuss run: Rakanishu and Treehead as their "First" copies,
+			// whose loot tables drop a sure unique (998b_inifuss_first_run.py).
+			const auto first = g_superFirst.find(row);
+			const bool firstRun = first != g_superFirst.end() && LoadProgress().clears.count("inifuss") == 0;
 			{
 				const std::lock_guard<std::mutex> guard(g_supersLock);
 				const auto copy = g_superCopies.find(row);
-				if (g_supersSpawned.count(row) != 0 && copy != g_superCopies.end()) {
+				if (firstRun && g_supersSpawned.count(first->second) == 0) {
+					row = first->second;
+				} else if (g_supersSpawned.count(row) != 0 && copy != g_superCopies.end()) {
 					row = copy->second;
 				}
 				g_supersSpawned.insert(row);

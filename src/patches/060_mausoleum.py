@@ -87,7 +87,7 @@ def crafting_loot(t, arena, arena_id=ARENA_ID, wave_types=WAVE_TYPES, craft=CRAF
     loot. (The plugin can't make items on the ground: the loader's ground drops crash the game.)
 
     - Gems, potions and gold: "DD Craft Hunt" as before.
-    - White items: copies of the bases near the arena's item level ("z" + the base's code) whose
+    - White items: copies of the bases near the arena's item level (3-character codes, white_copies()) whose
       item types are always normal quality ("Normal" = 1), so they can never come out magic. They
       still roll sockets and ethereal like any normal drop, and work like the base (same name,
       look and runewords, as their item type counts as the original one). They are not
@@ -122,7 +122,7 @@ def crafting_loot(t, arena, arena_id=ARENA_ID, wave_types=WAVE_TYPES, craft=CRAF
         return table(name, 1, 0, [(nested(f"{name} {n + 1}", part), len(part)) for n, part in enumerate(parts)])
 
     item_levels = [int(arena[c]) for c in ("MonLvlEx", "MonLvlEx(N)", "MonLvlEx(H)")]
-    made = any(r.get("code", "").startswith("z") and r.get("type", "").startswith("zw") for r in t.table("armor").rows)
+    made = any(r.get("type", "").startswith("zw") for r in t.table("armor").rows)
     whites = white_codes(t, item_levels) if made else white_copies(t, item_levels)
     steps = rune_steps()
     hunt = {}  # difficulty tag -> {step: (normal table, champion table)}
@@ -183,7 +183,7 @@ def white_codes(t, item_levels):
     for name in ("weapons", "armor"):
         for row in t.table(name).rows:
             code, level = row.get("code", ""), row.get("level", "")
-            if code.startswith("z") and row.get("type", "").startswith("zw") and level.isdigit():
+            if row.get("type", "").startswith("zw") and level.isdigit():
                 for d, top in enumerate(item_levels):
                     if top - BASE_BAND < int(level) <= top:
                         per_difficulty[d].append(code)
@@ -193,8 +193,10 @@ def white_codes(t, item_levels):
     return per_difficulty
 
 
+WHITE_PREFIX = {"weapons": "3", "armor": "4"}  # first characters no other item code uses
+
 def white_copies(t, item_levels):
-    """Always-white copies ("z" + code) of every weapon and armor base that can drop (other stops
+    """Always-white copies (3-character codes: "3" or "4", then the base's row) of every weapon and armor base that can drop (other stops
     use them too, e.g. Griswold in Tristram). Returns the codes of those from BASE_BAND levels
     under each item level up to it, per difficulty.
 
@@ -234,7 +236,7 @@ def white_copies(t, item_levels):
     per_difficulty = [[] for _ in item_levels]
     for name in ("weapons", "armor"):
         table = t.table(name)
-        for row in list(main.table(name).rows):
+        for index, row in enumerate(list(main.table(name).rows)):
             code, level = row.get("code", ""), row.get("level", "")
             if (len(code) != 3 or not level.isdigit() or row.get("spawnable") != "1" or code in quest
                     or row.get("type") not in by_code or code not in assets):
@@ -257,7 +259,13 @@ def white_copies(t, item_levels):
                 types.rows.append(copy)
                 own_types[new_code] = copy
                 new_types[kind] = new_code
-            new_code = "z" + code
+            # 3 characters, like every other item: with 4 ("z" + code, until 0.28.7) the game found no
+            # picture for them ("items/weapon/[default_unit]", 2026-11-25). A first character no other
+            # item uses ("3" weapons, "4" armor), then the base's row in its table, in base 36.
+            digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+            if index >= 36 * 36:
+                raise RuntimeError(f"{name}: too many rows for a 3-character white code")
+            new_code = WHITE_PREFIX[name] + digits[index // 36] + digits[index % 36]
             if new_code in taken:
                 raise RuntimeError(f"item code {new_code} is taken")
             taken.add(new_code)
