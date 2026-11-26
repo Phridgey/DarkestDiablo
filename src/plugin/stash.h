@@ -662,6 +662,14 @@ inline auto SafeLayout(const Safe& safe, bool upgrades) -> std::string {
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
 }
 
+// Over the shared page's grid while the stash turns to the save's own page: the file's first page
+// (save 1's) would show for a moment (HomePage in stash.cpp).
+inline auto CoverLayout() -> std::string {
+	using namespace Ui;
+	constexpr int X = 70, Y = 215, W = 1022, H = 985;
+	return Panel({ 236 + X, -651 + Y, W, H }, "$LeftPanelAnchor", 8600, Catcher(W, H) + "," + Box("Cover", { 0, 0, W, H }, "[0.035,0.03,0.028,1.0]"));
+}
+
 // How much gold Deposit and Take move at once; 0: all of it.
 inline constexpr std::array<long long, 8> GoldSteps = { 100, 500, 1000, 5000, 10000, 50000, 100000, 0 };
 

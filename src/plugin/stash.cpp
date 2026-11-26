@@ -86,6 +86,7 @@ std::atomic<bool>      g_autoTab { true };  // open the stash on the shared page
 std::atomic<bool>      g_treeWanted { false }, g_tabWanted { false };
 std::atomic<bool>      g_journalWanted { false };  // starts minimized; stays as it is between visits
 std::atomic<int>       g_journalRune { -1 }, g_journalPage { 0 };
+std::atomic<bool>      g_covering { false }; // the grid is covered until HomePage has turned to the save's page
 std::atomic<bool>      g_jumping { false };  // dd-stash jump: the page lock lets these arrows through
 std::atomic<bool>      g_refresh { false };
 std::atomic<bool>      g_paying { false };
@@ -312,6 +313,8 @@ void __cdecl Refresh(const D2RL::PluginContext* context, void*) noexcept {
 			ShowRow(context, g_tab, Stash::SafeLayout(g_safe, g_state.Has("tab")));
 		} else if (g_tabWanted.load() && g_state.Has("tab")) {
 			ShowRow(context, g_tab, Stash::UpgradesLayout(g_state));
+		} else if (g_covering.load() && !g_treeWanted.load()) {
+			ShowRow(context, g_tab, Stash::CoverLayout());
 		} else {
 			CloseRow(context, g_tab);
 		}
@@ -1260,7 +1263,9 @@ void GoTo(const D2RL::PluginContext* context, int shown) noexcept {
 // UI thread. Shows the save's first page. The game can't be asked which page shows, so it goes all
 // the way back and then forward to the save's own pages.
 void __cdecl HomePage(const D2RL::PluginContext* context, void*) noexcept {
+	g_covering = false;
 	if (!g_bankOpen.load() || g_widgets == nullptr) {
+		QueueRefresh(context);
 		return;
 	}
 	const auto send = [&](const char* command, int times) {
@@ -1499,6 +1504,7 @@ auto TurnPage(const D2RL::PluginContext* context, int direction) -> bool {
 }
 
 void BankClosed(const D2RL::PluginContext* context) noexcept {
+	g_covering = false;
 	if (g_bankOpen.exchange(false)) {
 		g_treeWanted = false;
 		g_tabWanted = false;
@@ -1714,6 +1720,8 @@ auto OnUiMessage(const D2RL::PluginContext* context, const char* target, const c
 				return false;
 			} else if (std::strcmp(command, "SelectTab") == 0) {
 				NoteTabClick();
+				g_covering = true;  // until HomePage: the game shows the file's first page meanwhile
+				QueueRefresh(context);
 				Later(context, 40, HomePage);
 			} else if (std::strcmp(command, "Withdraw") == 0) {
 				return true;  // the game's purse is one for all saves; gold is in the save's own
