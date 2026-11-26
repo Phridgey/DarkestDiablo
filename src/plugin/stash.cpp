@@ -517,7 +517,8 @@ auto SaveSafe(const D2RL::PluginContext* context) -> bool {
 }
 
 // Game thread. Makes one new item, in the hand, else the bag.
-auto MakeItem(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::string& code) -> bool {
+// `bag`: straight into the bag, never the hand.
+auto MakeItem(const D2RL::PluginContext* context, D2RL::PlayerHandle player, const std::string& code, bool bag = false) -> bool {
 	D2RL::Items::ItemCreateSpec spec {
 		.structSize      = D2RL::Items::ItemCreateSpecSize,
 		.code            = CodeNumber(code),
@@ -529,11 +530,14 @@ auto MakeItem(const D2RL::PluginContext* context, D2RL::PlayerHandle player, con
 		.durability      = D2RL::Items::DefaultValue,
 		.destination     = {
 			.structSize = D2RL::Items::ItemDestinationSize,
-			.container  = Container::Cursor,
+			.container  = bag ? Container::Inventory : Container::Cursor,
 			.placement  = D2RL::Items::Placement::Automatic,
 		},
 	};
 	D2RL::ItemHandle made = D2RL::InvalidItemHandle;
+	if (bag) {
+		return g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success;
+	}
 	if (g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success) {
 		return true;
 	}
@@ -541,13 +545,16 @@ auto MakeItem(const D2RL::PluginContext* context, D2RL::PlayerHandle player, con
 	return g_items->createItem(context, player, &spec, &made) == D2RL::Items::Result::Success;
 }
 
-// Game thread. One of a kind is taken out of the safe, into the hand or the bag. Nothing goes in here.
+// Game thread. One of a kind is taken out of the safe, into the hand or the bag; with `SafeAll` in
+// `data` (Shift or Ctrl held), as many as the bag has room for. Nothing goes in here.
+constexpr size_t SafeAll = 0x10000;
 void __cdecl TakeFromSafe(const D2RL::PluginContext* context, void* data) noexcept {
 	try {
 		const fs::path progress = Campfire::RouteProgressFile();
 		const Lock lock(g_mutex);
 		const auto& kinds = Stash::SafeKinds();
-		const size_t index = reinterpret_cast<size_t>(data);
+		const size_t index = reinterpret_cast<size_t>(data) & (SafeAll - 1);
+		const bool all = (reinterpret_cast<size_t>(data) & SafeAll) != 0;
 		D2RL::PlayerHandle player = D2RL::InvalidPlayerHandle;
 		D2RL::ItemHandle hand = D2RL::InvalidItemHandle;
 		if (index >= kinds.size() || !Current(progress) || g_safe.count(kinds[index].code) == 0 ||
@@ -556,6 +563,31 @@ void __cdecl TakeFromSafe(const D2RL::PluginContext* context, void* data) noexce
 			return;
 		}
 		const std::string& code = kinds[index].code;
+		if (all) {  // one at a time, counted out before each is made, until the bag is full or the kind is gone
+			int taken = 0;
+			while (g_safe.count(code) != 0) {
+				const Stash::Safe before = g_safe;
+				if (--g_safe[code] <= 0) {
+					g_safe.erase(code);
+				}
+				if (!SaveSafe(context)) {
+					g_safe = before;
+					break;
+				}
+				if (!MakeItem(context, player, code, true)) {
+					g_safe = before;
+					SaveSafe(context);
+					break;
+				}
+				++taken;
+			}
+			Log(context, "Stash: took %d %s out of the safe (the bag is full or none are left).", taken, code.c_str());
+			if (g_safe.empty()) {
+				context->LogInfo("Stash: the safe is empty and goes away.");
+			}
+			QueueRefresh(context);
+			return;
+		}
 		const Stash::Safe before = g_safe;
 		// Counted out first, like the Upgrades tab's.
 		if (--g_safe[code] <= 0) {
@@ -1129,7 +1161,8 @@ void OnAction(const D2RL::PluginContext* context, const char* action) {
 		const auto& kinds = Stash::SafeKinds();
 		for (size_t i = 0; i < kinds.size(); ++i) {
 			if (kinds[i].code == action + 5) {
-				g_threads->runOnGameThread(context, TakeFromSafe, reinterpret_cast<void*>(i));
+				const bool all = ((GetAsyncKeyState(VK_SHIFT) | GetAsyncKeyState(VK_CONTROL)) & 0x8000) != 0;
+				g_threads->runOnGameThread(context, TakeFromSafe, reinterpret_cast<void*>(i | (all ? SafeAll : 0)));
 			}
 		}
 	} else if (std::strcmp(action, "shared") == 0) {

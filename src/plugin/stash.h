@@ -657,8 +657,8 @@ inline auto SafeLayout(const Safe& safe, bool upgrades) -> std::string {
 			kind.name + ": " + std::to_string(it->second) + "\",\"onClickMessage\":\"" + ActionMessage + "safe-" + kind.code + "\"}}");
 		add(Text("Count_" + kind.code, { x + 6, y + 2, 72, 26 }, std::to_string(it->second), TextWhite, "$SmallFontSize", "left"));
 	}
-	add(Text("Help1", { 84, 1300, 994, 36 }, "Click: take one out. Nothing can be put in.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
-	add(Text("Help2", { 84, 1340, 994, 36 }, "The safe is gone once it is empty.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
+	add(Text("Help1", { 84, 1300, 994, 36 }, "Click: take one out. Shift or Ctrl + click: as many as the bag holds.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
+	add(Text("Help2", { 84, 1340, 994, 36 }, "Nothing can be put in. The safe is gone once it is empty.", "$FontColorDarkGrayGold", "$SmallFontSize", "left"));
 	return Panel({ 236, -651, W, H }, "$LeftPanelAnchor", 8600, out);
 }
 
