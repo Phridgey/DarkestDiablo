@@ -28,7 +28,7 @@ The save's stash starts small and grows over many heroes. Rules: `src/plugin/sta
 
 - **The safe.** Heroes with the Warlock rules have three tabs of the game's own (Gems, Materials, Runes).
   They are off (no tabs, their slots outside the window). What they hold goes to the safe, a tab after Upgrades that
-  shows only what is in it. Click to take one out; nothing can be put in; the tab is gone once it is
+  shows only what is in it. Click to take one out, Shift or Ctrl + click to take as many as the bag holds (0.28.5); nothing can be put in; the tab is gone once it is
   empty. It is one safe for all saves (the game has one such stash for all of them): `camp/safe.txt`.
   Ctrl+click on a gem or rune, which the game would send to the hidden tabs, stores it in the Upgrades
   tab, whichever page shows (to that page if its slot is locked or full). The moving is done in the stash
