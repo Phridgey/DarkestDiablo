@@ -116,7 +116,9 @@ class Loot:
         else:
             size = -(-len(codes) // 10)  # ceil: at most 10 groups
             groups = [codes[i:i + size] for i in range(0, len(codes), size)]
-            entries = [(self.code_tree(f"{name} {n}", g, {}), len(g)) for n, g in enumerate(groups, 1)]
+            # The sub-tables carry the same quality chances: the game may take them from the table
+            # the item is picked in (2026-11-25: 1 unique from 2 runs' 4 bonus picks).
+            entries = [(self.code_tree(f"{name} {n}", g, ratios), len(g)) for n, g in enumerate(groups, 1)]
         for k, (item, prob) in enumerate(entries, 1):
             row[f"Item{k}"], row[f"Prob{k}"] = item, str(prob)
         self.tcs.rows.append(row)
