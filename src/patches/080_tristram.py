@@ -105,7 +105,7 @@ def white_bases(t):
     out = []
     for name in ("weapons", "armor"):
         for row in t.table(name).rows:
-            if row.get("type") in kinds and row.get("level", "").isdigit():
+            if row.get("type") in kinds and row.get("level", "").isdigit() and len(row["code"]) == 3:  # not the old 4-character rows
                 out.append((row["code"], int(row["level"])))
     return out
 
