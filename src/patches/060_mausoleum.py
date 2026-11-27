@@ -183,7 +183,7 @@ def white_codes(t, item_levels):
     for name in ("weapons", "armor"):
         for row in t.table(name).rows:
             code, level = row.get("code", ""), row.get("level", "")
-            if row.get("type", "").startswith("zw") and level.isdigit():
+            if row.get("type", "").startswith("zw") and level.isdigit() and len(code) == 3:  # not the old 4-character rows
                 for d, top in enumerate(item_levels):
                     if top - BASE_BAND < int(level) <= top:
                         per_difficulty[d].append(code)
@@ -234,6 +234,7 @@ def white_copies(t, item_levels):
 
     new_types = {}
     per_difficulty = [[] for _ in item_levels]
+    legacy = {"weapons": [], "armor": []}
     for name in ("weapons", "armor"):
         table = t.table(name)
         for index, row in enumerate(list(main.table(name).rows)):
@@ -281,6 +282,22 @@ def white_copies(t, item_levels):
             table.rows.append(copy)
             if is_main:
                 items.append({new_code: dict(assets[code])})
+            # The 4-character code white copies had until 0.28.8 ("z" + code): kept as rows that
+            # never drop, so heroes still holding one can load (2026-11-26: a hero who held one
+            # couldn't enter a game, "Key I"). Added after every new copy, at the end of the table.
+            old = dict(copy)
+            old["code"] = "z" + code
+            old["spawnable"] = "0"
+            legacy[name].append(old)
+            if is_main:
+                items.append({old["code"]: dict(assets[code])})
+    for name, rows in legacy.items():
+        table = t.table(name)
+        for row in rows:
+            if row["code"] in taken:
+                raise RuntimeError(f"item code {row['code']} is taken")
+            taken.add(row["code"])
+            table.rows.append(row)
     for d, codes in enumerate(per_difficulty):
         if not codes:
             raise RuntimeError(f"No white bases for the Mausoleum at item level {item_levels[d]}.")
